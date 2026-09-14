@@ -106,3 +106,171 @@ Payload без личных полей сам по себе недостаточ
 Проект не должен отправлять историю сайтов, правила и локальную модель маршрутизации стороннему AI или внешнему аналитическому сервису без явного отдельного решения пользователя.
 
 Коллективное обучение должно передавать только минимально необходимые обезличенные агрегаты. Никакой скрытой рекламной/поведенческой телеметрии в AMRI не предусматривается.
+
+
+## 2026-09-14 — Аудит и восстановление Windows CI
+
+### Что обнаружено
+
+Последний запуск CI на commit `2e28203` завершился ошибкой компиляции Windows-клиента. Причина — код UI использовал API eframe до версии 0.36: метод `App::update`, глобальные `Context::style/set_style` и передачу `Context` в `CentralPanel::show`. В eframe 0.36 обязательным стал `App::ui`, тема настраивается через `style_of/set_style_of`, а panel получает корневой `Ui`.
+
+Также шаг форматирования изменял файлы прямо в CI, но не проверял чистоту форматирования.
+
+### Что сделано
+
+- Windows UI переведён на фактический API eframe 0.36.2.
+- Настройка стиля привязана к тёмной теме через `Theme::Dark`.
+- CI теперь запускает `cargo fmt --all -- --check` и действительно отклоняет неформатированный код.
+
+### Почему так
+
+Версия eframe уже закреплена в проекте как 0.36.2, поэтому понижение зависимости скрывало бы несовместимость и возвращало проект на старый API. Исправлен вызывающий код, чтобы он соответствовал выбранной современной версии.
+
+### Изменённые файлы
+
+- `apps/windows/src/main.rs`
+- `.github/workflows/ci.yml`
+- `docs/DEV_JOURNAL.md`
+
+### Проверки
+
+- Проанализирован полный лог GitHub Actions run `34884385062`.
+- Новый commit должен пройти `cargo fmt --all -- --check`, `cargo test --workspace` и `cargo check --workspace` в GitHub Actions.
+
+### Следующий шаг
+
+После восстановления зелёного CI — добавить общий transport adapter API с управлением несколькими независимыми сессиями и тестами.
+
+
+## 2026-09-14 — Общий transport adapter API
+
+### Что сделано
+
+- Создан crate `amri-transport`.
+- Добавлен расширяемый `TransportAdapter` для протокольных реализаций.
+- Добавлен `TransportManager`, который держит несколько независимых активных сессий по `route_id`.
+- Реализованы connect, health и disconnect без связи с UI или конкретной ОС.
+- Запрещена неоднозначная регистрация двух адаптеров на одно семейство протокола.
+- Добавлен `TransportSecret`: значение скрывается в Debug и очищается из памяти при уничтожении.
+- Добавлены тесты redaction, нескольких одновременных маршрутов, повторного connect и health.
+- Создана документация `docs/TRANSPORT_ADAPTERS.md`.
+
+### Почему принято такое решение
+
+AMRI должен выбирать маршрут сам, но не должен зависеть от sing-box, WireGuard или другого конкретного ядра. Один общий lifecycle API позволяет переиспользовать оркестрацию в Windows и Android и одновременно держать несколько выходов.
+
+### Рассмотренные альтернативы
+
+- Один глобальный transport process: отклонено, потому что его перезапуск отключал бы все назначения.
+- Встроить transport в `amri-core`: отклонено, чтобы scoring и обучение оставались чистыми и тестируемыми.
+- Передавать raw URI строкой и логировать структуру: отклонено из-за риска утечки VPN-секретов.
+
+### Изменённые файлы
+
+- `Cargo.toml`
+- `crates/amri-transport/Cargo.toml`
+- `crates/amri-transport/src/lib.rs`
+- `README.md`
+- `docs/PRODUCT_SPEC.md`
+- `docs/TRANSPORT_ADAPTERS.md`
+- `docs/DEV_JOURNAL.md`
+
+### Что работает
+
+- Общий transport lifecycle API.
+- Несколько независимых route sessions.
+- Защита секретов от случайного Debug-логирования.
+- Unit-тесты менеджера и адаптера.
+
+### Что ещё не работает
+
+- Production-адаптер конкретного VPN-core пока не подключён.
+- TUN/WFP и Android VpnService ещё не связаны с transport manager.
+- Реальные protocol health-checks будут добавлены в первом адаптере.
+
+### Следующий шаг
+
+Создать полноценный Android app module и безопасный адаптер `VpnService`, затем подключить Rust API через стабильную FFI-границу.
+
+
+## 2026-09-14 — Полноценная основа Android-клиента
+
+### Что сделано
+
+- Создан реальный Android app module вместо двух корневых Gradle-файлов.
+- Добавлены manifest, тема, строки и нативный современный UI.
+- Реализован запрос системного VPN-разрешения.
+- Реализован `AmriVpnService` как foreground special-use service.
+- Добавлены корректные stop/revoke/destroy переходы и закрытие file descriptor.
+- Добавлен control-only TUN, который не перехватывает публичный трафик до готовности transport adapter.
+- Добавлен отдельный тестируемый `VpnStateMachine`.
+- CI расширен Android-сборкой и unit-тестами на Gradle 9.6/JDK 17.
+- Создан `docs/ANDROID_ARCHITECTURE.md`.
+
+### Почему принято такое решение
+
+Создавать default route без готового packet forwarding опасно: пользователь потеряет интернет, хотя UI может ошибочно показать защиту. Поэтому VpnService и настоящий TUN lifecycle реализованы сейчас, но публичный трафик не захватывается до подключения production transport.
+
+AGP 9.4 использует встроенную поддержку Kotlin, поэтому устаревший `org.jetbrains.kotlin.android` не добавлялся.
+
+### Рассмотренные альтернативы
+
+- Сразу добавить `0.0.0.0/0`: отклонено из-за гарантированной blackhole-сети без транспорта.
+- Сделать Android только макетом: отклонено; реализованы системное разрешение, foreground service и file descriptor lifecycle.
+- Копировать routing engine на Kotlin: отклонено; выбор маршрута останется в общем Rust-ядре.
+
+### Изменённые файлы
+
+- `.github/workflows/ci.yml`
+- `.gitignore`
+- `apps/android/build.gradle.kts`
+- `apps/android/gradle.properties`
+- `apps/android/app/build.gradle.kts`
+- `apps/android/app/src/main/AndroidManifest.xml`
+- `apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt`
+- `apps/android/app/src/main/java/ru/amri/vpn/AmriVpnService.kt`
+- `apps/android/app/src/main/java/ru/amri/vpn/VpnStateMachine.kt`
+- `apps/android/app/src/main/res/values/strings.xml`
+- `apps/android/app/src/main/res/values/styles.xml`
+- `apps/android/app/src/test/java/ru/amri/vpn/VpnStateMachineTest.kt`
+- `docs/ANDROID_ARCHITECTURE.md`
+- `README.md`
+- `docs/PRODUCT_SPEC.md`
+- `docs/UI_DESIGN.md`
+- `docs/DEV_JOURNAL.md`
+
+### Что работает
+
+- Android-проект имеет собираемый app module.
+- Системное разрешение VpnService.
+- Foreground lifecycle и безопасное закрытие интерфейса.
+- Android UI и state-machine тесты.
+
+### Что ещё не работает
+
+- Public traffic пока намеренно не направляется в TUN.
+- Rust FFI и production transport adapter ещё не подключены.
+- Connect/Disconnect полной защиты появится после packet forwarding.
+
+
+### Дополнение по форматированию CI
+
+Первый строгий запуск `cargo fmt --all -- --check` обнаружил накопившееся форматирование в существующих Rust-файлах и новом transport crate. Применён ровно diff rustfmt из GitHub Actions; после этого проверка запускается повторно.
+
+
+### Дополнение по Android CI
+
+Первый Android CI дошёл до компиляции unit-тестов и выявил отсутствующую test-зависимость JUnit 4. Добавлена явная `testImplementation("junit:junit:4.13.2")`; сборка и тесты запущены повторно.
+
+
+## 2026-09-14 — Результат проверок этапа
+
+GitHub Actions run `34885701527` подтвердил:
+
+- `cargo fmt --all -- --check` — успешно;
+- `cargo test --workspace` — успешно, включая тесты `amri-transport`;
+- `cargo check --workspace` — успешно;
+- `gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace` — успешно;
+- Android debug APK сформирован задачей `assembleDebug`.
+
+На этом этапе нет известных ошибок компиляции Windows/Rust workspace или Android app module.

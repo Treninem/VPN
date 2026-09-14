@@ -25,9 +25,15 @@ impl Default for TcpProbeConfig {
     }
 }
 
-pub fn probe_tcp(host: &str, port: u16, config: &TcpProbeConfig) -> Result<ProbeSample, ProbeError> {
+pub fn probe_tcp(
+    host: &str,
+    port: u16,
+    config: &TcpProbeConfig,
+) -> Result<ProbeSample, ProbeError> {
     let dns_started = Instant::now();
-    let mut addrs = (host, port).to_socket_addrs().map_err(|_| ProbeError::Dns)?;
+    let mut addrs = (host, port)
+        .to_socket_addrs()
+        .map_err(|_| ProbeError::Dns)?;
     let dns_ms = dns_started.elapsed().as_secs_f64() * 1000.0;
     let addr = addrs.next().ok_or(ProbeError::Dns)?;
 

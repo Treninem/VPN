@@ -123,11 +123,11 @@ impl LocalStore {
     }
 
     pub fn latest_probe_time(&self) -> Result<Option<DateTime<Utc>>, StorageError> {
-        let raw: Option<String> = self.conn.query_row(
-            "SELECT MAX(measured_at) FROM probe_samples",
-            [],
-            |row| row.get(0),
-        )?;
+        let raw: Option<String> =
+            self.conn
+                .query_row("SELECT MAX(measured_at) FROM probe_samples", [], |row| {
+                    row.get(0)
+                })?;
         Ok(raw.and_then(|s| {
             DateTime::parse_from_rfc3339(&s)
                 .ok()

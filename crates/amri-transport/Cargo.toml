@@ -1,0 +1,10 @@
+[package]
+name = "amri-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+amri-subscriptions = { path = "../amri-subscriptions" }
+thiserror.workspace = true
+zeroize.workspace = true

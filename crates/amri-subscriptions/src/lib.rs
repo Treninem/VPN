@@ -128,7 +128,10 @@ pub fn parse_node_uri(subscription_id: &str, raw: &str) -> Result<ImportedNode, 
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("{:?} node", protocol));
 
-    let host = parsed.as_ref().and_then(|url| url.host_str()).map(str::to_string);
+    let host = parsed
+        .as_ref()
+        .and_then(|url| url.host_str())
+        .map(str::to_string);
     let port = parsed.as_ref().and_then(|url| url.port_or_known_default());
 
     Ok(ImportedNode {
@@ -154,8 +157,13 @@ pub fn build_unified_pool(nodes: impl IntoIterator<Item = ImportedNode>) -> Vec<
     for node in nodes {
         pool.entry(node.fingerprint.clone())
             .and_modify(|existing| {
-                if !existing.source_subscription_ids.contains(&node.subscription_id) {
-                    existing.source_subscription_ids.push(node.subscription_id.clone());
+                if !existing
+                    .source_subscription_ids
+                    .contains(&node.subscription_id)
+                {
+                    existing
+                        .source_subscription_ids
+                        .push(node.subscription_id.clone());
                 }
             })
             .or_insert_with(|| PooledNode {

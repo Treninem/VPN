@@ -98,7 +98,17 @@ fn mean<I: Iterator<Item = f64>>(iter: I) -> Option<f64> {
     }
 }
 
-fn sample_averages(samples: &[ProbeSample]) -> (f64, f64, f64, Option<f64>, Option<f64>, Option<f64>, Option<f64>) {
+fn sample_averages(
+    samples: &[ProbeSample],
+) -> (
+    f64,
+    f64,
+    f64,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+) {
     let ok: Vec<&ProbeSample> = samples.iter().filter(|s| s.success).collect();
     if ok.is_empty() {
         return (10_000.0, 10_000.0, 1.0, None, None, None, None);
@@ -132,15 +142,20 @@ pub fn score_candidate(candidate: &RouteCandidate, profile: ScoringProfile) -> S
         };
     }
 
-    let (latency, jitter, loss, connect, tls, dns, throughput) = sample_averages(&candidate.samples);
+    let (latency, jitter, loss, connect, tls, dns, throughput) =
+        sample_averages(&candidate.samples);
 
     let latency_score = lower_is_better(latency, 25.0, 250.0);
     let jitter_score = lower_is_better(jitter, 2.0, 80.0);
     let loss_score = lower_is_better(loss, 0.001, 0.10);
-    let connect_score = connect.map(|v| lower_is_better(v, 40.0, 600.0)).unwrap_or(0.5);
+    let connect_score = connect
+        .map(|v| lower_is_better(v, 40.0, 600.0))
+        .unwrap_or(0.5);
     let tls_score = tls.map(|v| lower_is_better(v, 70.0, 1200.0)).unwrap_or(0.5);
     let dns_score = dns.map(|v| lower_is_better(v, 20.0, 500.0)).unwrap_or(0.5);
-    let throughput_score = throughput.map(|v| higher_is_better(v, 5.0, 300.0)).unwrap_or(0.5);
+    let throughput_score = throughput
+        .map(|v| higher_is_better(v, 5.0, 300.0))
+        .unwrap_or(0.5);
     let success_score = candidate.historical_success_ratio.clamp(0.0, 1.0);
     let stability_score = candidate.stability_ratio.clamp(0.0, 1.0);
 
@@ -157,7 +172,8 @@ pub fn score_candidate(candidate: &RouteCandidate, profile: ScoringProfile) -> S
     let provider_weight = candidate.provider_weight.clamp(0.5, 1.5);
     let score = (weighted * provider_weight * 100.0).clamp(0.0, 100.0);
     let sample_confidence = (candidate.sample_count() as f64 / 12.0).clamp(0.0, 1.0);
-    let confidence = ((sample_confidence * 0.65) + (success_score * 0.20) + (stability_score * 0.15)) * 100.0;
+    let confidence =
+        ((sample_confidence * 0.65) + (success_score * 0.20) + (stability_score * 0.15)) * 100.0;
 
     ScoreBreakdown {
         score,

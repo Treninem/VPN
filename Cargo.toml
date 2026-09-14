@@ -5,6 +5,7 @@ members = [
   "crates/amri-subscriptions",
   "crates/amri-probe",
   "crates/amri-federation",
+  "crates/amri-transport",
   "apps/windows"
 ]
 resolver = "2"
@@ -25,3 +26,4 @@ url = "2"
 sha2 = "0.10"
 hex = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
+zeroize = "1"
