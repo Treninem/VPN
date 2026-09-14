@@ -1,0 +1,10 @@
+[package]
+name = "amri-windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+eframe = { version = "0.36.2", default-features = true }
+amri-core = { path = "../../crates/amri-core" }
+amri-subscriptions = { path = "../../crates/amri-subscriptions" }
