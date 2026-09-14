@@ -479,7 +479,10 @@ mod tests {
         manager.connect(request_for("web", "degraded")).unwrap();
 
         assert_eq!(manager.health("web").unwrap().state, SessionState::Degraded);
-        assert_eq!(manager.session("web").unwrap().state, SessionState::Degraded);
+        assert_eq!(
+            manager.session("web").unwrap().state,
+            SessionState::Degraded
+        );
     }
 
     #[test]

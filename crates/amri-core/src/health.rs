@@ -56,11 +56,11 @@ impl RouteHealthTracker {
         if state.consecutive_failures >= self.policy.failure_threshold.max(1) {
             let shift = u32::from(state.backoff_level.min(20));
             let multiplier = 1_u64.checked_shl(shift).unwrap_or(u64::MAX);
-            let cooldown_ms = self
-                .policy
-                .base_cooldown_ms
-                .saturating_mul(multiplier)
-                .min(self.policy.max_cooldown_ms.max(self.policy.base_cooldown_ms));
+            let cooldown_ms = self.policy.base_cooldown_ms.saturating_mul(multiplier).min(
+                self.policy
+                    .max_cooldown_ms
+                    .max(self.policy.base_cooldown_ms),
+            );
 
             state.quarantined_until_ms = Some(now_ms.saturating_add(cooldown_ms));
             state.consecutive_failures = 0;

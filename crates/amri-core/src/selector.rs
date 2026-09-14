@@ -181,8 +181,7 @@ impl RouteSelector {
         let improvement_percent =
             ((best.score - current_score.score) / current_score.score * 100.0).max(0.0);
         let challenger_confident = best.confidence >= self.policy.min_confidence;
-        let improvement_large_enough =
-            improvement_percent >= self.policy.min_improvement_percent;
+        let improvement_large_enough = improvement_percent >= self.policy.min_improvement_percent;
 
         if challenger_confident && improvement_large_enough {
             best.reason = format!(
