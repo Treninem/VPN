@@ -159,6 +159,29 @@ impl ShadowRace {
         }
     }
 
+    /// Consumes measurements that were launched in parallel by the probe scheduler.
+    ///
+    /// The method performs no waiting: it evaluates the completed burst immediately
+    /// and returns as soon as switching or rejection becomes conclusive.
+    pub fn observe_parallel_burst(
+        &mut self,
+        observations: &[(&RouteDecision, &RouteDecision)],
+    ) -> Option<ShadowRaceOutcome> {
+        let mut last = None;
+        for (current, challenger) in observations {
+            let outcome = self.observe(current, challenger);
+            let terminal = matches!(
+                outcome,
+                ShadowRaceOutcome::Switch { .. } | ShadowRaceOutcome::Reject { .. }
+            );
+            last = Some(outcome);
+            if terminal {
+                break;
+            }
+        }
+        last
+    }
+
     pub fn reset(&mut self) {
         self.matchup = None;
         self.wins = 0;
@@ -244,6 +267,23 @@ mod tests {
         assert!(matches!(
             race.observe(&current, &challenger),
             ShadowRaceOutcome::Reject { .. }
+        ));
+    }
+
+    #[test]
+    fn parallel_burst_can_authorize_an_immediate_switch() {
+        let mut race = ShadowRace::new(ShadowRacePolicy::default());
+        let current = decision("active", 70.0, 90.0);
+        let challenger = decision("new", 84.0, 82.0);
+        let observations = [
+            (&current, &challenger),
+            (&current, &challenger),
+            (&current, &challenger),
+        ];
+
+        assert!(matches!(
+            race.observe_parallel_burst(&observations),
+            Some(ShadowRaceOutcome::Switch { .. })
         ));
     }
 

@@ -119,3 +119,22 @@ Toggle-компонент используется для:
 ## Android
 
 Android использует ту же визуальную иерархию: крупный статус защиты, одна главная кнопка, горизонтальный выбор режима, скруглённые карточки и pill/toggle-переключатели. Платформенный UI не должен заявлять «защита включена», пока transport adapter и packet forwarding фактически не готовы.
+
+
+## AMRI Route Galaxy
+
+Route Galaxy is the signature first-screen visualization on both Windows and Android.
+
+- centre: AMRI protection state;
+- orbiting points: local destinations or readiness components while the route list is empty;
+- rays: current per-destination route;
+- cyan: healthy VPN route;
+- muted blue: pending/not measured;
+- green: DIRECT;
+- red: BLOCK or failed protected route;
+- animated pulse: parallel Shadow Race burst;
+- click/tap: open “Почему?” for that ray.
+
+The Galaxy always uses real local state. Empty state is visually complete but explicitly says that there are no active routes. Labels are accessibility-readable and remain local.
+
+Approved sources remain in `assets/brand/`. Windows loads the SVG files directly. Android uses platform vector-drawable adaptations because the Android framework does not render SVG resources directly; the approved SVG files remain the visual source of truth.

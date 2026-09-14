@@ -23,3 +23,8 @@ A new active/challenger pair always starts a fresh race. A short score spike the
 6. `Reject` places no global restriction on the node; quarantine and circuit-breaker policy remain separate concerns.
 
 Shadow Race contains no URL, process name, subscription secret, or network identity. Its state is local and keyed by the owning controller.
+
+
+## Perceived latency
+
+The default three confirmations are not three sequential waiting periods. The probe scheduler launches a small bounded burst concurrently. `observe_parallel_burst` evaluates already completed results immediately, so the user does not wait for an artificial countdown. The active route remains uninterrupted while measurements run.

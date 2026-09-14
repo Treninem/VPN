@@ -288,3 +288,65 @@ GitHub Actions run `34885701527` подтвердил:
 ### Обязательная инструкция для следующих работ
 
 Использовать только текущий набор из `assets/brand/README.md`. Ранний растр главной кнопки с непрозрачным тёмным квадратным фоном не использовать. Визуальный статус «включено» разрешён только после фактического запуска transport и packet forwarding, а не после нажатия пользователя.
+
+
+## 2026-09-14 — Мгновенная Теневая гонка и AMRI Route Galaxy
+
+### Что сделано
+
+- В общее Rust-ядро добавлен stateful switch gate `ShadowRace`.
+- Добавлена проверка минимального улучшения RouteScore, confidence, серии подтверждений и отклонения нестабильного кандидата.
+- Добавлен `observe_parallel_burst`: результаты параллельных probes оцениваются сразу, без таймера и последовательного ожидания.
+- Создана фирменная визуализация AMRI Route Galaxy для Windows и Android.
+- Galaxy показывает честное состояние пула, probes, активных маршрутов и DIRECT; выдуманные активные серверы из Windows UI удалены.
+- Windows напрямую загружает утверждённые SVG-фон и состояния power-кнопки.
+- Android получил адаптацию утверждённого mobile background, power и info SVG в нативные VectorDrawable.
+- Active/ON power asset остаётся зарезервирован только для фактически подтверждённых transport + packet forwarding.
+- На Android добавлены content descriptions; нажатие на Galaxy и info-кнопку открывает объяснение.
+
+### Почему принято такое решение
+
+Одиночный удачный probe не должен дёргать активное соединение. При этом три последовательных интервала ощущались бы медленно, поэтому измерения должны запускаться параллельным ограниченным burst. Galaxy делает главное отличие AMRI видимым сразу: это не один выбранный сервер, а несколько независимых решений для разных назначений.
+
+### Рассмотренные альтернативы
+
+- Последовательный countdown: отклонён из-за заметной задержки.
+- Декоративная карта мира: отклонена, потому что не объясняет per-destination routing.
+- Демонстрационные маршруты в рабочем UI: удалены, чтобы интерфейс не выдавал фиктивные данные за реальные.
+- Прямое использование SVG в Android ImageView: невозможно средствами Android framework; использованы нативные vector adaptations с исходниками `assets/brand/` как source of truth.
+
+### Изменённые файлы
+
+- `crates/amri-core/src/shadow_race.rs`
+- `crates/amri-core/src/lib.rs`
+- `apps/windows/Cargo.toml`
+- `apps/windows/src/main.rs`
+- `apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt`
+- `apps/android/app/src/main/java/ru/amri/vpn/RouteGalaxyView.kt`
+- `apps/android/app/src/main/res/drawable/amri_*.xml`
+- `apps/android/app/src/main/res/values/strings.xml`
+- `docs/SHADOW_RACE.md`
+- `docs/PRODUCT_SPEC.md`
+- `docs/UI_DESIGN.md`
+- `README.md`
+
+### Тесты
+
+- Добавлены unit-тесты одиночного всплеска, устойчивого выигрыша, low-confidence отказа, смены пары и мгновенного parallel burst.
+- Полный Windows/Rust и Android CI запускается в PR после коммита UI.
+
+### Что работает
+
+- Детерминированный switch gate и немедленная оценка параллельного burst.
+- Общий брендовый фон и power controls на обеих платформах.
+- Интерактивная Route Galaxy с реальным readiness state и локальными объяснениями.
+
+### Что ещё не работает
+
+- Реальные лучи назначения появятся после подключения production transport snapshot.
+- Анимация импульса Shadow Race будет включена вместе с потоком реальных probe events.
+- ON-состояние кнопки намеренно не показывается, пока нет packet forwarding.
+
+### Следующий шаг
+
+Подключить snapshot API Galaxy к transport manager, реализовать безопасное хранение и реальный импорт подписки, затем интегрировать первый production transport.

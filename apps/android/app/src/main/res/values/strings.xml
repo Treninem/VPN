@@ -3,4 +3,10 @@
     <string name="app_name">AMRI VPN</string>
     <string name="notification_channel">AMRI VPN connection</string>
     <string name="notification_ready">VPN service is ready for a protected transport</string>
+    <string name="action_prepare_vpn">Подготовить AMRI VPN</string>
+    <string name="action_stop_vpn_service">Остановить VPN-службу</string>
+    <string name="action_vpn_preparing">AMRI VPN подготавливается</string>
+    <string name="action_retry_vpn">Повторить подготовку AMRI VPN</string>
+    <string name="action_shadow_race_info">Как работает Теневая гонка AMRI</string>
+    <string name="action_route_galaxy">Открыть AMRI Route Galaxy</string>
 </resources>
