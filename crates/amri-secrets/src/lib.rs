@@ -289,10 +289,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "amri-dpapi-test-{}-{nonce}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("amri-dpapi-test-{}-{nonce}", std::process::id()));
         let store = WindowsDpapiSecretStore::new(&root);
         let secret = SecretValue::from_text("https://subscription.example/token-123").unwrap();
 
@@ -300,7 +298,8 @@ mod tests {
         let loaded = store.get("subscription:primary").unwrap().unwrap();
         assert_eq!(loaded.expose_text().unwrap(), secret.expose_text().unwrap());
 
-        let stored_bytes = std::fs::read(store.path_for_key("subscription:primary").unwrap()).unwrap();
+        let stored_bytes =
+            std::fs::read(store.path_for_key("subscription:primary").unwrap()).unwrap();
         assert!(!stored_bytes
             .windows(b"token-123".len())
             .any(|window| window == b"token-123"));

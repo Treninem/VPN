@@ -266,11 +266,8 @@ mod tests {
         assert!(!source_debug.contains("top-secret"));
         assert!(source_debug.contains("[REDACTED]"));
 
-        let node = parse_node_uri(
-            "primary",
-            "trojan://super-password@vpn.example:443#Private",
-        )
-        .unwrap();
+        let node =
+            parse_node_uri("primary", "trojan://super-password@vpn.example:443#Private").unwrap();
         let node_debug = format!("{node:?}");
         assert!(!node_debug.contains("super-password"));
         assert!(node_debug.contains("[REDACTED]"));

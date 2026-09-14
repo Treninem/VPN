@@ -93,7 +93,9 @@ impl ProcessSpawner for StdProcessSpawner {
             .and_then(|mut stdin| {
                 stdin
                     .write_all(config.expose_secret().as_bytes())
-                    .map_err(|_| AdapterError::new("failed to deliver protected core configuration"))
+                    .map_err(|_| {
+                        AdapterError::new("failed to deliver protected core configuration")
+                    })
             });
 
         if let Err(error) = write_result {
@@ -188,8 +190,7 @@ impl TransportAdapter for SupervisedProcessAdapter {
         }
 
         let adapter_session_id = Uuid::new_v4().to_string();
-        self.processes
-            .insert(adapter_session_id.clone(), process);
+        self.processes.insert(adapter_session_id.clone(), process);
 
         Ok(TransportSession {
             route_id: request.route_id.clone(),
@@ -257,7 +258,11 @@ impl CoreConfigRenderer for SingBoxRenderer {
             NodeProtocol::Vless => {
                 outbound.insert("type".into(), json!("vless"));
                 outbound.insert("uuid".into(), json!(secret));
-                if let Some(flow) = request.options.get("flow").filter(|value| !value.is_empty()) {
+                if let Some(flow) = request
+                    .options
+                    .get("flow")
+                    .filter(|value| !value.is_empty())
+                {
                     outbound.insert("flow".into(), json!(flow));
                 }
                 if option_bool(request, "tls", true)? {
@@ -350,11 +355,7 @@ fn tls_config(request: &ConnectRequest) -> Result<Value, AdapterError> {
     Ok(Value::Object(tls))
 }
 
-fn option_bool(
-    request: &ConnectRequest,
-    key: &str,
-    default: bool,
-) -> Result<bool, AdapterError> {
+fn option_bool(request: &ConnectRequest, key: &str, default: bool) -> Result<bool, AdapterError> {
     let Some(raw) = request.options.get(key) else {
         return Ok(default);
     };
@@ -409,7 +410,9 @@ mod tests {
 
     #[test]
     fn rendered_config_debug_never_contains_credentials() {
-        let config = SingBoxRenderer.render(&request(NodeProtocol::Vless)).unwrap();
+        let config = SingBoxRenderer
+            .render(&request(NodeProtocol::Vless))
+            .unwrap();
         assert!(config.expose_secret().contains("secret-value"));
         let debug = format!("{config:?}");
         assert!(!debug.contains("secret-value"));
@@ -419,7 +422,9 @@ mod tests {
     #[test]
     fn renders_vless_to_stdin_ready_sing_box_json() {
         let mut request = request(NodeProtocol::Vless);
-        request.options.insert("server_name".into(), "sni.example".into());
+        request
+            .options
+            .insert("server_name".into(), "sni.example".into());
         request.options.insert("local_port".into(), "20800".into());
 
         let config = SingBoxRenderer.render(&request).unwrap();
@@ -437,7 +442,9 @@ mod tests {
         let mut request = request(NodeProtocol::Shadowsocks);
         assert!(SingBoxRenderer.render(&request).is_err());
 
-        request.options.insert("method".into(), "aes-256-gcm".into());
+        request
+            .options
+            .insert("method".into(), "aes-256-gcm".into());
         let config = SingBoxRenderer.render(&request).unwrap();
         let value: Value = serde_json::from_str(config.expose_secret()).unwrap();
         assert_eq!(value["outbounds"][0]["method"], "aes-256-gcm");
@@ -489,7 +496,10 @@ mod tests {
         );
 
         let session = adapter.connect(&request(NodeProtocol::Trojan)).unwrap();
-        assert_eq!(adapter.health(&session).unwrap().state, SessionState::Connected);
+        assert_eq!(
+            adapter.health(&session).unwrap().state,
+            SessionState::Connected
+        );
         adapter.disconnect(&session).unwrap();
         assert!(adapter.health(&session).is_err());
     }
@@ -506,6 +516,9 @@ mod tests {
         );
 
         let session = adapter.connect(&request(NodeProtocol::Hysteria2)).unwrap();
-        assert_eq!(adapter.health(&session).unwrap().state, SessionState::Degraded);
+        assert_eq!(
+            adapter.health(&session).unwrap().state,
+            SessionState::Degraded
+        );
     }
 }
