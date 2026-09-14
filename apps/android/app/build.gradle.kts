@@ -28,7 +28,7 @@ android {
     }
 }
 
-android.sourceSets["main"].res.srcDir(generatedAmriIconRes)
+android.sourceSets["main"].res.srcDir(generatedAmriIconRes.get().asFile)
 
 tasks.named("preBuild").configure {
     dependsOn(generateAmriIconResource)
