@@ -288,3 +288,96 @@ GitHub Actions run `34885701527` подтвердил:
 ### Обязательная инструкция для следующих работ
 
 Использовать только текущий набор из `assets/brand/README.md`. Ранний растр главной кнопки с непрозрачным тёмным квадратным фоном не использовать. Визуальный статус «включено» разрешён только после фактического запуска transport и packet forwarding, а не после нажатия пользователя.
+
+
+## 2026-09-14 — Устойчивый выбор маршрута и безопасный handoff
+
+### Что обнаружено
+
+- `SelectionPolicy::min_improvement_percent` существовал, но влиял только на текст объяснения выбора и не удерживал текущий маршрут при небольшом выигрыше альтернативы.
+- В transport manager отсутствовал безопасный primitive замены активного выхода: для быстрого failover нужно сначала доказать работоспособность новой сессии, а уже затем отключать старую.
+- Требования product spec по circuit breaker, cooldown и hysteresis были описаны, но не имели общей реализации в core.
+
+### Что изменено
+
+- Добавлен `RouteSelector::select_stable`, который реализует реальный hysteresis: рабочий маршрут сохраняется, пока альтернатива не проходит одновременно порог confidence и минимальное улучшение RouteScore.
+- Текущий недоступный или quarantined маршрут переключается без ожидания hysteresis-порога.
+- Добавлен `RouteHealthTracker` с circuit breaker, последовательными ошибками, quarantine, cooldown и ограниченным exponential backoff.
+- Добавлен `TransportManager::replace` с make-before-break: новая transport-сессия поднимается и валидируется до остановки старой.
+- При ошибке остановки старой сессии выполняется попытка rollback новой; старая сессия остаётся зарегистрированной.
+- Проверяется соответствие `route_id` и `adapter_id`, возвращённых адаптером.
+- `health()` теперь синхронизирует состояние активной `TransportSession` (`Connected` / `Degraded`).
+- Обновлена `docs/TRANSPORT_ADAPTERS.md`.
+
+### Почему принято такое решение
+
+Быстрое переключение не должно означать постоянное дёрганье между почти одинаковыми маршрутами. Hysteresis удерживает стабильный рабочий выход, circuit breaker временно исключает явно проблемные узлы, а make-before-break сокращает разрыв при реальном переключении и не отключает старый маршрут до подтверждения новой transport-сессии.
+
+### Изменённые файлы
+
+- `crates/amri-core/src/health.rs`
+- `crates/amri-core/src/lib.rs`
+- `crates/amri-core/src/selector.rs`
+- `crates/amri-transport/src/lib.rs`
+- `docs/TRANSPORT_ADAPTERS.md`
+
+### Проверки
+
+GitHub Actions run `34894578992`:
+
+- `cargo fmt --all -- --check` — успешно;
+- `cargo test --workspace` — успешно;
+- `cargo check --workspace` — успешно;
+- `gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace` — успешно;
+- PR #3 успешно объединён в `main` squash-коммитом `2724e96c4b9490def79f82f04b552bd06119263b`.
+
+### Что работает
+
+- Реальный hysteresis для переключения между кандидатами.
+- Общий circuit breaker/cooldown primitive для узлов.
+- Make-before-break замена transport-сессии с rollback при ошибке cutover.
+- Независимые route slots по-прежнему не требуют отключать остальные маршруты.
+
+### Что ещё не работает
+
+- `RouteHealthTracker` ещё нужно подключить к реальным probe/transport событиям в orchestration layer; сейчас это протестированный core primitive.
+- Production transport adapter конкретного VPN-core ещё не подключён.
+- Public packet forwarding через Windows TUN/WFP и Android VpnService пока не включён.
+
+## CURRENT STATE
+
+- Rust workspace компилируется и проходит все unit-тесты.
+- Android app module компилируется, unit-тесты проходят, debug APK собирается.
+- Несколько подписок объединяются в единый пул с дедупликацией.
+- RouteScore учитывает latency/jitter/loss/DNS/TCP/TLS/throughput/history/stability и класс трафика.
+- Stable route selection поддерживает confidence + hysteresis.
+- Circuit breaker/cooldown реализован в `amri-core`.
+- `amri-transport` поддерживает несколько route sessions и make-before-break replacement.
+- Android VpnService пока использует безопасный control-only TUN и намеренно не перехватывает публичный трафик.
+- Federated exchange остаётся opt-in, минимальным и без пользовательской истории/идентификаторов; отправка предусмотрена только через VPN.
+
+## NEXT PRIORITIES
+
+1. Реализовать hot pool лучших резервов и короткую параллельную micro-race проверку, чтобы failover не ждал последовательных timeout.
+2. Связать результаты probe/transport health с `RouteHealthTracker` и stable selector в orchestration layer.
+3. Выбрать и интегрировать первый production transport core/adapter после license/security review.
+4. Добавить безопасное локальное хранение subscription URL и transport secrets.
+5. Подключить реальный packet forwarding: Windows TUN/WFP/DNS и Android VpnService + Rust FFI.
+6. После рабочего end-to-end connect/disconnect — DIRECT/VPN/BLOCK, per-domain/per-process routing и kill-switch.
+
+## KNOWN ISSUES
+
+- Нет production VPN transport adapter, поэтому приложение пока не является полноценным VPN для публичного трафика.
+- Android control-only TUN не устанавливает default route до готовности packet forwarding — это намеренная защита от blackhole.
+- Circuit breaker пока не получает реальные события автоматически из runtime orchestration.
+- Безопасное OS-backed хранилище секретов ещё не реализовано.
+- Реальный DNS leak protection и kill-switch ещё не подключены.
+
+## IMPORTANT ARCHITECTURE DECISIONS
+
+- AMRI core принимает решение о маршруте; transport adapter не выбирает сервер самостоятельно.
+- Переключение активного route slot выполняется make-before-break, а не break-before-make.
+- Hysteresis применяется к уже активному маршруту; аварийный failover с quarantined/недоступного выхода не блокируется порогом улучшения.
+- Circuit breaker находится в общем Rust core и использует время, переданное orchestration layer, чтобы оставаться детерминированным и тестируемым.
+- UI не получает право объявлять VPN включённым до фактического transport + packet forwarding.
+- Визуальные ресурсы брать только из актуального `assets/brand/README.md`; забракованные изображения не возвращать.
