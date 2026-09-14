@@ -108,7 +108,9 @@ pub enum TransportError {
         #[source]
         source: AdapterError,
     },
-    #[error("adapter '{adapter_id}' returned a session for route '{actual}', expected '{expected}'")]
+    #[error(
+        "adapter '{adapter_id}' returned a session for route '{actual}', expected '{expected}'"
+    )]
     InvalidSessionRoute {
         adapter_id: String,
         expected: String,
@@ -164,10 +166,7 @@ impl TransportManager {
         Ok(())
     }
 
-    pub fn connect(
-        &mut self,
-        request: ConnectRequest,
-    ) -> Result<TransportSession, TransportError> {
+    pub fn connect(&mut self, request: ConnectRequest) -> Result<TransportSession, TransportError> {
         if self.sessions.contains_key(&request.route_id) {
             return Err(TransportError::RouteAlreadyActive(request.route_id));
         }
@@ -177,7 +176,10 @@ impl TransportManager {
             .get(&request.protocol)
             .cloned()
             .ok_or(TransportError::UnsupportedProtocol(request.protocol))?;
-        let adapter = self.adapters.get_mut(&adapter_id).expect("registered adapter");
+        let adapter = self
+            .adapters
+            .get_mut(&adapter_id)
+            .expect("registered adapter");
         let session = adapter
             .connect(&request)
             .map_err(|source| TransportError::Adapter {

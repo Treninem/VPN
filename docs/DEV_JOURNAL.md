@@ -251,3 +251,8 @@ AGP 9.4 использует встроенную поддержку Kotlin, п�
 - Public traffic пока намеренно не направляется в TUN.
 - Rust FFI и production transport adapter ещё не подключены.
 - Connect/Disconnect полной защиты появится после packet forwarding.
+
+
+### Дополнение по форматированию CI
+
+Первый строгий запуск `cargo fmt --all -- --check` обнаружил накопившееся форматирование в существующих Rust-файлах и новом transport crate. Применён ровно diff rustfmt из GitHub Actions; после этого проверка запускается повторно.

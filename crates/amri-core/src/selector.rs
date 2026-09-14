@@ -38,7 +38,11 @@ impl RouteSelector {
         Self { policy }
     }
 
-    pub fn select(&self, candidates: &[RouteCandidate], traffic: TrafficClass) -> Option<RouteDecision> {
+    pub fn select(
+        &self,
+        candidates: &[RouteCandidate],
+        traffic: TrafficClass,
+    ) -> Option<RouteDecision> {
         let profile = ScoringProfile::for_traffic(traffic);
         let mut scored: Vec<(&RouteCandidate, ScoreBreakdown)> = candidates
             .iter()
@@ -130,7 +134,10 @@ mod tests {
 
         let selector = RouteSelector::new(SelectionPolicy::default());
         let decision = selector
-            .select(&[low_ping_but_bad, slightly_higher_ping_but_fast], TrafficClass::Video)
+            .select(
+                &[low_ping_but_bad, slightly_higher_ping_but_fast],
+                TrafficClass::Video,
+            )
             .unwrap();
 
         assert_eq!(decision.selected_label, "B");
