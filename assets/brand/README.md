@@ -7,6 +7,7 @@ Use only the files in this folder as the current approved visual set.
 - `background-mobile.svg` — mobile background; use `cover`; it has no fixed visual elements at edges and adapts to different phone aspect ratios.
 - `vpn-power-on.svg` — active/connected power button; transparent outside the button.
 - `vpn-power-off.svg` — inactive/disconnected power button.
+- `settings-button.svg` — transparent settings button; open the local settings screen only.
 
 Do **not** use the earlier raster ON button with the solid dark square background. It was superseded by `vpn-power-on.svg`.
 
