@@ -1,1 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice"><defs><radialGradient id="a" cx="52%" cy="25%" r="68%"><stop stop-color="#137ce9" stop-opacity=".72"/><stop offset=".38" stop-color="#0b3e9d" stop-opacity=".46"/><stop offset="1" stop-color="#020713" stop-opacity="0"/></radialGradient><radialGradient id="b" cx="22%" cy="72%" r="45%"><stop stop-color="#0b63dc" stop-opacity=".44"/><stop offset="1" stop-color="#020713" stop-opacity="0"/></radialGradient><linearGradient id="c" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#01040d"/><stop offset=".52" stop-color="#071b49"/><stop offset="1" stop-color="#01050e"/></linearGradient></defs><rect width="1920" height="1080" fill="url(#c)"/><rect width="1920" height="1080" fill="url(#a)"/><rect width="1920" height="1080" fill="url(#b)"/><text x="1500" y="930" fill="#6caaff" fill-opacity=".10" font-family="Arial,sans-serif" font-size="76" font-weight="300" letter-spacing="8">AMRI VPN</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" role="img" aria-label="AMRI VPN desktop background">
+  <defs>
+    <linearGradient id="base" x1="100" y1="70" x2="1820" y2="1010" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#020713"/>
+      <stop offset="0.42" stop-color="#071832"/>
+      <stop offset="0.72" stop-color="#06152C"/>
+      <stop offset="1" stop-color="#020611"/>
+    </linearGradient>
+    <radialGradient id="leftGlow" cx="0" cy="0" r="1" gradientTransform="translate(360 260) rotate(18) scale(870 620)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18D9EE" stop-opacity="0.22"/>
+      <stop offset="0.48" stop-color="#167BFF" stop-opacity="0.09"/>
+      <stop offset="1" stop-color="#167BFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rightGlow" cx="0" cy="0" r="1" gradientTransform="translate(1535 610) rotate(160) scale(820 590)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0FC1F2" stop-opacity="0.15"/>
+      <stop offset="0.54" stop-color="#166DFF" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#166DFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="lowGlow" cx="0" cy="0" r="1" gradientTransform="translate(620 1035) rotate(2) scale(880 360)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1489FF" stop-opacity="0.11"/>
+      <stop offset="0.56" stop-color="#0DD6ED" stop-opacity="0.035"/>
+      <stop offset="1" stop-color="#0DD6ED" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="routeGlow" x1="190" y1="1010" x2="1760" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1671FF" stop-opacity="0"/>
+      <stop offset="0.41" stop-color="#13BEEA" stop-opacity="0.055"/>
+      <stop offset="0.56" stop-color="#77F4FF" stop-opacity="0.10"/>
+      <stop offset="0.72" stop-color="#13BEEA" stop-opacity="0.045"/>
+      <stop offset="1" stop-color="#1671FF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="74%">
+      <stop offset="0.60" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.31"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#base)"/>
+  <rect width="1920" height="1080" fill="url(#leftGlow)"/>
+  <rect width="1920" height="1080" fill="url(#rightGlow)"/>
+  <rect width="1920" height="1080" fill="url(#lowGlow)"/>
+  <path d="M-180 1135C380 995 565 820 850 615C1138 408 1408 280 2100 40"
+        fill="none" stroke="url(#routeGlow)" stroke-width="190" stroke-linecap="round"/>
+  <rect width="1920" height="1080" fill="url(#vignette)"/>
+</svg>
