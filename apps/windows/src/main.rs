@@ -51,10 +51,10 @@ impl AmriApp {
         visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(12);
         cc.egui_ctx.set_visuals(visuals);
 
-        let mut style = (*cc.egui_ctx.style()).clone();
+        let mut style = (*cc.egui_ctx.style_of(egui::Theme::Dark)).clone();
         style.spacing.item_spacing = Vec2::new(12.0, 12.0);
         style.spacing.button_padding = Vec2::new(16.0, 10.0);
-        cc.egui_ctx.set_style(style);
+        cc.egui_ctx.set_style_of(egui::Theme::Dark, style);
 
         Self {
             page: Page::Home,
@@ -328,10 +328,10 @@ impl AmriApp {
 }
 
 impl eframe::App for AmriApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::from_rgb(13, 16, 22)))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     egui::Frame::new()
                         .fill(Color32::from_rgb(16, 20, 27))
