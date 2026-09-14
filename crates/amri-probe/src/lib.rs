@@ -145,16 +145,9 @@ pub fn probe_tcp(
 /// candidates previously admitted to the hot pool. At most `max_parallel` attempts are started.
 /// Once the first successful attempt arrives, AMRI waits only `settle_window` for another
 /// near-simultaneous result, then returns the best successful sample seen in that window.
-pub fn race_tcp_hot_pool(
-    targets: &[ProbeTarget],
-    config: &ProbeRaceConfig,
-) -> ProbeRaceOutcome {
+pub fn race_tcp_hot_pool(targets: &[ProbeTarget], config: &ProbeRaceConfig) -> ProbeRaceOutcome {
     race_with_probe(targets, config, |target, timeout| {
-        probe_tcp(
-            &target.host,
-            target.port,
-            &TcpProbeConfig { timeout },
-        )
+        probe_tcp(&target.host, target.port, &TcpProbeConfig { timeout })
     })
 }
 
