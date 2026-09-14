@@ -1,0 +1,14 @@
+[package]
+name = "amri-node-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+amri-subscriptions = { path = "../amri-subscriptions" }
+amri-transport = { path = "../amri-transport" }
+url.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
+base64 = "0.22"
+percent-encoding = "2"

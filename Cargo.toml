@@ -9,6 +9,7 @@ members = [
   "crates/amri-runtime",
   "crates/amri-secrets",
   "crates/amri-external-core",
+  "crates/amri-node-config",
   "apps/windows"
 ]
 resolver = "2"
