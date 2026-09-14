@@ -219,7 +219,10 @@ mod tests {
     #[test]
     fn one_spike_never_switches_the_active_route() {
         let mut race = ShadowRace::new(ShadowRacePolicy::default());
-        let outcome = race.observe(&decision("active", 70.0, 90.0), &decision("new", 90.0, 90.0));
+        let outcome = race.observe(
+            &decision("active", 70.0, 90.0),
+            &decision("new", 90.0, 90.0),
+        );
 
         assert!(matches!(
             outcome,

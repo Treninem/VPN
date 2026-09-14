@@ -119,7 +119,11 @@ impl RouteProofChain {
         write_field(&mut mac, destination.host.as_bytes());
         write_field(
             &mut mac,
-            destination.process.as_deref().unwrap_or_default().as_bytes(),
+            destination
+                .process
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
         );
         hex(&mac.finalize().into_bytes())
     }
@@ -133,7 +137,11 @@ impl RouteProofChain {
         write_field(&mut mac, proof.reason.as_bytes());
         write_field(
             &mut mac,
-            proof.previous_proof_hash.as_deref().unwrap_or_default().as_bytes(),
+            proof
+                .previous_proof_hash
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
         );
         for item in &proof.evidence {
             write_field(&mut mac, item.node_id.as_bytes());
@@ -248,10 +256,7 @@ mod tests {
         );
         proof.evidence[0].score = 12.0;
 
-        assert_eq!(
-            chain.verify(&proof),
-            Err(RouteProofError::InvalidSignature)
-        );
+        assert_eq!(chain.verify(&proof), Err(RouteProofError::InvalidSignature));
     }
 
     #[test]
