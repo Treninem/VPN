@@ -25,6 +25,7 @@ AMRI VPN — Windows-first VPN-клиент с локальным адаптив
 - `crates/amri-probe` — измерение качества маршрутов.
 - `crates/amri-transport` — общий API жизненного цикла VPN-транспортов для Windows и Android.
 - `apps/windows` — Windows-клиент и системная интеграция.
+- `apps/android` — Android-клиент, VpnService lifecycle и платформенный UI.
 - `docs/PRODUCT_SPEC.md` — единое техническое задание.
 - `docs/DEV_JOURNAL.md` — журнал решений, выполненных работ и следующих шагов.
 

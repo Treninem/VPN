@@ -191,3 +191,63 @@ AMRI должен выбирать маршрут сам, но не должен
 ### Следующий шаг
 
 Создать полноценный Android app module и безопасный адаптер `VpnService`, затем подключить Rust API через стабильную FFI-границу.
+
+
+## 2026-09-14 — Полноценная основа Android-клиента
+
+### Что сделано
+
+- Создан реальный Android app module вместо двух корневых Gradle-файлов.
+- Добавлены manifest, тема, строки и нативный современный UI.
+- Реализован запрос системного VPN-разрешения.
+- Реализован `AmriVpnService` как foreground special-use service.
+- Добавлены корректные stop/revoke/destroy переходы и закрытие file descriptor.
+- Добавлен control-only TUN, который не перехватывает публичный трафик до готовности transport adapter.
+- Добавлен отдельный тестируемый `VpnStateMachine`.
+- CI расширен Android-сборкой и unit-тестами на Gradle 9.6/JDK 17.
+- Создан `docs/ANDROID_ARCHITECTURE.md`.
+
+### Почему принято такое решение
+
+Создавать default route без готового packet forwarding опасно: пользователь потеряет интернет, хотя UI может ошибочно показать защиту. Поэтому VpnService и настоящий TUN lifecycle реализованы сейчас, но публичный трафик не захватывается до подключения production transport.
+
+AGP 9.4 использует встроенную поддержку Kotlin, поэтому устаревший `org.jetbrains.kotlin.android` не добавлялся.
+
+### Рассмотренные альтернативы
+
+- Сразу добавить `0.0.0.0/0`: отклонено из-за гарантированной blackhole-сети без транспорта.
+- Сделать Android только макетом: отклонено; реализованы системное разрешение, foreground service и file descriptor lifecycle.
+- Копировать routing engine на Kotlin: отклонено; выбор маршрута останется в общем Rust-ядре.
+
+### Изменённые файлы
+
+- `.github/workflows/ci.yml`
+- `.gitignore`
+- `apps/android/build.gradle.kts`
+- `apps/android/gradle.properties`
+- `apps/android/app/build.gradle.kts`
+- `apps/android/app/src/main/AndroidManifest.xml`
+- `apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt`
+- `apps/android/app/src/main/java/ru/amri/vpn/AmriVpnService.kt`
+- `apps/android/app/src/main/java/ru/amri/vpn/VpnStateMachine.kt`
+- `apps/android/app/src/main/res/values/strings.xml`
+- `apps/android/app/src/main/res/values/styles.xml`
+- `apps/android/app/src/test/java/ru/amri/vpn/VpnStateMachineTest.kt`
+- `docs/ANDROID_ARCHITECTURE.md`
+- `README.md`
+- `docs/PRODUCT_SPEC.md`
+- `docs/UI_DESIGN.md`
+- `docs/DEV_JOURNAL.md`
+
+### Что работает
+
+- Android-проект имеет собираемый app module.
+- Системное разрешение VpnService.
+- Foreground lifecycle и безопасное закрытие интерфейса.
+- Android UI и state-machine тесты.
+
+### Что ещё не работает
+
+- Public traffic пока намеренно не направляется в TUN.
+- Rust FFI и production transport adapter ещё не подключены.
+- Connect/Disconnect полной защиты появится после packet forwarding.

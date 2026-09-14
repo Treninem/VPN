@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN connection</string>
+    <string name="notification_ready">VPN service is ready for a protected transport</string>
+</resources>
