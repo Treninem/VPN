@@ -2,7 +2,7 @@
 
 Use only the files in this folder as the current approved visual set.
 
-- `amri-icon.svg` — product icon.
+- `amri-icon.png` — canonical AMRI VPN product/app icon. This is the approved premium blue shield/A/three-arrows artwork. Windows and Android must use this exact canonical file (or a build-time byte-for-byte copy), not a separately redrawn icon.
 - `background-desktop.svg` — desktop background; use `cover`.
 - `background-mobile.svg` — mobile background; use `cover`; it has no fixed visual elements at edges and adapts to different phone aspect ratios.
 - `vpn-power-on.svg` — active/connected power button; transparent outside the button.
@@ -12,7 +12,7 @@ Use only the files in this folder as the current approved visual set.
 
 Do **not** use the earlier raster ON button with the solid dark square background. It was superseded by `vpn-power-on.svg`.
 
-The next implementation chat must wire these files into both Windows and Android UI, retain accessibility labels and never represent the VPN as connected until the transport is genuinely active.
+The implementation must wire the approved files into both Windows and Android UI, retain accessibility labels and never represent the VPN as connected until the transport is genuinely active.
 
 - `add-button.svg` — добавить подписку, правило или профиль.
 - `delete-button.svg` — удалить с обязательным подтверждением.
