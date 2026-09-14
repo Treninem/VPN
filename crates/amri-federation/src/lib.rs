@@ -32,6 +32,14 @@ pub enum SharedProtocolFamily {
     Other,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KnowledgeTransport {
+    /// Preferred transport. The AMRI backend sees the VPN exit address, not the user's direct ISP address.
+    VpnTunnel,
+    /// Direct transport is blocked by the default privacy policy.
+    Direct,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SharedRouteClass {
     /// Coarse exit country/region code, e.g. NL/DE/FI. Never the user's location.
@@ -110,6 +118,8 @@ pub struct FederationPrivacyPolicy {
     pub max_observations_per_batch: usize,
     /// Clamp model updates so one client cannot dominate collective learning.
     pub max_weight_delta: f32,
+    /// Default privacy rule: federated exchange may only leave through an active VPN tunnel.
+    pub require_vpn_transport: bool,
 }
 
 impl Default for FederationPrivacyPolicy {
@@ -119,6 +129,7 @@ impl Default for FederationPrivacyPolicy {
             min_local_samples: 20,
             max_observations_per_batch: 64,
             max_weight_delta: 0.05,
+            require_vpn_transport: true,
         }
     }
 }
@@ -127,18 +138,24 @@ impl Default for FederationPrivacyPolicy {
 pub enum FederationError {
     #[error("federated exchange is disabled")]
     Disabled,
+    #[error("direct federated transport is blocked by privacy policy")]
+    UnsafeTransport,
     #[error("not enough local samples for privacy-safe export")]
     TooFewSamples,
 }
 
 pub fn prepare_batch(
     policy: &FederationPrivacyPolicy,
+    transport: KnowledgeTransport,
     batch_nonce: String,
     observations: impl IntoIterator<Item = SharedObservation>,
     model_deltas: impl IntoIterator<Item = ScoringWeightDelta>,
 ) -> Result<FederatedKnowledgeBatch, FederationError> {
     if !policy.enabled {
         return Err(FederationError::Disabled);
+    }
+    if policy.require_vpn_transport && transport != KnowledgeTransport::VpnTunnel {
+        return Err(FederationError::UnsafeTransport);
     }
 
     let mut safe_observations = Vec::new();
@@ -195,8 +212,30 @@ mod tests {
     #[test]
     fn exchange_is_opt_in_by_default() {
         let policy = FederationPrivacyPolicy::default();
-        let result = prepare_batch(&policy, "nonce".into(), [observation(100)], []);
+        let result = prepare_batch(
+            &policy,
+            KnowledgeTransport::VpnTunnel,
+            "nonce".into(),
+            [observation(100)],
+            [],
+        );
         assert_eq!(result.unwrap_err(), FederationError::Disabled);
+    }
+
+    #[test]
+    fn direct_transport_is_blocked_by_default() {
+        let policy = FederationPrivacyPolicy {
+            enabled: true,
+            ..Default::default()
+        };
+        let result = prepare_batch(
+            &policy,
+            KnowledgeTransport::Direct,
+            "nonce".into(),
+            [observation(100)],
+            [],
+        );
+        assert_eq!(result.unwrap_err(), FederationError::UnsafeTransport);
     }
 
     #[test]
@@ -205,7 +244,13 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let result = prepare_batch(&policy, "nonce".into(), [observation(3)], []);
+        let result = prepare_batch(
+            &policy,
+            KnowledgeTransport::VpnTunnel,
+            "nonce".into(),
+            [observation(3)],
+            [],
+        );
         assert_eq!(result.unwrap_err(), FederationError::TooFewSamples);
     }
 
@@ -228,7 +273,14 @@ mod tests {
             stability: 0.0,
         };
 
-        let batch = prepare_batch(&policy, "nonce".into(), [observation(50)], [delta]).unwrap();
+        let batch = prepare_batch(
+            &policy,
+            KnowledgeTransport::VpnTunnel,
+            "nonce".into(),
+            [observation(50)],
+            [delta],
+        )
+        .unwrap();
         assert_eq!(batch.model_deltas[0].latency, 0.05);
         assert_eq!(batch.model_deltas[0].jitter, -0.05);
         assert_eq!(batch.model_deltas[0].throughput, 0.05);
