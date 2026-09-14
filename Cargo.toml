@@ -7,6 +7,8 @@ members = [
   "crates/amri-federation",
   "crates/amri-transport",
   "crates/amri-runtime",
+  "crates/amri-secrets",
+  "crates/amri-external-core",
   "apps/windows"
 ]
 resolver = "2"

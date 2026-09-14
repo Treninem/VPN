@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::fmt;
 use thiserror::Error;
 use url::Url;
 
@@ -52,35 +53,81 @@ impl SubscriptionPriority {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SubscriptionSource {
     pub id: String,
     pub name: String,
+    /// Credential-bearing subscription URL. Never include this field in diagnostics or telemetry.
     pub source_url: String,
     pub enabled: bool,
     pub priority: SubscriptionPriority,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl fmt::Debug for SubscriptionSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SubscriptionSource")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("source_url", &"[REDACTED]")
+            .field("enabled", &self.enabled)
+            .field("priority", &self.priority)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ImportedNode {
     pub fingerprint: String,
     pub subscription_id: String,
     pub protocol: NodeProtocol,
     pub display_name: String,
+    /// Raw node URI may contain UUIDs, passwords, keys or tokens.
     pub raw_uri: String,
     pub host: Option<String>,
     pub port: Option<u16>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl fmt::Debug for ImportedNode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImportedNode")
+            .field("fingerprint", &self.fingerprint)
+            .field("subscription_id", &self.subscription_id)
+            .field("protocol", &self.protocol)
+            .field("display_name", &self.display_name)
+            .field("raw_uri", &"[REDACTED]")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PooledNode {
     pub fingerprint: String,
     pub protocol: NodeProtocol,
     pub display_name: String,
+    /// Raw node URI may contain credentials and is intentionally redacted from Debug.
     pub raw_uri: String,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub source_subscription_ids: Vec<String>,
+}
+
+impl fmt::Debug for PooledNode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PooledNode")
+            .field("fingerprint", &self.fingerprint)
+            .field("protocol", &self.protocol)
+            .field("display_name", &self.display_name)
+            .field("raw_uri", &"[REDACTED]")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("source_subscription_ids", &self.source_subscription_ids)
+            .finish()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -204,5 +251,30 @@ mod tests {
             .find(|node| node.raw_uri.starts_with("vless://"))
             .unwrap();
         assert_eq!(duplicated.source_subscription_ids.len(), 2);
+    }
+
+    #[test]
+    fn credential_bearing_urls_are_redacted_from_debug() {
+        let source = SubscriptionSource {
+            id: "primary".into(),
+            name: "Primary".into(),
+            source_url: "https://provider.example/subscription?token=top-secret".into(),
+            enabled: true,
+            priority: SubscriptionPriority::Normal,
+        };
+        let source_debug = format!("{source:?}");
+        assert!(!source_debug.contains("top-secret"));
+        assert!(source_debug.contains("[REDACTED]"));
+
+        let node =
+            parse_node_uri("primary", "trojan://super-password@vpn.example:443#Private").unwrap();
+        let node_debug = format!("{node:?}");
+        assert!(!node_debug.contains("super-password"));
+        assert!(node_debug.contains("[REDACTED]"));
+
+        let pooled = build_unified_pool([node]).pop().unwrap();
+        let pooled_debug = format!("{pooled:?}");
+        assert!(!pooled_debug.contains("super-password"));
+        assert!(pooled_debug.contains("[REDACTED]"));
     }
 }
