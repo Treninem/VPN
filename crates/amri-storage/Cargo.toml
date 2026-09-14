@@ -1,0 +1,11 @@
+[package]
+name = "amri-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+amri-core = { path = "../amri-core" }
+rusqlite.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
