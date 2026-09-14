@@ -94,11 +94,11 @@ impl LocalStore {
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             "#,
             params![
-                node_id.0,
-                destination.host,
-                destination.process,
-                network.fingerprint,
-                network.label,
+                &node_id.0,
+                &destination.host,
+                destination.process.as_deref(),
+                &network.fingerprint,
+                network.label.as_deref(),
                 format!("{traffic:?}"),
                 sample.measured_at.to_rfc3339(),
                 sample.latency_ms,
@@ -128,7 +128,11 @@ impl LocalStore {
             [],
             |row| row.get(0),
         )?;
-        Ok(raw.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|v| v.with_timezone(&Utc))))
+        Ok(raw.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|v| v.with_timezone(&Utc))
+        }))
     }
 }
 
