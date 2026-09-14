@@ -6,6 +6,7 @@ members = [
   "crates/amri-probe",
   "crates/amri-federation",
   "crates/amri-transport",
+  "crates/amri-runtime",
   "apps/windows"
 ]
 resolver = "2"
