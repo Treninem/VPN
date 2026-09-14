@@ -33,7 +33,7 @@
 
     <path
         android:fillColor="#B9FDFF"
-        android:pathData="M256,352 A8,8 0,1 1,255.99 352 Z" />
+        android:pathData="M256,352 A8,8 0,1 0,256 368 A8,8 0,1 0,256 352 Z" />
 
     <path
         android:fillColor="@android:color/transparent"
@@ -44,5 +44,5 @@
 
     <path
         android:fillColor="#2AAEFF"
-        android:pathData="M228,367 A5,5 0,1 1,227.99 367 Z M284,367 A5,5 0,1 1,283.99 367 Z" />
+        android:pathData="M228,367 A5,5 0,1 0,228 377 A5,5 0,1 0,228 367 Z M284,367 A5,5 0,1 0,284 377 A5,5 0,1 0,284 367 Z" />
 </vector>
