@@ -83,7 +83,7 @@ impl AmriApp {
                 .color(Color32::from_gray(145)),
         );
         ui.label(
-            RichText::new(ui_text(self.language, UiMessage::Language))
+            RichText::new(ui_text(self.language, UiMessage::LanguageLabel))
                 .size(11.0)
                 .color(Color32::from_gray(125)),
         );
