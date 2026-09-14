@@ -8,6 +8,7 @@ Use only the files in this folder as the current approved visual set.
 - `vpn-power-on.svg` — active/connected power button; transparent outside the button.
 - `vpn-power-off.svg` — inactive/disconnected power button.
 - `settings-button.svg` — transparent settings button; open the local settings screen only.
+- `edit-button.svg` — transparent pencil button; edit an existing subscription, rule, or profile.
 
 Do **not** use the earlier raster ON button with the solid dark square background. It was superseded by `vpn-power-on.svg`.
 
