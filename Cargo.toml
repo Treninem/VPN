@@ -4,6 +4,7 @@ members = [
   "crates/amri-storage",
   "crates/amri-subscriptions",
   "crates/amri-probe",
+  "crates/amri-federation",
   "apps/windows"
 ]
 resolver = "2"
