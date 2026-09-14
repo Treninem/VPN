@@ -1,0 +1,129 @@
+name: Wire canonical AMRI icon
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-amri-icon-links.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire-icon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Point Windows and Android to canonical PNG
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          canonical = Path('assets/brand/amri-icon.png')
+          if not canonical.exists():
+              raise SystemExit('Canonical AMRI PNG is missing')
+
+          # Windows: decode the canonical PNG directly instead of rendering the obsolete SVG.
+          cargo = Path('apps/windows/Cargo.toml')
+          text = cargo.read_text()
+          text = text.replace('resvg = "0.47.0"\n', '')
+          if 'image = ' not in text:
+              text = text.replace(
+                  'eframe = { version = "0.36.2", default-features = true }\n',
+                  'eframe = { version = "0.36.2", default-features = true }\nimage = { version = "0.25", default-features = false, features = ["png"] }\n',
+              )
+          cargo.write_text(text)
+
+          main = Path('apps/windows/src/main.rs')
+          text = main.read_text()
+          replacement = '''fn amri_window_icon() -> egui::IconData {
+              let image = image::load_from_memory(include_bytes!("../../../assets/brand/amri-icon.png"))
+                  .expect("canonical AMRI app icon PNG must remain valid");
+              let rgba = image.to_rgba8();
+              let (width, height) = rgba.dimensions();
+
+              egui::IconData {
+                  rgba: rgba.into_raw(),
+                  width,
+                  height,
+              }
+          }
+
+          fn main()'''
+          text, count = re.subn(
+              r'fn amri_window_icon\(\) -> egui::IconData \{.*?\n\}\n\nfn main\(\)',
+              replacement,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit('Could not replace Windows icon loader safely')
+          main.write_text(text)
+
+          # Android: generate the drawable from the exact canonical PNG at build time.
+          gradle = Path('apps/android/app/build.gradle.kts')
+          text = gradle.read_text()
+          marker = 'val amriIconSource = rootProject.layout.projectDirectory.file("../../assets/brand/amri-icon.png")'
+          if marker not in text:
+              block = '''val amriIconSource = rootProject.layout.projectDirectory.file("../../assets/brand/amri-icon.png")
+          val generatedAmriIconRes = layout.buildDirectory.dir("generated/amri-icon-res")
+          val generateAmriIconResource by tasks.registering(org.gradle.api.tasks.Copy::class) {
+              from(amriIconSource)
+              into(generatedAmriIconRes.map { it.dir("drawable-nodpi") })
+              rename { "amri_app_icon.png" }
+          }
+
+          '''
+              text = text.replace('android {\n', block + 'android {\n', 1)
+              text = text.replace(
+                  '\ndependencies {\n',
+                  '''
+          android.sourceSets["main"].res.srcDir(generatedAmriIconRes)
+
+          tasks.named("preBuild").configure {
+              dependsOn(generateAmriIconResource)
+          }
+
+          dependencies {
+          ''',
+                  1,
+              )
+          gradle.write_text(text)
+
+          manifest = Path('apps/android/app/src/main/AndroidManifest.xml')
+          text = manifest.read_text()
+          if 'android:icon="@drawable/amri_app_icon"' not in text:
+              text = text.replace(
+                  'android:allowBackup="false"\n',
+                  'android:allowBackup="false"\n        android:icon="@drawable/amri_app_icon"\n        android:roundIcon="@drawable/amri_app_icon"\n',
+                  1,
+              )
+          manifest.write_text(text)
+
+          # Remove independently redrawn duplicates so they cannot override the approved PNG.
+          Path('apps/android/app/src/main/res/drawable/amri_app_icon.xml').unlink(missing_ok=True)
+          Path('assets/brand/amri-icon.svg').unlink(missing_ok=True)
+
+      - name: Verify canonical file survived unchanged
+        shell: bash
+        run: |
+          echo "da0d94669a9fe8f8c7341fa9c582c247dd40163955d64f61ccf17701ad4cf8f4  assets/brand/amri-icon.png" | sha256sum --check --strict
+
+      - name: Commit icon wiring
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/windows/Cargo.toml apps/windows/src/main.rs apps/android/app/build.gradle.kts apps/android/app/src/main/AndroidManifest.xml assets/brand/amri-icon.svg apps/android/app/src/main/res/drawable/amri_app_icon.xml
+          if git diff --cached --quiet; then
+            echo "Canonical icon wiring already correct."
+            exit 0
+          fi
+          git commit -m "Use verified AMRI icon on Windows and Android"
+          git push
