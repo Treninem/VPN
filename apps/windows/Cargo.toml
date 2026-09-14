@@ -6,6 +6,6 @@ license.workspace = true
 
 [dependencies]
 eframe = { version = "0.36.2", default-features = true }
-resvg = "0.47.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
 amri-core = { path = "../../crates/amri-core" }
 amri-subscriptions = { path = "../../crates/amri-subscriptions" }

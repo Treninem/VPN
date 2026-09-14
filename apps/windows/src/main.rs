@@ -3,28 +3,15 @@
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
 
 fn amri_window_icon() -> egui::IconData {
-    const ICON_SIZE: u32 = 128;
-    const SOURCE_SIZE: f32 = 512.0;
-
-    let tree = resvg::usvg::Tree::from_data(
-        include_bytes!("../../../assets/brand/amri-icon.svg"),
-        &resvg::usvg::Options::default(),
-    )
-    .expect("AMRI app icon SVG must remain valid");
-
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(ICON_SIZE, ICON_SIZE)
-        .expect("AMRI app icon pixmap allocation must succeed");
-    let scale = ICON_SIZE as f32 / SOURCE_SIZE;
-    resvg::render(
-        &tree,
-        resvg::tiny_skia::Transform::from_scale(scale, scale),
-        &mut pixmap.as_mut(),
-    );
+    let image = image::load_from_memory(include_bytes!("../../../assets/brand/amri-icon.png"))
+        .expect("canonical AMRI app icon PNG must remain valid");
+    let rgba = image.to_rgba8();
+    let (width, height) = rgba.dimensions();
 
     egui::IconData {
-        rgba: pixmap.data().to_vec(),
-        width: ICON_SIZE,
-        height: ICON_SIZE,
+        rgba: rgba.into_raw(),
+        width,
+        height,
     }
 }
 
