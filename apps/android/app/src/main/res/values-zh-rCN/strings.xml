@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN</string>
+    <string name="notification_ready">VPN 服务已就绪</string>
+    <string name="product_subtitle">自适应多路由 VPN</string>
+    <string name="mode">模式</string>
+    <string name="smart_routing">智能路由</string>
+    <string name="smart_routing_description">为每个目标选择最佳路由</string>
+    <string name="dns_protection">DNS 保护</string>
+    <string name="dns_protection_description">通过选定的安全路由发送 DNS</string>
+    <string name="kill_switch">网络锁定</string>
+    <string name="kill_switch_description">VPN 路由丢失时阻止受保护流量</string>
+    <string name="local_learning">本地学习</string>
+    <string name="local_learning_description">决策历史仅保存在此设备</string>
+    <string name="federated_learning">匿名共享学习</string>
+    <string name="federated_learning_description">默认关闭</string>
+    <string name="status_service_ready">VPN 服务已就绪</string>
+    <string name="detail_service_ready">连接安全传输前不会接管公共流量</string>
+    <string name="stop">停止</string>
+    <string name="status_preparing">正在准备…</string>
+    <string name="detail_preparing">Android 正在创建安全系统接口</string>
+    <string name="wait">请稍候</string>
+    <string name="status_failed">VPN 准备失败</string>
+    <string name="detail_failed">未创建系统接口；普通网络未受影响</string>
+    <string name="retry">重试</string>
+    <string name="status_off">保护已关闭</string>
+    <string name="detail_off">为 AMRI 传输准备 VpnService</string>
+    <string name="prepare_vpn">准备 VPN</string>
+    <string-array name="vpn_modes">
+        <item>智能</item>
+        <item>速度</item>
+        <item>延迟</item>
+        <item>隐私</item>
+        <item>流媒体</item>
+        <item>游戏</item>
+        <item>手动</item>
+    </string-array>
+</resources>

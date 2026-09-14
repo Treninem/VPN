@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN</string>
+    <string name="notification_ready">VPN-Dienst ist bereit</string>
+    <string name="product_subtitle">Adaptives Multi-Route-VPN</string>
+    <string name="mode">Modus</string>
+    <string name="smart_routing">Intelligentes Routing</string>
+    <string name="smart_routing_description">Die beste Route für jedes Ziel</string>
+    <string name="dns_protection">DNS-Schutz</string>
+    <string name="dns_protection_description">DNS über die gewählte geschützte Route leiten</string>
+    <string name="kill_switch">Notausschalter</string>
+    <string name="kill_switch_description">Geschützten Verkehr bei Verlust der VPN-Route blockieren</string>
+    <string name="local_learning">Lokales Lernen</string>
+    <string name="local_learning_description">Verlauf bleibt nur auf diesem Gerät</string>
+    <string name="federated_learning">Anonymes gemeinsames Lernen</string>
+    <string name="federated_learning_description">Standardmäßig deaktiviert</string>
+    <string name="status_service_ready">VPN-Dienst ist bereit</string>
+    <string name="detail_service_ready">Öffentlicher Verkehr wartet auf einen geschützten Transport</string>
+    <string name="stop">Stoppen</string>
+    <string name="status_preparing">Vorbereitung…</string>
+    <string name="detail_preparing">Android erstellt eine geschützte Schnittstelle</string>
+    <string name="wait">Bitte warten</string>
+    <string name="status_failed">VPN-Vorbereitung fehlgeschlagen</string>
+    <string name="detail_failed">Schnittstelle nicht erstellt; normales Netzwerk unverändert</string>
+    <string name="retry">Wiederholen</string>
+    <string name="status_off">Schutz ist aus</string>
+    <string name="detail_off">VpnService für den AMRI-Transport vorbereiten</string>
+    <string name="prepare_vpn">VPN vorbereiten</string>
+    <string-array name="vpn_modes">
+        <item>Smart</item>
+        <item>Tempo</item>
+        <item>Ping</item>
+        <item>Privatsphäre</item>
+        <item>Streaming</item>
+        <item>Gaming</item>
+        <item>Manuell</item>
+    </string-array>
+</resources>

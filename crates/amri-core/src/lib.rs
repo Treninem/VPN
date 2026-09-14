@@ -1,9 +1,11 @@
+pub mod i18n;
 pub mod model;
 pub mod route_proof;
 pub mod scoring;
 pub mod selector;
 pub mod shadow_race;
 
+pub use i18n::{text as ui_text, Language, UiMessage};
 pub use model::{
     DestinationKey, NetworkProfile, NodeId, ProbeSample, RouteCandidate, TrafficClass,
 };

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN</string>
+    <string name="notification_ready">خدمة VPN جاهزة</string>
+    <string name="product_subtitle">VPN تكيفي متعدد المسارات</string>
+    <string name="mode">الوضع</string>
+    <string name="smart_routing">التوجيه الذكي</string>
+    <string name="smart_routing_description">أفضل مسار منفصل لكل وجهة</string>
+    <string name="dns_protection">حماية DNS</string>
+    <string name="dns_protection_description">توجيه DNS عبر المسار المحمي المحدد</string>
+    <string name="kill_switch">مفتاح الإيقاف</string>
+    <string name="kill_switch_description">حظر البيانات المحمية عند فقدان مسار VPN</string>
+    <string name="local_learning">التعلم المحلي</string>
+    <string name="local_learning_description">يبقى سجل القرارات على هذا الجهاز فقط</string>
+    <string name="federated_learning">تعلم مشترك مجهول</string>
+    <string name="federated_learning_description">متوقف افتراضيًا</string>
+    <string name="status_service_ready">خدمة VPN جاهزة</string>
+    <string name="detail_service_ready">لن يتم التقاط البيانات العامة حتى يتصل النقل المحمي</string>
+    <string name="stop">إيقاف</string>
+    <string name="status_preparing">جارٍ التحضير…</string>
+    <string name="detail_preparing">ينشئ Android واجهة نظام محمية</string>
+    <string name="wait">يرجى الانتظار</string>
+    <string name="status_failed">فشل إعداد VPN</string>
+    <string name="detail_failed">لم تنشأ الواجهة؛ الشبكة العادية لم تتغير</string>
+    <string name="retry">إعادة المحاولة</string>
+    <string name="status_off">الحماية متوقفة</string>
+    <string name="detail_off">إعداد VpnService لنقل AMRI</string>
+    <string name="prepare_vpn">إعداد VPN</string>
+    <string-array name="vpn_modes">
+        <item>ذكي</item>
+        <item>السرعة</item>
+        <item>الاستجابة</item>
+        <item>الخصوصية</item>
+        <item>البث</item>
+        <item>الألعاب</item>
+        <item>يدوي</item>
+    </string-array>
+</resources>

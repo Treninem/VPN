@@ -350,3 +350,58 @@ Route Proof делает локальный интеллект проверяе�
 ### Следующий шаг
 
 Подключить защищённое хранение установочного ключа, SQLite repository для квитанций и real subscription import; затем связать Shadow Race и Route Proof с первым production transport.
+
+
+## 2026-09-14 — Девять языков интерфейса
+
+### Что сделано
+
+- Добавлен общий Rust-каталог `amri-core::i18n`.
+- Реализованы locale tags, native language names и английский fallback.
+- Добавлены English, русский, español, português, français, Deutsch, 简体中文, हिन्दी и العربية.
+- Windows получил мгновенный language selector; основные экраны, статусы, метрики и настройки переведены через общий каталог.
+- Android hardcoded-строки заменены resource IDs.
+- Добавлены Android resource qualifiers для всех девяти языков и RTL-поддержка арабского.
+- Удалены фиктивные активные маршруты из Windows UI; без transport отображается честное пустое состояние.
+
+### Почему принято такое решение
+
+Пользовательские строки не должны находиться в routing или UI control logic. Общий Rust-каталог даёт Windows и будущей FFI-границе стабильные ключи, а Android resources сохраняют штатное переключение языка, accessibility и RTL.
+
+### Рассмотренные альтернативы
+
+- Только русский и английский: недостаточно для международного клиента.
+- Машинный перевод во время работы: запрещён зависимостью от внешнего сервиса и нестабилен.
+- Один JSON, вручную читаемый Android: отклонён в пользу штатных resource qualifiers и системного locale.
+
+### Изменённые файлы
+
+- `crates/amri-core/src/i18n.rs`
+- `crates/amri-core/src/lib.rs`
+- `apps/windows/src/main.rs`
+- `apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt`
+- `apps/android/app/src/main/res/values*/strings.xml`
+- `docs/PRODUCT_SPEC.md`
+- `docs/UI_DESIGN.md`
+- `README.md`
+
+### Тесты
+
+Добавлены проверки разбора locale tags, fallback и наличия каждого обязательного message key на каждом языке. Полный Rust/Windows и Android assemble/test повторно запускаются в CI.
+
+### Что работает
+
+- Переключение основных строк Windows без перезапуска.
+- Автоматический системный locale Android.
+- Девять заполненных каталогов и RTL-флаг Android.
+- Английский fallback для неизвестного языка.
+
+### Что ещё не работает
+
+- Выбранный Windows locale пока не сохраняется между запусками.
+- Переводы требуют отдельной лингвистической вычитки носителями языка.
+- Новые будущие экраны должны расширять каталог синхронно.
+
+### Следующий шаг
+
+Сохранить locale в безопасных настройках, добавить UI-тесты длинных строк/RTL и подключить Route Proof к экрану «Почему?».
