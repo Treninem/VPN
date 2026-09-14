@@ -38,6 +38,6 @@ AMRI VPN — Windows-first VPN-клиент с локальным адаптив
 Проект находится в активной разработке.
 
 
-### AMRI Route Galaxy
+### AMRI Route Proof
 
-The Windows and Android shells include the privacy-safe Route Galaxy: a signature live surface for per-destination routes, RouteScore/confidence and Shadow Race state. Until a production transport supplies real snapshots, it presents an explicit empty/readiness state rather than demo traffic.
+The shared Rust core can produce privacy-safe, tamper-evident local receipts for routing decisions. Raw destination and process identity are replaced by an installation-keyed pseudonym; receipts are hash-linked and can be verified or replayed locally for the “Почему?” screen.

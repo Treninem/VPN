@@ -290,63 +290,63 @@ GitHub Actions run `34885701527` подтвердил:
 Использовать только текущий набор из `assets/brand/README.md`. Ранний растр главной кнопки с непрозрачным тёмным квадратным фоном не использовать. Визуальный статус «включено» разрешён только после фактического запуска transport и packet forwarding, а не после нажатия пользователя.
 
 
-## 2026-09-14 — Мгновенная Теневая гонка и AMRI Route Galaxy
+## 2026-09-14 — Мгновенная Shadow Race и AMRI Route Proof
 
 ### Что сделано
 
-- В общее Rust-ядро добавлен stateful switch gate `ShadowRace`.
-- Добавлена проверка минимального улучшения RouteScore, confidence, серии подтверждений и отклонения нестабильного кандидата.
-- Добавлен `observe_parallel_burst`: результаты параллельных probes оцениваются сразу, без таймера и последовательного ожидания.
-- Создана фирменная визуализация AMRI Route Galaxy для Windows и Android.
-- Galaxy показывает честное состояние пула, probes, активных маршрутов и DIRECT; выдуманные активные серверы из Windows UI удалены.
-- Windows напрямую загружает утверждённые SVG-фон и состояния power-кнопки.
-- Android получил адаптацию утверждённого mobile background, power и info SVG в нативные VectorDrawable.
-- Active/ON power asset остаётся зарезервирован только для фактически подтверждённых transport + packet forwarding.
-- На Android добавлены content descriptions; нажатие на Galaxy и info-кнопку открывает объяснение.
+- Добавлен `ShadowRace` с minimum improvement, confidence gate, hysteresis и отклонением неустойчивого кандидата.
+- Добавлен `observe_parallel_burst`: несколько probes запускаются параллельно, готовый burst оценивается сразу без countdown.
+- Добавлен `RouteProofChain` — локальная HMAC-связанная цепочка квитанций решений.
+- DestinationKey преобразуется в 256-bit token локальным секретом; raw host и process не сохраняются.
+- Квитанция включает версию, выбранный node, причину и нормализованные evidence-компоненты кандидатов.
+- Любое изменение evidence/решения или удаление записи из середины цепочки обнаруживается.
+- Секрет очищается из памяти при уничтожении объекта.
+- Созданы отдельные документы `docs/SHADOW_RACE.md` и `docs/ROUTE_PROOF.md`.
 
 ### Почему принято такое решение
 
-Одиночный удачный probe не должен дёргать активное соединение. При этом три последовательных интервала ощущались бы медленно, поэтому измерения должны запускаться параллельным ограниченным burst. Galaxy делает главное отличие AMRI видимым сразу: это не один выбранный сервер, а несколько независимых решений для разных назначений.
+Три подтверждения маршрута не должны означать три периода ожидания. Probe scheduler формирует ограниченный параллельный burst, активный маршрут продолжает работать, а ядро принимает результат без искусственной задержки.
+
+Route Proof делает локальный интеллект проверяемым: пользователь может увидеть не маркетинговое объяснение, а целостный набор факторов конкретного решения. При этом идентичность назначения не попадает в журнал в открытом виде.
 
 ### Рассмотренные альтернативы
 
-- Последовательный countdown: отклонён из-за заметной задержки.
-- Декоративная карта мира: отклонена, потому что не объясняет per-destination routing.
-- Демонстрационные маршруты в рабочем UI: удалены, чтобы интерфейс не выдавал фиктивные данные за реальные.
-- Прямое использование SVG в Android ImageView: невозможно средствами Android framework; использованы нативные vector adaptations с исходниками `assets/brand/` как source of truth.
+- Последовательные гонки с таймером: отклонены из-за задержки.
+- Обычный текстовый лог: отклонён, потому что его незаметно изменить и он легко раскрывает домены.
+- Глобальный hash назначения без ключа: отклонён из-за возможности словарного восстановления популярных доменов.
+- Отправка proof в federated backend: запрещена, потому что это позволило бы связывать локальные решения.
 
 ### Изменённые файлы
 
-- `crates/amri-core/src/shadow_race.rs`
+- `crates/amri-core/Cargo.toml`
 - `crates/amri-core/src/lib.rs`
-- `apps/windows/Cargo.toml`
-- `apps/windows/src/main.rs`
-- `apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt`
-- `apps/android/app/src/main/java/ru/amri/vpn/RouteGalaxyView.kt`
-- `apps/android/app/src/main/res/drawable/amri_*.xml`
-- `apps/android/app/src/main/res/values/strings.xml`
+- `crates/amri-core/src/shadow_race.rs`
+- `crates/amri-core/src/route_proof.rs`
 - `docs/SHADOW_RACE.md`
+- `docs/ROUTE_PROOF.md`
 - `docs/PRODUCT_SPEC.md`
 - `docs/UI_DESIGN.md`
+- `docs/FEDERATED_LEARNING.md`
 - `README.md`
 
 ### Тесты
 
-- Добавлены unit-тесты одиночного всплеска, устойчивого выигрыша, low-confidence отказа, смены пары и мгновенного parallel burst.
-- Полный Windows/Rust и Android CI запускается в PR после коммита UI.
+Добавлены unit-тесты одиночного score-всплеска, устойчивого выигрыша, low-confidence отказа, смены пары, мгновенного parallel burst, отсутствия raw destination в JSON, обнаружения подмены evidence, разрыва цепочки и unlinkability между установками.
 
 ### Что работает
 
-- Детерминированный switch gate и немедленная оценка параллельного burst.
-- Общий брендовый фон и power controls на обеих платформах.
-- Интерактивная Route Galaxy с реальным readiness state и локальными объяснениями.
+- Чистая state machine для безопасного переключения.
+- Синхронная оценка параллельно собранных результатов.
+- Создание и проверка privacy-safe Route Proof.
+- Обнаружение изменения или удаления локальных квитанций.
 
 ### Что ещё не работает
 
-- Реальные лучи назначения появятся после подключения production transport snapshot.
-- Анимация импульса Shadow Race будет включена вместе с потоком реальных probe events.
-- ON-состояние кнопки намеренно не показывается, пока нет packet forwarding.
+- Ключ пока не подключён к Windows Credential Manager и Android Keystore.
+- Квитанции пока не сохраняются в SQLite.
+- Экран «Почему?» ещё не читает proof.
+- Production transport и реальные parallel probes ещё не подключены к gate.
 
 ### Следующий шаг
 
-Подключить snapshot API Galaxy к transport manager, реализовать безопасное хранение и реальный импорт подписки, затем интегрировать первый production transport.
+Подключить защищённое хранение установочного ключа, SQLite repository для квитанций и real subscription import; затем связать Shadow Race и Route Proof с первым production transport.

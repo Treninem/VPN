@@ -298,19 +298,15 @@ AMRI не должен быть чёрным ящиком.
 Подробная privacy-модель описана в `docs/FEDERATED_LEARNING.md`.
 
 
-## Signature feature: AMRI Route Galaxy
+## AMRI Route Proof
 
-Route Galaxy is the primary visual model of AMRI, not a decorative network map. It displays the local device in the centre and current destinations around it, with an individual beam to the selected VPN exit, DIRECT, or BLOCK decision.
+Каждое автоматическое решение может сопровождаться локальной проверяемой квитанцией: версия алгоритма, нормализованные score-компоненты кандидатов, выбранный node, confidence, причина и связь с предыдущей квитанцией. Домен и process name заменяются HMAC-псевдонимом с секретом конкретной установки.
 
-- beam colour represents action and route health;
-- beam thickness represents RouteScore;
-- glow/opacity represents confidence;
-- a travelling pulse represents an in-progress Shadow Race;
-- selecting a beam opens the local “Почему?” decision details;
-- destination and application labels never leave the device.
+Квитанции позволяют:
 
-When no real transport snapshot exists, the Galaxy must show an honest empty/readiness state. It must never invent active nodes or traffic.
+- доказуемо обнаружить изменение или удаление записи истории;
+- воспроизвести решение офлайн с другим scoring profile;
+- построить честный экран «Почему?» без внешней аналитики;
+- сбрасывать цепочку вместе с историей обучения по команде пользователя.
 
-## Instant route switching
-
-Shadow Race measurements are launched as a parallel burst while the existing route remains active. The decision engine consumes the completed burst synchronously, without timers or artificial UI delay. Transport hand-off may occur only after the target route is warm and packet forwarding is ready.
+Ключ Route Proof никогда не участвует в federated learning и должен храниться в системном защищённом хранилище.
