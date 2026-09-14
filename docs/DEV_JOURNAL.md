@@ -1,383 +1,156 @@
 # Журнал разработки AMRI VPN
 
-## 2026-09-14 — Инициализация проекта
+Этот файл — компактная техническая память проекта. Он фиксирует только решения, которые нужны следующему разработчику для продолжения работы без повторного полного аудита.
 
-### Исходная задача
+## Базовая архитектура
 
-Создать Windows VPN-клиент уровня HAPP/Karing, но с более сильной автоматизацией:
+- Rust workspace разделён на независимые слои: `amri-core`, `amri-subscriptions`, `amri-storage`, `amri-probe`, `amri-federation`, `amri-transport`, `amri-runtime`, `amri-secrets`, `amri-external-core` и Windows app.
+- Android — отдельный нативный app module с `VpnService`; общую логику маршрутизации планируется переиспользовать через стабильную Rust FFI-границу.
+- UI не принимает сетевые решения и не имеет права показывать «VPN включён» до фактического transport + packet forwarding.
+- AMRI выбирает маршрут сама; конкретный VPN-core не должен самостоятельно подменять алгоритм выбора AMRI.
 
-- несколько подписок одновременно;
-- единый пул серверов;
-- автоматический выбор лучшего сервера;
-- отдельный маршрут для каждого сайта/приложения;
-- собственный локальный интеллект без внешних AI API;
-- современный интерфейс со скруглёнными карточками, кнопками и переключателями.
+## Реализованные этапы
 
-### Принятое архитектурное решение
+### Core / scoring / subscriptions
 
-Проект разделён на независимые слои, чтобы локальный интеллект не зависел от конкретного VPN-транспорта.
+- Несколько подписок объединяются в единый пул с дедупликацией по fingerprint.
+- RouteScore учитывает latency, jitter, packet loss, DNS, TCP connect, TLS handshake, throughput, историю успешности, стабильность и класс трафика.
+- Есть confidence score и разные профили для web/video/download/realtime/gaming.
+- Credential-bearing `subscription URL` и `raw node URI` редактируются из `Debug`.
 
-Причина: если жёстко связать алгоритм выбора маршрута с одним VPN-core, дальнейшая поддержка новых протоколов потребует переписывания логики AMRI. Поэтому сетевой transport будет подключаться через адаптеры.
+### Federated improvement
 
-### Что сделано
+- Обмен коллективным опытом opt-in и выключен по умолчанию.
+- Не передаются история сайтов, домены пользователя, IP/MAC, SSID, имя ПК, device ID, процессы, subscription URL и VPN-секреты.
+- Передаются только минимальные агрегированные технические характеристики и ограниченные model delta.
+- Отправка коллективного опыта предусмотрена только через активный VPN; при DIRECT она откладывается, чтобы backend не видел исходный публичный IP.
 
-1. Инициализирован Rust workspace.
-2. Создан `amri-core`.
-3. Добавлены модели узла, назначения, профиля сети, класса трафика и измерения.
-4. Реализован RouteScore, который учитывает не только ping.
-5. Добавлены разные веса для realtime/gaming, video/download и web.
-6. Реализован RouteSelector.
-7. Добавлен confidence score.
-8. Добавлены unit-тесты, проверяющие, что минимальный ping не всегда выигрывает.
-9. Создан `amri-subscriptions`.
-10. Добавлен импорт нескольких подписок в один общий пул.
-11. Добавлена дедупликация узлов по fingerprint.
-12. Добавлены приоритеты Preferred / Normal / Backup.
-13. Создан `amri-storage` с локальной SQLite-БД.
-14. Создана таблица истории probe-измерений.
-15. Создан `amri-probe` с первым DNS/TCP probe.
-16. Создан Windows UI shell на eframe/egui.
-17. Добавлены современная тёмная визуальная система, скруглённые панели, кнопки, навигация и toggle-контролы.
-18. Добавлены экраны Главная, Маршруты, Подписки, Правила, Настройки.
-19. Создано единое ТЗ `docs/PRODUCT_SPEC.md`.
-20. Создана дизайн-система `docs/UI_DESIGN.md`.
-21. Добавлен Windows CI для `cargo fmt`, `cargo test --workspace` и `cargo check --workspace`.
-22. Создан `amri-federation` для обмена коллективным опытом между копиями AMRI.
-23. Federated exchange сделан opt-in и выключен по умолчанию.
-24. В federated schema отсутствуют URL, домены пользователя, IP/MAC пользователя, SSID, имя ПК, device ID, процессы, subscription URL и VPN-секреты.
-25. В обмен допускаются только агрегированные показатели качества, класс трафика, грубый регион выхода, семейство протокола и ограниченные model delta.
-26. Добавлен минимальный порог локальных измерений перед экспортом агрегата.
-27. Добавлено ограничение размера batch и clipping model delta, чтобы один клиент не мог доминировать над общей моделью.
-28. Добавлены unit-тесты privacy-политики federated exchange.
-29. Создан документ `docs/FEDERATED_LEARNING.md`.
-30. В интерфейс добавлен toggle `Обмен обезличенным опытом`, выключенный по умолчанию.
-31. Исправлен каркас eframe-приложения: используется реальный метод `App::update`.
-32. Добавлен коллективный агрегатор model delta: глобальная модель не обновляется, пока не собрано минимальное число batch-пакетов.
-33. Каждый batch имеет одинаковый базовый вес, поэтому один клиент не получает больше влияния только из-за большого числа локальных измерений.
-34. Добавлена защита от нескольких model delta одного класса внутри одного batch.
-35. По умолчанию federated batch разрешено формировать только для отправки через VPN-туннель; DIRECT блокируется privacy-политикой.
-36. Причина VPN-only передачи: даже обезличенный HTTPS-запрос при DIRECT раскрывает backend-серверу публичный IP источника. Через VPN backend видит только VPN exit.
-37. Документация federated learning обновлена: если VPN-маршрут недоступен, обучение не отправляется и не мешает основной работе клиента.
+### Transport API
 
-### Почему выбран Rust
-
-- подходит для сетевого и системного кода;
-- можно использовать общую кодовую базу для AMRI, probes и transport-адаптеров;
-- низкие накладные расходы;
-- удобен для Windows desktop + фонового сервиса;
-- строгая модель памяти полезна для сетевого приложения.
-
-### Почему UI отделён от AMRI
-
-UI не должен принимать сетевые решения. Он только отображает состояние и передаёт настройки.
-
-Это позволит:
-
-- тестировать AMRI без графики;
-- в будущем заменить UI без переписывания сетевой логики;
-- создать Android/macOS/Linux клиенты поверх того же концепта.
-
-### Почему federated learning передаёт агрегаты, а не события
-
-Для улучшения маршрутизации другим ПК не требуется знать, какие сайты посещал конкретный пользователь. Поэтому передаётся результат обучения: грубые статистические характеристики и небольшие изменения весов модели.
-
-Локальная история остаётся локальной. Коллективная модель используется только как стартовая подсказка и не имеет приоритета над свежими измерениями конкретного ПК.
-
-### Почему federated learning отправляется через VPN
-
-Payload без личных полей сам по себе недостаточен для полной сетевой приватности: сервер при прямом соединении видит публичный адрес источника на транспортном уровне. Поэтому AMRI должен маршрутизировать federated endpoint через активный защищённый выход. Если такого выхода нет, синхронизация откладывается.
-
-### Следующие шаги
-
-- проверить полный Windows CI и исправить ошибки сборки;
-- закончить реальный экран управления подписками;
-- добавить безопасное хранение subscription URL/секретов;
-- добавить транспортный adapter API;
-- выбрать и интегрировать первый transport core;
-- реализовать первый настоящий TUN connect/disconnect;
-- подключить реальные измерения к UI;
-- реализовать подписанную federated model и проверку версии/подписи;
-- спроектировать собственный минимальный AMRI aggregation backend;
-- добавить rate-limit для federated endpoint без постоянного device ID;
-- после этого перейти к per-domain/per-process Smart Routing.
-
-### Важное ограничение
-
-Проект не должен отправлять историю сайтов, правила и локальную модель маршрутизации стороннему AI или внешнему аналитическому сервису без явного отдельного решения пользователя.
-
-Коллективное обучение должно передавать только минимально необходимые обезличенные агрегаты. Никакой скрытой рекламной/поведенческой телеметрии в AMRI не предусматривается.
-
-
-## 2026-09-14 — Аудит и восстановление Windows CI
-
-### Что обнаружено
-
-Последний запуск CI на commit `2e28203` завершился ошибкой компиляции Windows-клиента. Причина — код UI использовал API eframe до версии 0.36: метод `App::update`, глобальные `Context::style/set_style` и передачу `Context` в `CentralPanel::show`. В eframe 0.36 обязательным стал `App::ui`, тема настраивается через `style_of/set_style_of`, а panel получает корневой `Ui`.
-
-Также шаг форматирования изменял файлы прямо в CI, но не проверял чистоту форматирования.
-
-### Что сделано
-
-- Windows UI переведён на фактический API eframe 0.36.2.
-- Настройка стиля привязана к тёмной теме через `Theme::Dark`.
-- CI теперь запускает `cargo fmt --all -- --check` и действительно отклоняет неформатированный код.
-
-### Почему так
-
-Версия eframe уже закреплена в проекте как 0.36.2, поэтому понижение зависимости скрывало бы несовместимость и возвращало проект на старый API. Исправлен вызывающий код, чтобы он соответствовал выбранной современной версии.
-
-### Изменённые файлы
-
-- `apps/windows/src/main.rs`
-- `.github/workflows/ci.yml`
-- `docs/DEV_JOURNAL.md`
-
-### Проверки
-
-- Проанализирован полный лог GitHub Actions run `34884385062`.
-- Новый commit должен пройти `cargo fmt --all -- --check`, `cargo test --workspace` и `cargo check --workspace` в GitHub Actions.
-
-### Следующий шаг
-
-После восстановления зелёного CI — добавить общий transport adapter API с управлением несколькими независимыми сессиями и тестами.
-
-
-## 2026-09-14 — Общий transport adapter API
-
-### Что сделано
-
-- Создан crate `amri-transport`.
-- Добавлен расширяемый `TransportAdapter` для протокольных реализаций.
-- Добавлен `TransportManager`, который держит несколько независимых активных сессий по `route_id`.
-- Реализованы connect, health и disconnect без связи с UI или конкретной ОС.
-- Запрещена неоднозначная регистрация двух адаптеров на одно семейство протокола.
-- Добавлен `TransportSecret`: значение скрывается в Debug и очищается из памяти при уничтожении.
-- Добавлены тесты redaction, нескольких одновременных маршрутов, повторного connect и health.
-- Создана документация `docs/TRANSPORT_ADAPTERS.md`.
-
-### Почему принято такое решение
-
-AMRI должен выбирать маршрут сам, но не должен зависеть от sing-box, WireGuard или другого конкретного ядра. Один общий lifecycle API позволяет переиспользовать оркестрацию в Windows и Android и одновременно держать несколько выходов.
-
-### Рассмотренные альтернативы
-
-- Один глобальный transport process: отклонено, потому что его перезапуск отключал бы все назначения.
-- Встроить transport в `amri-core`: отклонено, чтобы scoring и обучение оставались чистыми и тестируемыми.
-- Передавать raw URI строкой и логировать структуру: отклонено из-за риска утечки VPN-секретов.
-
-### Изменённые файлы
-
-- `Cargo.toml`
-- `crates/amri-transport/Cargo.toml`
-- `crates/amri-transport/src/lib.rs`
-- `README.md`
-- `docs/PRODUCT_SPEC.md`
-- `docs/TRANSPORT_ADAPTERS.md`
-- `docs/DEV_JOURNAL.md`
-
-### Что работает
-
-- Общий transport lifecycle API.
-- Несколько независимых route sessions.
-- Защита секретов от случайного Debug-логирования.
-- Unit-тесты менеджера и адаптера.
-
-### Что ещё не работает
-
-- Production-адаптер конкретного VPN-core пока не подключён.
-- TUN/WFP и Android VpnService ещё не связаны с transport manager.
-- Реальные protocol health-checks будут добавлены в первом адаптере.
-
-### Следующий шаг
-
-Создать полноценный Android app module и безопасный адаптер `VpnService`, затем подключить Rust API через стабильную FFI-границу.
-
-
-## 2026-09-14 — Полноценная основа Android-клиента
-
-### Что сделано
-
-- Создан реальный Android app module вместо двух корневых Gradle-файлов.
-- Добавлены manifest, тема, строки и нативный современный UI.
-- Реализован запрос системного VPN-разрешения.
-- Реализован `AmriVpnService` как foreground special-use service.
-- Добавлены корректные stop/revoke/destroy переходы и закрытие file descriptor.
-- Добавлен control-only TUN, который не перехватывает публичный трафик до готовности transport adapter.
-- Добавлен отдельный тестируемый `VpnStateMachine`.
-- CI расширен Android-сборкой и unit-тестами на Gradle 9.6/JDK 17.
-- Создан `docs/ANDROID_ARCHITECTURE.md`.
-
-### Почему принято такое решение
-
-Создавать default route без готового packet forwarding опасно: пользователь потеряет интернет, хотя UI может ошибочно показать защиту. Поэтому VpnService и настоящий TUN lifecycle реализованы сейчас, но публичный трафик не захватывается до подключения production transport.
-
-AGP 9.4 использует встроенную поддержку Kotlin, поэтому устаревший `org.jetbrains.kotlin.android` не добавлялся.
-
-### Рассмотренные альтернативы
-
-- Сразу добавить `0.0.0.0/0`: отклонено из-за гарантированной blackhole-сети без транспорта.
-- Сделать Android только макетом: отклонено; реализованы системное разрешение, foreground service и file descriptor lifecycle.
-- Копировать routing engine на Kotlin: отклонено; выбор маршрута останется в общем Rust-ядре.
-
-### Изменённые файлы
-
-- `.github/workflows/ci.yml`
-- `.gitignore`
-- `apps/android/build.gradle.kts`
-- `apps/android/gradle.properties`
-- `apps/android/app/build.gradle.kts`
-- `apps/android/app/src/main/AndroidManifest.xml`
-- `apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt`
-- `apps/android/app/src/main/java/ru/amri/vpn/AmriVpnService.kt`
-- `apps/android/app/src/main/java/ru/amri/vpn/VpnStateMachine.kt`
-- `apps/android/app/src/main/res/values/strings.xml`
-- `apps/android/app/src/main/res/values/styles.xml`
-- `apps/android/app/src/test/java/ru/amri/vpn/VpnStateMachineTest.kt`
-- `docs/ANDROID_ARCHITECTURE.md`
-- `README.md`
-- `docs/PRODUCT_SPEC.md`
-- `docs/UI_DESIGN.md`
-- `docs/DEV_JOURNAL.md`
-
-### Что работает
-
-- Android-проект имеет собираемый app module.
-- Системное разрешение VpnService.
-- Foreground lifecycle и безопасное закрытие интерфейса.
-- Android UI и state-machine тесты.
-
-### Что ещё не работает
-
-- Public traffic пока намеренно не направляется в TUN.
-- Rust FFI и production transport adapter ещё не подключены.
-- Connect/Disconnect полной защиты появится после packet forwarding.
-
-
-### Дополнение по форматированию CI
-
-Первый строгий запуск `cargo fmt --all -- --check` обнаружил накопившееся форматирование в существующих Rust-файлах и новом transport crate. Применён ровно diff rustfmt из GitHub Actions; после этого проверка запускается повторно.
-
-
-### Дополнение по Android CI
-
-Первый Android CI дошёл до компиляции unit-тестов и выявил отсутствующую test-зависимость JUnit 4. Добавлена явная `testImplementation("junit:junit:4.13.2")`; сборка и тесты запущены повторно.
-
-
-## 2026-09-14 — Результат проверок этапа
-
-GitHub Actions run `34885701527` подтвердил:
-
-- `cargo fmt --all -- --check` — успешно;
-- `cargo test --workspace` — успешно, включая тесты `amri-transport`;
-- `cargo check --workspace` — успешно;
-- `gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace` — успешно;
-- Android debug APK сформирован задачей `assembleDebug`.
-
-На этом этапе нет известных ошибок компиляции Windows/Rust workspace или Android app module.
-
-
-## 2026-09-14 — Утверждённые визуальные материалы AMRI
-
-### Что сделано
-
-- Добавлен каталог `assets/brand/` с векторной иконкой, фонами для desktop и Android, а также состояниями главной кнопки VPN.
-- Мобильный фон `background-mobile.svg` имеет адаптивный viewBox 1080×2340 без элементов по краям; его можно масштабировать с `cover` под любой экран.
-- Кнопка `vpn-power-on.svg` имеет прозрачность за пределами самой кнопки и предназначена только для состояния активного соединения.
-- Кнопка `vpn-power-off.svg` обозначает выключенное/неподключённое состояние.
-
-### Обязательная инструкция для следующих работ
-
-Использовать только текущий набор из `assets/brand/README.md`. Ранний растр главной кнопки с непрозрачным тёмным квадратным фоном не использовать. Визуальный статус «включено» разрешён только после фактического запуска transport и packet forwarding, а не после нажатия пользователя.
-
-
-## 2026-09-14 — Устойчивый выбор маршрута и безопасный handoff
-
-### Что обнаружено
-
-- `SelectionPolicy::min_improvement_percent` существовал, но влиял только на текст объяснения выбора и не удерживал текущий маршрут при небольшом выигрыше альтернативы.
-- В transport manager отсутствовал безопасный primitive замены активного выхода: для быстрого failover нужно сначала доказать работоспособность новой сессии, а уже затем отключать старую.
-- Требования product spec по circuit breaker, cooldown и hysteresis были описаны, но не имели общей реализации в core.
-
-### Что изменено
-
-- Добавлен `RouteSelector::select_stable`, который реализует реальный hysteresis: рабочий маршрут сохраняется, пока альтернатива не проходит одновременно порог confidence и минимальное улучшение RouteScore.
-- Текущий недоступный или quarantined маршрут переключается без ожидания hysteresis-порога.
-- Добавлен `RouteHealthTracker` с circuit breaker, последовательными ошибками, quarantine, cooldown и ограниченным exponential backoff.
-- Добавлен `TransportManager::replace` с make-before-break: новая transport-сессия поднимается и валидируется до остановки старой.
-- При ошибке остановки старой сессии выполняется попытка rollback новой; старая сессия остаётся зарегистрированной.
+- `amri-transport` содержит `TransportAdapter` и `TransportManager`.
+- Поддерживаются несколько независимых активных route slots.
+- `TransportSecret` редактирует `Debug` и очищается из памяти при drop.
+- `TransportManager::replace` реализует make-before-break: новая сессия поднимается до остановки старой.
+- При ошибке cutover выполняется rollback новой сессии, старая остаётся зарегистрированной.
 - Проверяется соответствие `route_id` и `adapter_id`, возвращённых адаптером.
-- `health()` теперь синхронизирует состояние активной `TransportSession` (`Connected` / `Degraded`).
-- Обновлена `docs/TRANSPORT_ADAPTERS.md`.
+- `health()` синхронизирует `Connected/Degraded` с активной сессией.
 
-### Почему принято такое решение
+### Устойчивость и быстрый failover
 
-Быстрое переключение не должно означать постоянное дёрганье между почти одинаковыми маршрутами. Hysteresis удерживает стабильный рабочий выход, circuit breaker временно исключает явно проблемные узлы, а make-before-break сокращает разрыв при реальном переключении и не отключает старый маршрут до подтверждения новой transport-сессии.
+- `RouteSelector::select_stable` реализует настоящий hysteresis. `min_improvement_percent` теперь реально удерживает текущий маршрут, а не используется только в тексте объяснения.
+- Quarantined/недоступный активный маршрут переключается без ожидания hysteresis-порога.
+- `RouteHealthTracker` реализует circuit breaker, cooldown и ограниченный exponential backoff.
+- Hot pool содержит небольшой набор лучших резервов; по умолчанию до 4 кандидатов.
+- Первые резервные слоты предпочитают разных `provider_id`, но только среди достаточно качественных маршрутов.
+- `amri-probe` умеет короткую параллельную TCP micro-race по hot pool вместо последовательного ожидания нескольких timeout.
+- После первого успеха используется короткое settle-window, поэтому почти одновременно пришедшая более качественная альтернатива ещё может победить.
+- Незавершившийся в коротком race-budget probe не считается failure автоматически.
 
-### Изменённые файлы
+### Runtime orchestration
 
-- `crates/amri-core/src/health.rs`
-- `crates/amri-core/src/lib.rs`
-- `crates/amri-core/src/selector.rs`
-- `crates/amri-transport/src/lib.rs`
-- `docs/TRANSPORT_ADAPTERS.md`
+- `amri-runtime` связывает цепочку: probe/race → health tracker → dynamic quarantine → hot pool → stable selector → `RouteTransitionDecision`.
+- Runtime не владеет VPN credentials и process lifecycle.
+- Application layer выполняет `TransportManager::connect/replace` после решения runtime.
+- Packet routing должен переключаться только после успешного transport handoff.
 
-### Проверки
+### Windows secure secret storage
 
-GitHub Actions run `34894578992`:
+- `amri-secrets` содержит `SecretStore` boundary.
+- `WindowsDpapiSecretStore` шифрует значения Windows DPAPI для текущего пользователя.
+- На диск записывается только DPAPI ciphertext.
+- Логический ключ SHA-256 хэшируется перед использованием как filename, поэтому имена subscription/secret slots не раскрываются листингом каталога.
+- `SecretValue` очищается из памяти при drop и всегда редактируется из `Debug`.
+- Android должен получить отдельную реализацию через Android Keystore; Windows DPAPI ciphertext между платформами не переносится.
 
-- `cargo fmt --all -- --check` — успешно;
-- `cargo test --workspace` — успешно;
-- `cargo check --workspace` — успешно;
-- `gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace` — успешно;
-- PR #3 успешно объединён в `main` squash-коммитом `2724e96c4b9490def79f82f04b552bd06119263b`.
+### Production external-core boundary
 
-### Что работает
+- `amri-external-core` реализует supervised process adapter, независимый от конкретного VPN-core.
+- Credential-bearing config формируется в zeroizing `RenderedConfig`.
+- Секретный config передаётся внешнему core через stdin; plaintext temporary JSON не создаётся.
+- Credentials запрещено помещать в process arguments.
+- stdout/stderr внешнего core отключены на этой boundary, чтобы credential-bearing config не попал в AMRI logs.
+- Один активный route slot может владеть отдельным supervised core process.
+- Process liveness отображается как `Connected/Degraded`; полноценный readiness handshake ещё нужен.
 
-- Реальный hysteresis для переключения между кандидатами.
-- Общий circuit breaker/cooldown primitive для узлов.
-- Make-before-break замена transport-сессии с rollback при ошибке cutover.
-- Независимые route slots по-прежнему не требуют отключать остальные маршруты.
+### Первый sing-box renderer
 
-### Что ещё не работает
+Техническая boundary умеет формировать sing-box config для:
 
-- `RouteHealthTracker` ещё нужно подключить к реальным probe/transport событиям в orchestration layer; сейчас это протестированный core primitive.
-- Production transport adapter конкретного VPN-core ещё не подключён.
-- Public packet forwarding через Windows TUN/WFP и Android VpnService пока не включён.
+- VLESS — UUID хранится в `TransportSecret`;
+- Trojan — password в `TransportSecret`;
+- Shadowsocks — password в `TransportSecret`, `method` является non-secret option;
+- Hysteria2 — password в `TransportSecret`.
 
-## CURRENT STATE
+Поддержаны non-secret options: `server_name`, `tls`, `tls_insecure`, VLESS `flow`, Shadowsocks `method`, Hysteria2 `up_mbps/down_mbps`, optional loopback `local_port`.
 
-- Rust workspace компилируется и проходит все unit-тесты.
-- Android app module компилируется, unit-тесты проходят, debug APK собирается.
-- Несколько подписок объединяются в единый пул с дедупликацией.
-- RouteScore учитывает latency/jitter/loss/DNS/TCP/TLS/throughput/history/stability и класс трафика.
-- Stable route selection поддерживает confidence + hysteresis.
-- Circuit breaker/cooldown реализован в `amri-core`.
-- `amri-transport` поддерживает несколько route sessions и make-before-break replacement.
-- Android VpnService пока использует безопасный control-only TUN и намеренно не перехватывает публичный трафик.
-- Federated exchange остаётся opt-in, минимальным и без пользовательской истории/идентификаторов; отправка предусмотрена только через VPN.
+TUIC, WireGuard, VMess и другие multi-secret/особые credential-модели пока намеренно не проталкиваются через обычный `options` map. Для них нужен typed credential model.
 
-## NEXT PRIORITIES
+**Важно:** sing-box binary в AMRI пока не бандлится. Техническая интеграция отделена от отдельного license/distribution review. Перед включением любого стороннего core в установщик/APK нужно проверить текущую лицензию и обязанности распространения.
 
-1. Реализовать hot pool лучших резервов и короткую параллельную micro-race проверку, чтобы failover не ждал последовательных timeout.
-2. Связать результаты probe/transport health с `RouteHealthTracker` и stable selector в orchestration layer.
-3. Выбрать и интегрировать первый production transport core/adapter после license/security review.
-4. Добавить безопасное локальное хранение subscription URL и transport secrets.
-5. Подключить реальный packet forwarding: Windows TUN/WFP/DNS и Android VpnService + Rust FFI.
-6. После рабочего end-to-end connect/disconnect — DIRECT/VPN/BLOCK, per-domain/per-process routing и kill-switch.
+### Windows / Android clients
 
-## KNOWN ISSUES
+- Windows UI shell на eframe/egui собирается в workspace.
+- Android app module запрашивает системное VPN-разрешение и имеет foreground `AmriVpnService`.
+- Android TUN пока control-only и намеренно не устанавливает default public route: без готового forwarding это создало бы blackhole.
+- Android state machine покрыта unit-тестами.
 
-- Нет production VPN transport adapter, поэтому приложение пока не является полноценным VPN для публичного трафика.
-- Android control-only TUN не устанавливает default route до готовности packet forwarding — это намеренная защита от blackhole.
-- Circuit breaker пока не получает реальные события автоматически из runtime orchestration.
-- Безопасное OS-backed хранилище секретов ещё не реализовано.
-- Реальный DNS leak protection и kill-switch ещё не подключены.
+### Визуальные материалы
 
-## IMPORTANT ARCHITECTURE DECISIONS
+- Использовать только актуальный набор из `assets/brand/README.md`.
+- Не возвращать ранее забракованные/удалённые изображения.
+- Главная кнопка «включено» допустима только после фактического transport + packet forwarding.
+- Параллельные изменения иконок/фонов в `main` не откатывать без причины.
 
-- AMRI core принимает решение о маршруте; transport adapter не выбирает сервер самостоятельно.
-- Переключение активного route slot выполняется make-before-break, а не break-before-make.
-- Hysteresis применяется к уже активному маршруту; аварийный failover с quarantined/недоступного выхода не блокируется порогом улучшения.
-- Circuit breaker находится в общем Rust core и использует время, переданное orchestration layer, чтобы оставаться детерминированным и тестируемым.
-- UI не получает право объявлять VPN включённым до фактического transport + packet forwarding.
-- Визуальные ресурсы брать только из актуального `assets/brand/README.md`; забракованные изображения не возвращать.
+## Последние проверки
+
+- Resilient handoff/circuit breaker: GitHub Actions run `34894578992` — Rust fmt/tests/check + Android tests/assemble успешно.
+- Hot pool/micro-race: GitHub Actions run `34895347920` — Rust fmt/tests/check + Android tests/assemble успешно.
+- Runtime orchestration: GitHub Actions run `34895978521` — Rust fmt/tests/check + Android tests/assemble успешно; PR #5 объединён в `main` commit `3f937872cb1ed171d19bdeae3c12656a2d614e39`.
+- Secure external-core boundary: GitHub Actions run `34897729724` — Rust fmt/tests/check + Android tests/assemble успешно; PR #6 объединён в `main` commit `6ce0f10b3a111ebb736cb9a7b7fce443e0531c4b`.
+
+# CURRENT STATE
+
+- Rust workspace компилируется и проходит unit-тесты.
+- Android app компилируется, unit-тесты проходят, debug APK собирается.
+- Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool и micro-race реализованы.
+- Probe/race результаты реально влияют на dynamic quarantine и stable route decision через `amri-runtime`.
+- `TransportManager` имеет multi-session lifecycle и make-before-break replacement.
+- Есть безопасная external-core process boundary и первый sing-box renderer для VLESS/Trojan/Shadowsocks/Hysteria2.
+- Windows secret persistence защищена DPAPI.
+- Public traffic через Windows/Android пока НЕ проходит через полноценный AMRI VPN tunnel.
+- Android намеренно остаётся control-only до рабочего packet forwarding.
+
+# NEXT PRIORITIES
+
+1. Добавить безопасное typed преобразование `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
+2. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и других протоколов вместо секретов в обычном `options` map.
+3. Усилить external-core readiness: кроме process liveness подтверждать, что локальный inbound/туннель действительно готов принимать трафик.
+4. Подключить Windows app к `SecretStore` + `TransportManager` + external-core adapter и получить первый настоящий end-to-end connect/disconnect.
+5. Реализовать Windows packet forwarding/TUN/WFP + DNS leak protection.
+6. Реализовать Android Keystore + Rust FFI + production packet forwarding через `VpnService`.
+7. Добавить end-to-end integration tests connect → health → failover → make-before-break → disconnect.
+8. Только после рабочего туннеля переходить к DIRECT/VPN/BLOCK, per-domain/per-process Smart Routing и kill-switch.
+9. Перед bundling стороннего core провести отдельный license/security review, pin версии и проверку hash/signature binary.
+
+# KNOWN ISSUES
+
+- Нет полноценного public packet forwarding, поэтому текущий проект ещё не является готовым пользовательским VPN end-to-end.
+- sing-box binary намеренно не поставляется вместе с проектом.
+- Process liveness пока не равен проверке готовности реального туннеля.
+- `ImportedNode.raw_uri` всё ещё существует как обычный `String` после импорта: Debug уже безопасен, но нужен typed conversion + минимизация plaintext lifetime.
+- Android secure persistence через Keystore ещё не реализован.
+- TUIC/WireGuard/VMess ещё не подключены к production renderer из-за более сложной credential-модели.
+- Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
+
+# IMPORTANT ARCHITECTURE DECISIONS
+
+- AMRI core выбирает маршрут; transport core исполняет выбранный маршрут.
+- Hysteresis применяется к рабочему маршруту, но не мешает аварийному failover с недоступного/quarantined выхода.
+- Failover использует небольшой quality-bounded hot pool, а не массовую гонку всех узлов подписок.
+- Make-before-break обязателен для замены активного route slot.
+- Короткий probe race не имеет права объявлять незавершившийся probe неисправным только из-за race deadline.
+- Credentials не помещаются в process args, Debug, telemetry или plaintext temp files.
+- Multi-secret credentials не помещаются в обычный `options` map; для них вводится отдельная typed-модель.
+- OS-backed secret storage разделяется по платформам: DPAPI на Windows, Android Keystore на Android.
+- Third-party VPN-core distribution отделена от технической integration boundary и требует отдельного license review.
+- UI может показывать защищённое состояние только после подтверждённых transport + packet forwarding.
