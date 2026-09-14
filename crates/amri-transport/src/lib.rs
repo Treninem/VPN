@@ -116,6 +116,19 @@ pub enum TransportError {
         expected: String,
         actual: String,
     },
+    #[error(
+        "adapter '{actual}' returned a session while '{expected}' handled the connect request"
+    )]
+    InvalidSessionAdapter { expected: String, actual: String },
+    #[error(
+        "route '{route_id}' cutover failed while stopping old adapter '{old_adapter_id}': {old_error}; rollback of the new session: {rollback_error:?}"
+    )]
+    CutoverFailed {
+        route_id: String,
+        old_adapter_id: String,
+        old_error: AdapterError,
+        rollback_error: Option<AdapterError>,
+    },
 }
 
 pub struct TransportManager {
@@ -171,33 +184,53 @@ impl TransportManager {
             return Err(TransportError::RouteAlreadyActive(request.route_id));
         }
 
-        let adapter_id = self
-            .protocol_adapters
-            .get(&request.protocol)
-            .cloned()
-            .ok_or(TransportError::UnsupportedProtocol(request.protocol))?;
-        let adapter = self
-            .adapters
-            .get_mut(&adapter_id)
-            .expect("registered adapter");
-        let session = adapter
-            .connect(&request)
-            .map_err(|source| TransportError::Adapter {
-                adapter_id: adapter_id.clone(),
-                source,
-            })?;
-
-        if session.route_id != request.route_id {
-            return Err(TransportError::InvalidSessionRoute {
-                adapter_id,
-                expected: request.route_id,
-                actual: session.route_id,
-            });
-        }
-
+        let session = self.connect_untracked(&request)?;
         self.sessions
             .insert(session.route_id.clone(), session.clone());
         Ok(session)
+    }
+
+    /// Replaces an active route using make-before-break semantics.
+    ///
+    /// The new transport must connect successfully before AMRI stops the old one. If the old
+    /// session cannot be stopped, the manager attempts to roll back the newly-created session and
+    /// keeps the old session registered. This gives routing code a safe primitive for low-downtime
+    /// handoff without briefly dropping a working route just to test its replacement.
+    pub fn replace(&mut self, request: ConnectRequest) -> Result<TransportSession, TransportError> {
+        let route_id = request.route_id.clone();
+        let old_session = self
+            .sessions
+            .get(&route_id)
+            .cloned()
+            .ok_or_else(|| TransportError::RouteNotActive(route_id.clone()))?;
+
+        let new_session = self.connect_untracked(&request)?;
+        let old_adapter_id = old_session.adapter_id.clone();
+        let old_disconnect = self
+            .adapters
+            .get_mut(&old_adapter_id)
+            .expect("session adapter remains registered")
+            .disconnect(&old_session);
+
+        if let Err(old_error) = old_disconnect {
+            let rollback_adapter_id = new_session.adapter_id.clone();
+            let rollback_error = self
+                .adapters
+                .get_mut(&rollback_adapter_id)
+                .expect("new session adapter remains registered")
+                .disconnect(&new_session)
+                .err();
+
+            return Err(TransportError::CutoverFailed {
+                route_id,
+                old_adapter_id,
+                old_error,
+                rollback_error,
+            });
+        }
+
+        self.sessions.insert(route_id, new_session.clone());
+        Ok(new_session)
     }
 
     pub fn disconnect(&mut self, route_id: &str) -> Result<(), TransportError> {
@@ -232,12 +265,18 @@ impl TransportManager {
             .get_mut(&session.adapter_id)
             .expect("session adapter remains registered");
 
-        adapter
+        let health = adapter
             .health(&session)
             .map_err(|source| TransportError::Adapter {
                 adapter_id: session.adapter_id,
                 source,
-            })
+            })?;
+
+        if let Some(active) = self.sessions.get_mut(route_id) {
+            active.state = health.state;
+        }
+
+        Ok(health)
     }
 
     pub fn session(&self, route_id: &str) -> Option<&TransportSession> {
@@ -246,6 +285,48 @@ impl TransportManager {
 
     pub fn active_sessions(&self) -> impl Iterator<Item = &TransportSession> {
         self.sessions.values()
+    }
+
+    fn connect_untracked(
+        &mut self,
+        request: &ConnectRequest,
+    ) -> Result<TransportSession, TransportError> {
+        let adapter_id = self
+            .protocol_adapters
+            .get(&request.protocol)
+            .cloned()
+            .ok_or(TransportError::UnsupportedProtocol(request.protocol))?;
+        let adapter = self
+            .adapters
+            .get_mut(&adapter_id)
+            .expect("registered adapter");
+        let session = adapter
+            .connect(request)
+            .map_err(|source| TransportError::Adapter {
+                adapter_id: adapter_id.clone(),
+                source,
+            })?;
+
+        if session.route_id != request.route_id {
+            let actual = session.route_id.clone();
+            let _ = adapter.disconnect(&session);
+            return Err(TransportError::InvalidSessionRoute {
+                adapter_id,
+                expected: request.route_id.clone(),
+                actual,
+            });
+        }
+
+        if session.adapter_id != adapter_id {
+            let actual = session.adapter_id.clone();
+            let _ = adapter.disconnect(&session);
+            return Err(TransportError::InvalidSessionAdapter {
+                expected: adapter_id,
+                actual,
+            });
+        }
+
+        Ok(session)
     }
 }
 
@@ -258,6 +339,7 @@ mod tests {
     struct Calls {
         connected: Vec<String>,
         disconnected: Vec<String>,
+        events: Vec<String>,
     }
 
     struct TestAdapter {
@@ -276,43 +358,71 @@ mod tests {
         }
 
         fn connect(&mut self, request: &ConnectRequest) -> Result<TransportSession, AdapterError> {
-            self.calls
-                .lock()
-                .unwrap()
-                .connected
-                .push(request.route_id.clone());
+            if request.node_fingerprint == "fail-connect" {
+                return Err(AdapterError::new("connect failed"));
+            }
+
+            let mut calls = self.calls.lock().unwrap();
+            calls.connected.push(request.route_id.clone());
+            calls.events.push(format!(
+                "connect:{}:{}",
+                request.route_id, request.node_fingerprint
+            ));
+            drop(calls);
+
             assert_eq!(request.secret.expose_secret(), "private");
             Ok(TransportSession {
                 route_id: request.route_id.clone(),
                 adapter_id: self.id().into(),
-                adapter_session_id: format!("session-{}", request.route_id),
+                adapter_session_id: format!(
+                    "session-{}-{}",
+                    request.route_id, request.node_fingerprint
+                ),
                 state: SessionState::Connected,
             })
         }
 
         fn disconnect(&mut self, session: &TransportSession) -> Result<(), AdapterError> {
-            self.calls
-                .lock()
-                .unwrap()
-                .disconnected
-                .push(session.route_id.clone());
+            let fingerprint = session
+                .adapter_session_id
+                .strip_prefix(&format!("session-{}-", session.route_id))
+                .unwrap_or("unknown");
+            let mut calls = self.calls.lock().unwrap();
+            calls.disconnected.push(session.route_id.clone());
+            calls
+                .events
+                .push(format!("disconnect:{}:{fingerprint}", session.route_id));
+            drop(calls);
+
+            if fingerprint == "fail-disconnect" {
+                return Err(AdapterError::new("disconnect failed"));
+            }
             Ok(())
         }
 
-        fn health(&mut self, _session: &TransportSession) -> Result<TransportHealth, AdapterError> {
+        fn health(&mut self, session: &TransportSession) -> Result<TransportHealth, AdapterError> {
+            let degraded = session.adapter_session_id.ends_with("-degraded");
             Ok(TransportHealth {
-                state: SessionState::Connected,
+                state: if degraded {
+                    SessionState::Degraded
+                } else {
+                    SessionState::Connected
+                },
                 latency_ms: Some(24.0),
-                packet_loss_ratio: Some(0.0),
+                packet_loss_ratio: Some(if degraded { 0.08 } else { 0.0 }),
                 message: None,
             })
         }
     }
 
     fn request(route_id: &str) -> ConnectRequest {
+        request_for(route_id, "node")
+    }
+
+    fn request_for(route_id: &str, node_fingerprint: &str) -> ConnectRequest {
         ConnectRequest {
             route_id: route_id.into(),
-            node_fingerprint: "node".into(),
+            node_fingerprint: node_fingerprint.into(),
             protocol: NodeProtocol::WireGuard,
             endpoint: TransportEndpoint {
                 host: "vpn.example".into(),
@@ -321,6 +431,12 @@ mod tests {
             secret: TransportSecret::new("private"),
             options: BTreeMap::new(),
         }
+    }
+
+    fn manager(calls: Arc<Mutex<Calls>>) -> TransportManager {
+        let mut manager = TransportManager::new();
+        manager.register(TestAdapter { calls }).unwrap();
+        manager
     }
 
     #[test]
@@ -334,12 +450,7 @@ mod tests {
     #[test]
     fn keeps_multiple_routes_active_independently() {
         let calls = Arc::new(Mutex::new(Calls::default()));
-        let mut manager = TransportManager::new();
-        manager
-            .register(TestAdapter {
-                calls: calls.clone(),
-            })
-            .unwrap();
+        let mut manager = manager(calls.clone());
 
         manager.connect(request("video")).unwrap();
         manager.connect(request("realtime")).unwrap();
@@ -353,12 +464,8 @@ mod tests {
 
     #[test]
     fn refuses_duplicate_route_session() {
-        let mut manager = TransportManager::new();
-        manager
-            .register(TestAdapter {
-                calls: Arc::new(Mutex::new(Calls::default())),
-            })
-            .unwrap();
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let mut manager = manager(calls);
         manager.connect(request("gaming")).unwrap();
 
         let error = manager.connect(request("gaming")).unwrap_err();
@@ -366,15 +473,76 @@ mod tests {
     }
 
     #[test]
-    fn exposes_adapter_health() {
-        let mut manager = TransportManager::new();
-        manager
-            .register(TestAdapter {
-                calls: Arc::new(Mutex::new(Calls::default())),
-            })
-            .unwrap();
-        manager.connect(request("web")).unwrap();
+    fn exposes_adapter_health_and_updates_session_state() {
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let mut manager = manager(calls);
+        manager.connect(request_for("web", "degraded")).unwrap();
 
-        assert_eq!(manager.health("web").unwrap().latency_ms, Some(24.0));
+        assert_eq!(manager.health("web").unwrap().state, SessionState::Degraded);
+        assert_eq!(
+            manager.session("web").unwrap().state,
+            SessionState::Degraded
+        );
+    }
+
+    #[test]
+    fn replaces_active_route_make_before_break() {
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let mut manager = manager(calls.clone());
+        manager.connect(request_for("video", "old")).unwrap();
+        calls.lock().unwrap().events.clear();
+
+        let session = manager.replace(request_for("video", "new")).unwrap();
+
+        assert!(session.adapter_session_id.ends_with("-new"));
+        assert_eq!(
+            calls.lock().unwrap().events,
+            ["connect:video:new", "disconnect:video:old"]
+        );
+    }
+
+    #[test]
+    fn failed_replacement_connect_keeps_old_session() {
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let mut manager = manager(calls);
+        manager.connect(request_for("video", "old")).unwrap();
+
+        let error = manager
+            .replace(request_for("video", "fail-connect"))
+            .unwrap_err();
+
+        assert!(matches!(error, TransportError::Adapter { .. }));
+        assert!(manager
+            .session("video")
+            .unwrap()
+            .adapter_session_id
+            .ends_with("-old"));
+    }
+
+    #[test]
+    fn failed_old_disconnect_rolls_back_new_session() {
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let mut manager = manager(calls.clone());
+        manager
+            .connect(request_for("video", "fail-disconnect"))
+            .unwrap();
+        calls.lock().unwrap().events.clear();
+
+        let error = manager.replace(request_for("video", "new")).unwrap_err();
+
+        assert!(matches!(error, TransportError::CutoverFailed { .. }));
+        assert_eq!(
+            calls.lock().unwrap().events,
+            [
+                "connect:video:new",
+                "disconnect:video:fail-disconnect",
+                "disconnect:video:new"
+            ]
+        );
+        assert!(manager
+            .session("video")
+            .unwrap()
+            .adapter_session_id
+            .ends_with("-fail-disconnect"));
     }
 }
