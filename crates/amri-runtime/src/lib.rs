@@ -244,10 +244,7 @@ mod tests {
         let outcome = ProbeRaceOutcome {
             winner: None,
             attempts: vec![
-                race_attempt(
-                    "bad",
-                    ProbeAttemptOutcome::Sample(failed_sample()),
-                ),
+                race_attempt("bad", ProbeAttemptOutcome::Sample(failed_sample())),
                 race_attempt(
                     "good",
                     ProbeAttemptOutcome::Sample(ProbeSample::basic(25.0, 1.0, 0.0)),
@@ -305,10 +302,7 @@ mod tests {
                 ProbeAttemptOutcome::Sample(ProbeSample::basic(30.0, 1.0, 0.0)),
             )),
             attempts: vec![
-                race_attempt(
-                    "current",
-                    ProbeAttemptOutcome::Sample(failed_sample()),
-                ),
+                race_attempt("current", ProbeAttemptOutcome::Sample(failed_sample())),
                 race_attempt(
                     "reserve",
                     ProbeAttemptOutcome::Sample(ProbeSample::basic(30.0, 1.0, 0.0)),
