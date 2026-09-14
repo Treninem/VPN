@@ -212,7 +212,10 @@ fn parse_shadowsocks_modern(
     }
 
     let (method, password) = if let Some(password) = url.password() {
-        (decode_component(url.username())?, decode_component(password)?)
+        (
+            decode_component(url.username())?,
+            decode_component(password)?,
+        )
     } else {
         decode_shadowsocks_userinfo(url.username())?
     };
@@ -314,7 +317,8 @@ fn query_map(url: &Url) -> HashMap<String, String> {
 }
 
 fn query_value<'a>(query: &'a HashMap<String, String>, keys: &[&str]) -> Option<&'a str> {
-    keys.iter().find_map(|key| query.get(*key).map(String::as_str))
+    keys.iter()
+        .find_map(|key| query.get(*key).map(String::as_str))
 }
 
 fn require_tcp_transport(query: &HashMap<String, String>) -> Result<(), NodeConfigError> {
@@ -337,8 +341,8 @@ fn base_options(materialize: MaterializeOptions) -> BTreeMap<String, String> {
 }
 
 fn copy_server_name(query: &HashMap<String, String>, options: &mut BTreeMap<String, String>) {
-    if let Some(server_name) = query_value(query, &["sni", "servername", "server_name"])
-        .filter(|value| !value.is_empty())
+    if let Some(server_name) =
+        query_value(query, &["sni", "servername", "server_name"]).filter(|value| !value.is_empty())
     {
         options.insert("server_name".into(), server_name.to_string());
     }
@@ -348,7 +352,7 @@ fn copy_insecure(
     query: &HashMap<String, String>,
     options: &mut BTreeMap<String, String>,
 ) -> Result<(), NodeConfigError> {
-    if let Some(raw) = query_value(query, &["allowinsecure", "insecure"] ) {
+    if let Some(raw) = query_value(query, &["allowinsecure", "insecure"]) {
         if parse_bool(raw, "tls_insecure")? {
             options.insert("tls_insecure".into(), "true".into());
         }
@@ -406,7 +410,10 @@ mod tests {
         assert_eq!(request.options.get("server_name").unwrap(), "edge.example");
         assert_eq!(request.options.get("flow").unwrap(), "xtls-rprx-vision");
         assert_eq!(request.options.get("local_port").unwrap(), "20800");
-        assert!(!request.options.values().any(|value| value.contains("123e4567")));
+        assert!(!request
+            .options
+            .values()
+            .any(|value| value.contains("123e4567")));
         assert!(!format!("{request:?}").contains("123e4567-e89b"));
     }
 
@@ -457,7 +464,8 @@ mod tests {
 
     #[test]
     fn shadowsocks_legacy_whole_payload_is_supported() {
-        let payload = general_purpose::URL_SAFE_NO_PAD.encode("chacha20-ietf-poly1305:pw@legacy.example:8388");
+        let payload = general_purpose::URL_SAFE_NO_PAD
+            .encode("chacha20-ietf-poly1305:pw@legacy.example:8388");
         let raw = format!("ss://{payload}#Legacy");
         let node = parse_node_uri("a", &raw).unwrap();
         let request =
@@ -478,8 +486,8 @@ mod tests {
             "vless://id@vpn.example:443?security=tls&type=ws&path=%2Fws#WS",
         )
         .unwrap();
-        let error = materialize_connect_request(node, "web", MaterializeOptions::default())
-            .unwrap_err();
+        let error =
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err();
 
         assert_eq!(error, NodeConfigError::UnsupportedTransport("ws".into()));
     }
@@ -489,8 +497,8 @@ mod tests {
         let userinfo = general_purpose::URL_SAFE_NO_PAD.encode("aes-256-gcm:pw");
         let raw = format!("ss://{userinfo}@ss.example:8388?plugin=v2ray-plugin#SS");
         let node = parse_node_uri("a", &raw).unwrap();
-        let error = materialize_connect_request(node, "web", MaterializeOptions::default())
-            .unwrap_err();
+        let error =
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err();
 
         assert_eq!(error, NodeConfigError::UnsupportedShadowsocksPlugin);
     }
@@ -498,9 +506,12 @@ mod tests {
     #[test]
     fn unsupported_multi_secret_protocol_is_explicit() {
         let node = parse_node_uri("a", "tuic://user:password@tuic.example:443#TUIC").unwrap();
-        let error = materialize_connect_request(node, "web", MaterializeOptions::default())
-            .unwrap_err();
+        let error =
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err();
 
-        assert_eq!(error, NodeConfigError::UnsupportedProtocol(NodeProtocol::Tuic));
+        assert_eq!(
+            error,
+            NodeConfigError::UnsupportedProtocol(NodeProtocol::Tuic)
+        );
     }
 }
