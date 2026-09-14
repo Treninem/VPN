@@ -127,7 +127,9 @@ pub fn text(language: Language, message: UiMessage) -> &'static str {
         (English, FederatedLearning) => "Anonymous shared learning",
         (English, FederatedDescription) => "Share only coarse aggregates; disabled by default",
         (English, BackgroundTesting) => "Background testing",
-        (English, BackgroundDescription) => "Measure alternative routes without interrupting traffic",
+        (English, BackgroundDescription) => {
+            "Measure alternative routes without interrupting traffic"
+        }
         (English, KillSwitch) => "Kill Switch",
         (English, KillSwitchDescription) => "Block protected traffic if its VPN route is lost",
         (English, ActiveRoutes) => "Active routes",
@@ -135,7 +137,9 @@ pub fn text(language: Language, message: UiMessage) -> &'static str {
         (English, Jitter) => "Jitter",
         (English, RouteScore) => "RouteScore",
         (English, NoActiveRoutes) => "No active routes yet",
-        (English, AddSubscriptionFirst) => "Add a subscription to prepare the first real connection",
+        (English, AddSubscriptionFirst) => {
+            "Add a subscription to prepare the first real connection"
+        }
         (English, Why) => "Why?",
         (English, Mode) => "Mode",
 
@@ -152,11 +156,15 @@ pub fn text(language: Language, message: UiMessage) -> &'static str {
         (Russian, ProtectionOff) => "Защита выключена",
         (Russian, EngineReady) => "AMRI готов",
         (Russian, SmartRouting) => "Умная маршрутизация",
-        (Russian, SmartRoutingDescription) => "Отдельный лучший маршрут для каждого сайта и приложения",
+        (Russian, SmartRoutingDescription) => {
+            "Отдельный лучший маршрут для каждого сайта и приложения"
+        }
         (Russian, LocalLearning) => "Локальное обучение",
         (Russian, LocalLearningDescription) => "Хранить опыт маршрутов только на этом устройстве",
         (Russian, FederatedLearning) => "Обезличенное общее обучение",
-        (Russian, FederatedDescription) => "Передавать только грубые агрегаты; выключено по умолчанию",
+        (Russian, FederatedDescription) => {
+            "Передавать только грубые агрегаты; выключено по умолчанию"
+        }
         (Russian, BackgroundTesting) => "Фоновое тестирование",
         (Russian, BackgroundDescription) => "Измерять альтернативы без прерывания трафика",
         (Russian, KillSwitch) => "Kill Switch",
@@ -228,7 +236,9 @@ pub fn text(language: Language, message: UiMessage) -> &'static str {
         (Portuguese, Jitter) => "Jitter",
         (Portuguese, RouteScore) => "RouteScore",
         (Portuguese, NoActiveRoutes) => "Ainda não há rotas ativas",
-        (Portuguese, AddSubscriptionFirst) => "Adicione uma assinatura para a primeira conexão real",
+        (Portuguese, AddSubscriptionFirst) => {
+            "Adicione uma assinatura para a primeira conexão real"
+        }
         (Portuguese, Why) => "Por quê?",
         (Portuguese, Mode) => "Modo",
 
@@ -284,7 +294,9 @@ pub fn text(language: Language, message: UiMessage) -> &'static str {
         (German, BackgroundTesting) => "Hintergrundtests",
         (German, BackgroundDescription) => "Alternativen ohne Unterbrechung messen",
         (German, KillSwitch) => "Notausschalter",
-        (German, KillSwitchDescription) => "Geschützten Verkehr bei Verlust der VPN-Route blockieren",
+        (German, KillSwitchDescription) => {
+            "Geschützten Verkehr bei Verlust der VPN-Route blockieren"
+        }
         (German, ActiveRoutes) => "Aktive Routen",
         (German, AveragePing) => "Mittlerer Ping",
         (German, Jitter) => "Jitter",

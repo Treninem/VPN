@@ -78,8 +78,15 @@ impl AmriApp {
         ui.set_width(220.0);
         ui.add_space(8.0);
         ui.label(RichText::new("AMRI").size(28.0).strong());
-        ui.label(RichText::new(ui_text(self.language, UiMessage::AdaptiveVpn)).color(Color32::from_gray(145)));
-        ui.label(RichText::new(ui_text(self.language, UiMessage::Language)).size(11.0).color(Color32::from_gray(125)));
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::AdaptiveVpn))
+                .color(Color32::from_gray(145)),
+        );
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::Language))
+                .size(11.0)
+                .color(Color32::from_gray(125)),
+        );
         egui::ComboBox::from_id_salt("ui-language")
             .selected_text(self.language.native_name())
             .show_ui(ui, |ui| {
@@ -276,7 +283,11 @@ impl AmriApp {
         });
 
         ui.add_space(22.0);
-        ui.label(RichText::new(ui_text(self.language, UiMessage::SmartRouting)).size(20.0).strong());
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::SmartRouting))
+                .size(20.0)
+                .strong(),
+        );
         ui.add_space(8.0);
 
         Self::toggle_row(
@@ -365,14 +376,11 @@ impl eframe::App for AmriApp {
                                     ui,
                                     ui_text(self.language, UiMessage::Subscriptions),
                                 ),
-                                Page::Rules => self.placeholder(
-                                    ui,
-                                    ui_text(self.language, UiMessage::Rules),
-                                ),
-                                Page::Settings => self.placeholder(
-                                    ui,
-                                    ui_text(self.language, UiMessage::Settings),
-                                ),
+                                Page::Rules => {
+                                    self.placeholder(ui, ui_text(self.language, UiMessage::Rules))
+                                }
+                                Page::Settings => self
+                                    .placeholder(ui, ui_text(self.language, UiMessage::Settings)),
                             }
                         });
                 });
