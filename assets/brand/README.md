@@ -13,3 +13,12 @@ Use only the files in this folder as the current approved visual set.
 Do **not** use the earlier raster ON button with the solid dark square background. It was superseded by `vpn-power-on.svg`.
 
 The next implementation chat must wire these files into both Windows and Android UI, retain accessibility labels and never represent the VPN as connected until the transport is genuinely active.
+
+- `add-button.svg` — добавить подписку, правило или профиль.
+- `delete-button.svg` — удалить с обязательным подтверждением.
+- `back-button.svg` — вернуться на предыдущий экран.
+- `close-button.svg` — закрыть окно или диалог без сохранения.
+- `refresh-button.svg` — обновить подписку, измерения или список.
+- `copy-button.svg` — скопировать не секретное значение; не использовать для ключей без явного подтверждения.
+- `info-button.svg` — показать объяснение настройки или статуса.
+- `more-button.svg` — открыть вторичные действия.
