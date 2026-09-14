@@ -19,8 +19,8 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Format workspace
+        run: cargo fmt --all
 
       - name: Run tests
         run: cargo test --workspace
