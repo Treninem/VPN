@@ -1,1 +1,48 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AMRI VPN"><defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07152f"/><stop offset="1" stop-color="#020817"/></linearGradient><linearGradient id="g" x1=".15" y1="1" x2=".85" y2="0"><stop stop-color="#1578ff"/><stop offset=".55" stop-color="#08d7ed"/><stop offset="1" stop-color="#9dfaff"/></linearGradient><filter id="s"><feGaussianBlur stdDeviation="10"/></filter></defs><rect width="512" height="512" rx="120" fill="url(#b)"/><path d="M256 69 422 150v105c0 103-67 164-166 191C157 419 90 358 90 255V150z" fill="#0b2556" stroke="url(#g)" stroke-width="12"/><path d="m153 354 98-179a13 13 0 0 1 23 0l98 179M204 262h104" fill="none" stroke="url(#g)" stroke-linecap="round" stroke-linejoin="round" stroke-width="30"/><path d="M158 388c51-56 93-77 98-142 6 65 48 86 98 142" fill="none" stroke="url(#g)" stroke-linecap="round" stroke-width="14"/><circle cx="256" cy="405" r="10" fill="#b8ffff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AMRI VPN">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="36" x2="448" y2="476" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1934"/>
+      <stop offset="0.5" stop-color="#071329"/>
+      <stop offset="1" stop-color="#030916"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientTransform="translate(342 126) rotate(136) scale(278 260)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17DDF1" stop-opacity="0.18"/>
+      <stop offset="0.52" stop-color="#1678FF" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#1678FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shieldFill" x1="256" y1="82" x2="256" y2="442" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#11315E"/>
+      <stop offset="0.58" stop-color="#0D2144"/>
+      <stop offset="1" stop-color="#09162E"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="126" y1="398" x2="386" y2="105" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1671FF"/>
+      <stop offset="0.48" stop-color="#12C9F2"/>
+      <stop offset="1" stop-color="#A4FAFF"/>
+    </linearGradient>
+    <linearGradient id="route" x1="256" y1="294" x2="256" y2="372" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A4FAFF"/>
+      <stop offset="1" stop-color="#12A8F3"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect x="1" y="1" width="510" height="510" rx="115" fill="none" stroke="#FFFFFF" stroke-opacity="0.055" stroke-width="2"/>
+  <rect width="512" height="512" rx="116" fill="url(#halo)"/>
+
+  <path d="M256 77L411 153V250C411 343 352 409 256 439C160 409 101 343 101 250V153L256 77Z"
+        fill="url(#shieldFill)" stroke="url(#accent)" stroke-width="12" stroke-linejoin="round"/>
+
+  <path d="M170 349L243 193C248 182 253 176 256 176C259 176 264 182 269 193L342 349"
+        fill="none" stroke="url(#accent)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M210 287H302"
+        fill="none" stroke="url(#accent)" stroke-width="24" stroke-linecap="round"/>
+
+  <circle cx="256" cy="307" r="7" fill="#B9FCFF"/>
+  <path d="M256 314C249 329 238 341 221 353"
+        fill="none" stroke="url(#route)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M256 314V367"
+        fill="none" stroke="url(#route)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M256 314C263 329 274 341 291 353"
+        fill="none" stroke="url(#route)" stroke-width="10" stroke-linecap="round"/>
+</svg>
