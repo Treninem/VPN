@@ -261,3 +261,16 @@ AGP 9.4 использует встроенную поддержку Kotlin, п�
 ### Дополнение по Android CI
 
 Первый Android CI дошёл до компиляции unit-тестов и выявил отсутствующую test-зависимость JUnit 4. Добавлена явная `testImplementation("junit:junit:4.13.2")`; сборка и тесты запущены повторно.
+
+
+## 2026-09-14 — Результат проверок этапа
+
+GitHub Actions run `34885701527` подтвердил:
+
+- `cargo fmt --all -- --check` — успешно;
+- `cargo test --workspace` — успешно, включая тесты `amri-transport`;
+- `cargo check --workspace` — успешно;
+- `gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace` — успешно;
+- Android debug APK сформирован задачей `assembleDebug`.
+
+На этом этапе нет известных ошибок компиляции Windows/Rust workspace или Android app module.
