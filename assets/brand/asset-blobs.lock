@@ -1,0 +1,18 @@
+# Exact Git blob IDs for the approved AMRI visual assets.
+# Update an entry only when that exact visual has been intentionally reviewed and replaced.
+60b7a9402831cbff43c81ef14f60eb404d45d498  add-button.svg
+1c997d242b42249e054a849f29231be72320a054  amri-icon.png
+6276bbe6f1def682d2b410374968574985305d6e  back-button.svg
+e744e786792e8408442a991e66a21cb24d6ecc43  background-desktop.svg
+689034e261ec7666c3b70f42f97d3274653aea97  background-mobile.svg
+c2c4a33f8e206352d3e5dfcded02d0594ac73460  close-button.svg
+0a5a30970c29c8a6941d6f76fe51067cf7c52352  copy-button.svg
+738f723e59750f71bd62b3a3360841bc6a9d6a8a  delete-button.svg
+42e1cb1a876b24a20ec3b0f719d0147084ace0f2  edit-button.svg
+b866798e769ce4284fdf3d0e56f8fa93be6341e8  info-button.svg
+66c0e437f4663878c2a6d502dfc7a96c46f9df15  language-button.svg
+52a9988267c718f620d2d48816620413c6016ca6  more-button.svg
+1de2875f920959284302a2561563876d2c62ea5f  refresh-button.svg
+20c4be4bcbce0ddf549ec7e42610f17a7b0de27f  settings-button.svg
+796de112f170b639081a6e1f7a9960b51b7aae26  vpn-power-off.svg
+0d244c427d0d97b55ff81f5bbc31e2faf26bb951  vpn-power-on.svg
