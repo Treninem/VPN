@@ -62,7 +62,6 @@ pub trait SecretStore: Send + Sync {
     fn delete(&self, key: &str) -> Result<bool, SecretStoreError>;
 }
 
-
 /// Loads an installation-local 256-bit key or creates it with the operating-system CSPRNG.
 ///
 /// The returned value remains zeroizing and Debug-redacted. Callers should copy it only into
@@ -306,7 +305,6 @@ mod tests {
             SecretStoreError::InvalidKey
         );
     }
-
 
     struct MemorySecretStore(std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>);
 

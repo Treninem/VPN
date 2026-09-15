@@ -137,8 +137,6 @@ impl LocalStore {
         Ok(())
     }
 
-
-
     /// Opens the persistent Route Proof chain with an OS-protected installation key.
     ///
     /// Existing receipts are verified before their tails are adopted. Corrupt or reordered
@@ -214,13 +212,16 @@ impl LocalStore {
     }
 
     pub fn route_proof_count(&self) -> Result<u64, StorageError> {
-        let count: i64 =
-            self.conn
-                .query_row("SELECT COUNT(*) FROM route_proofs", [], |row| row.get(0))?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM route_proofs", [], |row| row.get(0))?;
         Ok(count as u64)
     }
 
-    pub fn clear_route_proofs_for_token(&self, destination_token: &str) -> Result<u64, StorageError> {
+    pub fn clear_route_proofs_for_token(
+        &self,
+        destination_token: &str,
+    ) -> Result<u64, StorageError> {
         let deleted = self.conn.execute(
             "DELETE FROM route_proofs WHERE destination_token = ?1",
             [destination_token],
@@ -257,8 +258,6 @@ impl LocalStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-
 
     struct MemorySecrets(std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>);
 
