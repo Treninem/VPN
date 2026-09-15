@@ -23,6 +23,9 @@ class AmriVpnService : VpnService() {
     private val mobilePolicyOwner by lazy(LazyThreadSafetyMode.NONE) {
         AndroidMobilePolicyOwner.production()
     }
+    private val publicTunnelOwner by lazy(LazyThreadSafetyMode.NONE) {
+        AndroidPublicTunnelOwner(this)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
 
@@ -41,6 +44,7 @@ class AmriVpnService : VpnService() {
 
     override fun onDestroy() {
         stopNetworkObservation()
+        stopPublicForwarding()
         closeInterface()
         STATE.stop()
         super.onDestroy()
@@ -65,19 +69,13 @@ class AmriVpnService : VpnService() {
         try {
             check(runtimeOwner.initialize()) { "AMRI native runtime initialization failed" }
             startNetworkObservation()
-            // This narrow control-only interface proves VpnService ownership without
-            // capturing public traffic before a real transport adapter is ready.
-            controlInterface = Builder()
-                .setSession(getString(R.string.app_name))
-                .setMtu(1500)
-                .addAddress(CONTROL_ADDRESS, 32)
-                .addRoute(CONTROL_ADDRESS, 32)
-                .setBlocking(false)
-                .establish() ?: error("Android refused to establish the VPN interface")
+            controlInterface = establishControlInterface()
+                ?: error("Android refused to establish the VPN interface")
             STATE.serviceReady()
         } catch (_: Exception) {
             STATE.fail()
             stopNetworkObservation()
+            stopPublicForwarding()
             closeInterface()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -86,10 +84,73 @@ class AmriVpnService : VpnService() {
 
     private fun stopController() {
         stopNetworkObservation()
+        stopPublicForwarding()
         closeInterface()
         STATE.stop()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /**
+     * Promotes the control-only service to public packet forwarding.
+     *
+     * The caller is a future Android transport owner, not the UI. It may call this only after its
+     * loopback SOCKS endpoint is transport-ready and its real network sockets use
+     * [prepareTransportSocket]. If activation fails, the narrow control TUN is restored.
+     */
+    internal fun activatePublicForwarding(localSocksPort: Int, safeInitialMtu: Int): Boolean {
+        if (STATE.state != VpnControllerState.SERVICE_READY) return false
+
+        closeInterface()
+        val started = try {
+            publicTunnelOwner.start(AndroidPublicTunnelConfig(localSocksPort, safeInitialMtu))
+        } catch (_: Exception) {
+            false
+        }
+        if (started) return true
+
+        controlInterface = establishControlInterface()
+        if (controlInterface == null) STATE.fail()
+        return false
+    }
+
+    internal fun deactivatePublicForwarding(): Boolean {
+        stopPublicForwarding()
+        if (STATE.state != VpnControllerState.SERVICE_READY) return false
+        if (controlInterface != null) return true
+        controlInterface = establishControlInterface()
+        if (controlInterface == null) {
+            STATE.fail()
+            return false
+        }
+        return true
+    }
+
+    internal fun isPublicForwardingActive(): Boolean =
+        publicTunnelOwner.isRunning()
+
+    private fun establishControlInterface(): ParcelFileDescriptor? =
+        try {
+            // This narrow control-only interface proves VpnService ownership without capturing
+            // public traffic before a real transport adapter is ready.
+            Builder()
+                .setSession(getString(R.string.app_name))
+                .setMtu(1500)
+                .addAddress(CONTROL_ADDRESS, 32)
+                .addRoute(CONTROL_ADDRESS, 32)
+                .setBlocking(false)
+                .establish()
+        } catch (_: Exception) {
+            null
+        }
+
+    private fun stopPublicForwarding() {
+        if (publicTunnelOwner.isRunning()) {
+            publicTunnelOwner.stop()
+        } else {
+            // stop() is idempotent and also closes a TUN left behind by a failed native worker.
+            publicTunnelOwner.stop()
+        }
     }
 
     private fun closeInterface() {
