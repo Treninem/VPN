@@ -119,10 +119,11 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
                 }
 
                 send_state(&events, TransportUiState::Connecting);
+                let node_name = node.display_name.clone();
                 match connect_node(node, executable, local_port) {
                     Ok(transport) => {
                         let state = TransportUiState::Ready {
-                            node_name: transport.session.node_fingerprint.clone(),
+                            node_name,
                             node_fingerprint: transport.session.node_fingerprint.clone(),
                             local_port,
                         };
@@ -167,7 +168,6 @@ fn connect_node(
         return Err("sing-box executable was not found".into());
     }
 
-    let node_name = node.display_name.clone();
     let request = materialize_connect_request(
         node,
         BOOTSTRAP_ROUTE_ID,
@@ -186,7 +186,6 @@ fn connect_node(
         .map_err(|error| error.to_string())?;
 
     let session = manager.connect(request).map_err(|error| error.to_string())?;
-    let _ = node_name;
     Ok(ActiveTransport { manager, session })
 }
 
