@@ -154,6 +154,16 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Runtime/Route Proof теперь может использовать подтверждённую transport identity, а не предположение вызывающего кода.
 - Тест покрывает rollback ложной node identity.
 
+## 2026-09-15 — Windows transport bootstrap
+
+- Windows UI импортирует набор VLESS/Trojan/Shadowsocks/Hysteria2 URI и позволяет выбрать materialized node.
+- Реальный connect/disconnect выполняется в отдельном worker thread и не блокирует eframe.
+- sing-box может задаваться путём или разрешаться через `PATH`; config передаётся через уже проверенную stdin boundary.
+- UI получает только readiness-confirmed session и показывает credential-free fingerprint.
+- Показатель защиты остаётся выключенным до system packet forwarding, DNS protection и kill-switch enforcement.
+- После импорта исходное поле очищается; Drop external-core adapter останавливает все tracked processes.
+- Добавлены worker security/lifecycle tests и `docs/WINDOWS_TRANSPORT.md`.
+
 # CURRENT STATE
 
 - Rust workspace компилируется и проходит unit-тесты.
@@ -164,7 +174,7 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool и micro-race реализованы.
 - Probe/race результаты реально влияют на dynamic quarantine и stable route decision через `amri-runtime`.
 - `TransportManager` имеет multi-session lifecycle, make-before-break replacement и fail-closed проверку executed node identity.
-- Есть безопасная external-core process boundary, loopback readiness gate и первый sing-box renderer для VLESS/Trojan/Shadowsocks/Hysteria2.
+- Windows UI подключён к безопасной external-core boundary: импорт URI, async connect/disconnect и loopback readiness для VLESS/Trojan/Shadowsocks/Hysteria2.
 - Windows secret persistence защищена DPAPI.
 - Public traffic через Windows/Android пока НЕ проходит через полноценный AMRI VPN tunnel.
 - Android намеренно остаётся control-only до рабочего packet forwarding.
@@ -172,7 +182,7 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 # NEXT PRIORITIES
 
 1. Добавить Android Keystore adapter для того же installation key.
-2. Собрать первый Windows end-to-end connect поверх readiness-gated transport. `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
+2. Добавить Windows packet forwarding/system proxy boundary, DNS protection и подтверждение public tunnel поверх готового transport bootstrap.
 3. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess.
 4. Реализовать Windows packet forwarding/TUN/WFP + DNS protection.
 5. Реализовать Android Rust FFI + production packet forwarding.
@@ -183,7 +193,7 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Нет полноценного public packet forwarding, поэтому текущий проект ещё не является готовым пользовательским VPN end-to-end.
 - sing-box binary намеренно не поставляется вместе с проектом.
 - Loopback readiness подтверждает работающий local inbound, но ещё не доказывает прохождение public traffic через туннель.
-- `ImportedNode.raw_uri` всё ещё существует как обычный `String` после импорта: Debug уже безопасен, но нужен typed conversion + минимизация plaintext lifetime.
+- `ImportedNode.raw_uri` всё ещё существует как обычный `String` внутри импортированного пула: поле вставки очищается, но нужна encrypted persistence и минимизация plaintext lifetime.
 - Android secure persistence через Keystore ещё не реализован.
 - TUIC/WireGuard/VMess ещё не подключены к production renderer из-за более сложной credential-модели.
 - Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
@@ -202,3 +212,4 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - UI может показывать защищённое состояние только после подтверждённых transport + packet forwarding.
 - Внешний core считается `Connected` только после process + loopback readiness; любой startup failure очищает новый process до handoff.
 - Transport-confirmed node fingerprint является единственным допустимым node id для executed Route Proof.
+- UI worker не управляет route scoring: он исполняет выбранный node; автоматический selector подключается перед command handoff.
