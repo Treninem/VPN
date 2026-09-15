@@ -130,11 +130,20 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Реализованы очистка конкретного destination token и полный сброс.
 - Тесты покрывают CSPRNG key reuse, bad key length, persistence/reopen, tampering, broken continuation и selective delete.
 
+
+## 2026-09-15 — Proof только выполненного transition
+
+- amri-runtime формирует Route Proof evidence из effective candidates после dynamic quarantine.
+- Кандидаты сортируются детерминированно; quarantined node остаётся в evidence с нулевым score.
+- Proof создаётся только после подтверждённого transport handoff.
+- Явная сверка executed node с решением AMRI блокирует запись несостоявшегося переключения.
+- Тесты покрывают valid proof, отсутствие raw destination, mismatch transport и quarantine evidence.
+
 # CURRENT STATE
 
 - Rust workspace компилируется и проходит unit-тесты.
 - Route Proof и instant Shadow Race burst реализованы в общем ядре.
-- Route Proof key проходит через SecretStore, а verified receipts сохраняются в SQLite per destination.
+- Route Proof key проходит через SecretStore, verified receipts сохраняются в SQLite per destination и формируются из выполненного runtime transition.
 - Основной UI локализован на 9 языков; Android поддерживает RTL.
 - Android app компилируется, unit-тесты проходят, debug APK собирается.
 - Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool и micro-race реализованы.
@@ -147,13 +156,12 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 
 # NEXT PRIORITIES
 
-1. Подключить сохранение Route Proof к реальным решениям amri-runtime.
-2. Добавить Android Keystore adapter для того же installation key.
-3. Усилить external-core readiness и первый Windows end-to-end connect. `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
-4. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess.
-5. Реализовать Windows packet forwarding/TUN/WFP + DNS protection.
-6. Реализовать Android Rust FFI + production packet forwarding.
-7. Добавить end-to-end integration tests и только затем per-domain/process routing.
+1. Добавить Android Keystore adapter для того же installation key.
+2. Усилить external-core readiness и первый Windows end-to-end connect. `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
+3. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess.
+4. Реализовать Windows packet forwarding/TUN/WFP + DNS protection.
+5. Реализовать Android Rust FFI + production packet forwarding.
+6. Добавить end-to-end integration tests и только затем per-domain/process routing.
 
 # KNOWN ISSUES
 

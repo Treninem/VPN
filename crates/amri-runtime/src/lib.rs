@@ -1,8 +1,11 @@
 use amri_core::{
-    build_hot_pool, CircuitBreakerPolicy, HotPoolEntry, HotPoolPolicy, NodeId, RouteCandidate,
-    RouteHealthState, RouteHealthTracker, RouteSelector, RouteTransitionDecision, SelectionPolicy,
-    TrafficClass,
+    build_hot_pool, score_candidate, CandidateEvidence, CircuitBreakerPolicy, DestinationKey,
+    HotPoolEntry, HotPoolPolicy, NodeId, RouteCandidate, RouteHealthState, RouteHealthTracker,
+    RouteProof, RouteProofChain, RouteSelector, RouteTransitionDecision, ScoringProfile,
+    SelectionPolicy, TrafficClass,
 };
+use chrono::{DateTime, Utc};
+use thiserror::Error;
 use amri_probe::{ProbeAttemptOutcome, ProbeRaceOutcome};
 
 #[derive(Debug, Clone, Copy)]
@@ -27,6 +30,15 @@ pub struct RouteHealthUpdate {
     pub node_id: NodeId,
     pub state: RouteHealthState,
     pub success: bool,
+}
+
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum RouteProofRecordingError {
+    #[error("executed transport node differs from the AMRI decision")]
+    ExecutedRouteMismatch,
+    #[error("selected node has no score evidence in the evaluated candidate set")]
+    MissingSelectedEvidence,
 }
 
 /// Runtime coordinator between measurements and route decisions.
@@ -135,6 +147,53 @@ impl RouteRuntime {
     ) -> Option<RouteTransitionDecision> {
         self.record_probe_race(outcome, now_ms);
         self.select_stable(candidates, traffic, current_node_id, now_ms)
+    }
+
+
+    /// Creates a proof only after the application confirms the transport handoff.
+    ///
+    /// Calling this for a proposed but failed switch is a contract violation. The explicit
+    /// executed node check prevents a failed target from being recorded as a successful route.
+    pub fn prove_executed_transition(
+        &self,
+        chain: &mut RouteProofChain,
+        destination: &DestinationKey,
+        candidates: &[RouteCandidate],
+        traffic: TrafficClass,
+        transition: &RouteTransitionDecision,
+        executed_node_id: &str,
+        now_ms: u64,
+        created_at: DateTime<Utc>,
+    ) -> Result<RouteProof, RouteProofRecordingError> {
+        if transition.decision.selected_node_id != executed_node_id {
+            return Err(RouteProofRecordingError::ExecutedRouteMismatch);
+        }
+
+        let effective = self.effective_candidates(candidates, now_ms);
+        let profile = ScoringProfile::for_traffic(traffic);
+        let mut evidence: Vec<CandidateEvidence> = effective
+            .iter()
+            .map(|candidate| {
+                let score = score_candidate(candidate, profile);
+                CandidateEvidence::from_breakdown(candidate.node_id.0.clone(), &score)
+            })
+            .collect();
+        evidence.sort_by(|left, right| left.node_id.cmp(&right.node_id));
+
+        if !evidence
+            .iter()
+            .any(|item| item.node_id == transition.decision.selected_node_id)
+        {
+            return Err(RouteProofRecordingError::MissingSelectedEvidence);
+        }
+
+        Ok(chain.append(
+            destination,
+            transition.decision.selected_node_id.clone(),
+            transition.decision.reason.clone(),
+            evidence,
+            created_at,
+        ))
     }
 
     pub fn is_quarantined(&self, node_id: &NodeId, now_ms: u64) -> bool {
@@ -324,6 +383,110 @@ mod tests {
 
         assert_eq!(decision.action, RouteTransitionAction::Switch);
         assert_eq!(decision.decision.selected_node_id, "reserve");
+    }
+
+
+    #[test]
+    fn executed_transition_creates_verifiable_proof_with_all_candidates() {
+        let current = candidate("current", "provider-a", 0.8);
+        let winner = candidate("winner", "provider-b", 1.2);
+        let runtime = RouteRuntime::default();
+        let candidates = vec![current, winner];
+        let transition = runtime
+            .select_stable(&candidates, TrafficClass::Web, Some("current"), 500)
+            .unwrap();
+        let destination = DestinationKey {
+            host: "private.example".into(),
+            process: Some("browser.exe".into()),
+        };
+        let mut chain = RouteProofChain::new([7; 32]);
+
+        let proof = runtime
+            .prove_executed_transition(
+                &mut chain,
+                &destination,
+                &candidates,
+                TrafficClass::Web,
+                &transition,
+                &transition.decision.selected_node_id,
+                500,
+                Utc::now(),
+            )
+            .unwrap();
+
+        assert_eq!(proof.selected_node_id, transition.decision.selected_node_id);
+        assert_eq!(proof.evidence.len(), 2);
+        assert!(chain.verify(&proof).is_ok());
+        let json = serde_json::to_string(&proof).unwrap();
+        assert!(!json.contains("private.example"));
+        assert!(!json.contains("browser.exe"));
+    }
+
+    #[test]
+    fn failed_transport_target_cannot_be_recorded_as_executed() {
+        let current = candidate("current", "provider-a", 0.8);
+        let winner = candidate("winner", "provider-b", 1.2);
+        let runtime = RouteRuntime::default();
+        let candidates = vec![current, winner];
+        let transition = runtime
+            .select_stable(&candidates, TrafficClass::Web, Some("current"), 500)
+            .unwrap();
+        let destination = DestinationKey {
+            host: "private.example".into(),
+            process: None,
+        };
+        let mut chain = RouteProofChain::new([7; 32]);
+
+        assert_eq!(
+            runtime.prove_executed_transition(
+                &mut chain,
+                &destination,
+                &candidates,
+                TrafficClass::Web,
+                &transition,
+                "transport-that-actually-remained-active",
+                500,
+                Utc::now(),
+            ),
+            Err(RouteProofRecordingError::ExecutedRouteMismatch)
+        );
+    }
+
+    #[test]
+    fn quarantined_candidate_is_preserved_as_zero_score_evidence() {
+        let selected = candidate("selected", "provider-a", 1.0);
+        let quarantined = candidate("quarantined", "provider-b", 1.2);
+        let mut runtime = runtime_with_one_failure_quarantine();
+        runtime.record_failure(&quarantined.node_id, 100);
+        let candidates = vec![selected, quarantined];
+        let transition = runtime
+            .select_stable(&candidates, TrafficClass::Web, None, 200)
+            .unwrap();
+        let mut chain = RouteProofChain::new([3; 32]);
+
+        let proof = runtime
+            .prove_executed_transition(
+                &mut chain,
+                &DestinationKey {
+                    host: "example.test".into(),
+                    process: None,
+                },
+                &candidates,
+                TrafficClass::Web,
+                &transition,
+                &transition.decision.selected_node_id,
+                200,
+                Utc::now(),
+            )
+            .unwrap();
+
+        let rejected = proof
+            .evidence
+            .iter()
+            .find(|item| item.node_id == "quarantined")
+            .unwrap();
+        assert_eq!(rejected.score, 0.0);
+        assert_eq!(rejected.confidence, 0.0);
     }
 
     #[test]

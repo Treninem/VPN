@@ -68,3 +68,16 @@ Runtime хранит только техническое состояние ма
 После этого этапа AMRI умеет последовательно преобразовывать результаты быстрых проверок в quarantine/hot-pool/hysteresis decision. Следующий большой блок — production transport adapter и безопасное получение его конфигурации/секретов.
 
 Public packet forwarding всё ещё намеренно не включается до появления проверенного transport path. Android control-only TUN остаётся защитой от blackhole, а Windows packet-routing layer ещё предстоит подключить.
+
+
+## Route Proof handoff contract
+
+Application order is strict:
+
+1. runtime proposes RouteTransitionDecision;
+2. TransportManager completes connect/replace;
+3. packet routing confirms the executed node;
+4. prove_executed_transition checks the executed node and creates evidence;
+5. LocalStore inserts the verified receipt.
+
+A failed transport target must never be recorded as executed. Dynamic quarantine remains visible as zero-score evidence so the “Почему?” screen can explain excluded candidates.
