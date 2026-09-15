@@ -40,6 +40,7 @@ val buildAmriRustNative by tasks.registering(org.gradle.api.tasks.Exec::class) {
 
     onlyIf { enabled.get() }
     workingDir(amriRustWorkspace.asFile)
+    environment("CARGO_NDK_PLATFORM", "26")
 
     doFirst {
         val outputDir = generatedAmriNativeLibs.get().asFile
@@ -48,8 +49,6 @@ val buildAmriRustNative by tasks.registering(org.gradle.api.tasks.Exec::class) {
         commandLine(
             "cargo",
             "ndk",
-            "-p",
-            "26",
             "-t",
             "arm64-v8a",
             "-t",
