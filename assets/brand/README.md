@@ -22,3 +22,5 @@ The next implementation chat must wire these files into both Windows and Android
 - `copy-button.svg` — скопировать не секретное значение; не использовать для ключей без явного подтверждения.
 - `info-button.svg` — показать объяснение настройки или статуса.
 - `more-button.svg` — открыть вторичные действия.
+
+- `language-button.svg` — открыть выбор языка интерфейса; язык меняется локально и не влияет на VPN-подписки.
