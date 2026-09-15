@@ -90,6 +90,7 @@ struct AmriApp {
     subscription_input: String,
     imported_nodes: Vec<ImportedNode>,
     selected_node: usize,
+    editing_node: Option<usize>,
     core_path: String,
     local_port: String,
     smart_routing: bool,
@@ -133,6 +134,7 @@ impl AmriApp {
             subscription_input: String::new(),
             imported_nodes: Vec::new(),
             selected_node: 0,
+            editing_node: None,
             core_path: std::env::var("AMRI_SING_BOX_PATH")
                 .unwrap_or_else(|_| "sing-box.exe".into()),
             local_port: "20800".into(),
@@ -158,15 +160,40 @@ impl AmriApp {
     }
 
     fn import_subscription_text(&mut self) {
-        self.imported_nodes = parse_subscription_text("windows-manual", &self.subscription_input);
-        self.subscription_input.clear();
-        self.selected_node = 0;
-        if self.imported_nodes.is_empty() {
+        let parsed = parse_subscription_text("windows-manual", &self.subscription_input);
+        if parsed.is_empty() {
             self.transport_state =
                 TransportUiState::Failed("no supported VPN nodes were found".into());
-        } else if matches!(&self.transport_state, TransportUiState::Failed(_)) {
+            return;
+        }
+
+        if let Some(index) = self.editing_node {
+            if parsed.len() != 1 || index >= self.imported_nodes.len() {
+                self.transport_state = TransportUiState::Failed(
+                    "editing requires exactly one supported VPN node link".into(),
+                );
+                return;
+            }
+            self.imported_nodes[index] = parsed.into_iter().next().expect("one parsed node");
+            self.selected_node = index;
+            self.editing_node = None;
+        } else {
+            self.imported_nodes = parsed;
+            self.selected_node = 0;
+        }
+
+        self.subscription_input.clear();
+        if matches!(&self.transport_state, TransportUiState::Failed(_)) {
             self.transport_state = TransportUiState::Idle;
         }
+    }
+
+    fn begin_edit_selected_node(&mut self) {
+        let Some(node) = self.imported_nodes.get(self.selected_node) else {
+            return;
+        };
+        self.subscription_input = node.raw_uri.clone();
+        self.editing_node = Some(self.selected_node);
     }
 
     fn start_transport(&mut self) {
@@ -553,6 +580,13 @@ impl AmriApp {
                 self.import_subscription_text();
             }
             ui.label(RichText::new(import_label).strong());
+            if self.editing_node.is_some() {
+                ui.label(
+                    RichText::new("Editing selected node locally")
+                        .size(12.0)
+                        .color(Color32::from_rgb(115, 225, 240)),
+                );
+            }
         });
 
         ui.add_space(12.0);
@@ -579,6 +613,26 @@ impl AmriApp {
                         );
                     }
                 });
+
+            let edit_clicked = ui
+                .horizontal(|ui| {
+                    let response = brand_button(
+                        ui,
+                        egui::include_image!("../../../assets/brand/edit-button.svg"),
+                        42.0,
+                        "Edit selected node",
+                    );
+                    ui.label(
+                        RichText::new("Edit")
+                            .size(12.0)
+                            .color(Color32::from_gray(170)),
+                    );
+                    response.clicked()
+                })
+                .inner;
+            if edit_clicked {
+                self.begin_edit_selected_node();
+            }
         }
 
         ui.add_space(12.0);
