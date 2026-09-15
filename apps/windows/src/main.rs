@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod transport_worker;
+mod theme;
 
 use amri_core::{
     evaluate_protection, ui_text, Language, ProtectionSignals, ProtectionState, UiMessage,
@@ -111,20 +112,23 @@ impl AmriApp {
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
         let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = Color32::from_rgb(13, 16, 22);
-        visuals.window_fill = Color32::from_rgb(19, 23, 31);
-        visuals.extreme_bg_color = Color32::from_rgb(10, 12, 17);
-        visuals.faint_bg_color = Color32::from_rgb(24, 29, 39);
-        visuals.selection.bg_fill = Color32::from_rgb(67, 104, 255);
-        visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(12);
-        visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(12);
-        visuals.widgets.active.corner_radius = egui::CornerRadius::same(12);
-        visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(12);
+        visuals.panel_fill = theme::PANEL;
+        visuals.window_fill = theme::WINDOW;
+        visuals.extreme_bg_color = theme::BACKDROP;
+        visuals.faint_bg_color = theme::SURFACE_MUTED;
+        visuals.selection.bg_fill = theme::ACCENT;
+        visuals.widgets.inactive.corner_radius =
+            egui::CornerRadius::same(theme::CONTROL_RADIUS);
+        visuals.widgets.hovered.corner_radius =
+            egui::CornerRadius::same(theme::CONTROL_RADIUS);
+        visuals.widgets.active.corner_radius = egui::CornerRadius::same(theme::CONTROL_RADIUS);
+        visuals.widgets.noninteractive.corner_radius =
+            egui::CornerRadius::same(theme::CONTROL_RADIUS);
         cc.egui_ctx.set_visuals(visuals);
 
         let mut style = (*cc.egui_ctx.style_of(egui::Theme::Dark)).clone();
-        style.spacing.item_spacing = Vec2::new(12.0, 12.0);
-        style.spacing.button_padding = Vec2::new(16.0, 10.0);
+        style.spacing.item_spacing = theme::item_spacing();
+        style.spacing.button_padding = theme::button_padding();
         cc.egui_ctx.set_style_of(egui::Theme::Dark, style);
 
         let language = std::env::var("LANG")
@@ -423,9 +427,9 @@ impl AmriApp {
 
     fn metric_card(ui: &mut egui::Ui, title: &str, value: &str, subtitle: &str) {
         egui::Frame::new()
-            .fill(Color32::from_rgb(22, 27, 36))
-            .corner_radius(18)
-            .inner_margin(18)
+            .fill(theme::SURFACE)
+            .corner_radius(theme::CARD_RADIUS)
+            .inner_margin(theme::CARD_MARGIN)
             .show(ui, |ui| {
                 ui.set_min_width(180.0);
                 ui.label(
@@ -453,9 +457,9 @@ impl AmriApp {
         ui.add_space(18.0);
 
         egui::Frame::new()
-            .fill(Color32::from_rgb(24, 31, 44))
-            .corner_radius(24)
-            .inner_margin(24)
+            .fill(theme::HERO_SURFACE)
+            .corner_radius(theme::HERO_RADIUS)
+            .inner_margin(theme::HERO_MARGIN)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {

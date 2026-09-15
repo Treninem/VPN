@@ -78,7 +78,7 @@ class MainActivity : Activity() {
 
     private fun buildContent(): View {
         val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(3, 8, 18))
+            setBackgroundColor(AmriTheme.backgroundColor)
         }
 
         val background = svgImageView(R.raw.amri_background_mobile).apply {
@@ -90,7 +90,12 @@ class MainActivity : Activity() {
 
         val foreground = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(22), dp(22), dp(28))
+            setPadding(
+                dp(AmriTheme.screenPaddingHorizontal),
+                dp(AmriTheme.screenPaddingTop),
+                dp(AmriTheme.screenPaddingHorizontal),
+                dp(AmriTheme.screenPaddingBottom),
+            )
         }
 
         val header = LinearLayout(this).apply {
@@ -104,7 +109,7 @@ class MainActivity : Activity() {
                 text(
                     getString(R.string.product_subtitle),
                     14f,
-                    Color.rgb(145, 153, 170),
+                    AmriTheme.mutedTextColor,
                     false,
                 ),
             )
@@ -117,7 +122,10 @@ class MainActivity : Activity() {
         ).apply {
             setOnClickListener { showLanguageDialog() }
         }
-        header.addView(languageButton, LinearLayout.LayoutParams(dp(46), dp(46)))
+        header.addView(
+            languageButton,
+            LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)),
+        )
 
         val settingsButton = svgIconButton(
             R.raw.amri_settings_button,
@@ -127,7 +135,10 @@ class MainActivity : Activity() {
         }
         header.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+            LinearLayout.LayoutParams(
+                dp(AmriTheme.iconButtonSize),
+                dp(AmriTheme.iconButtonSize),
+            ).apply {
                 marginStart = dp(8)
             },
         )
@@ -145,9 +156,9 @@ class MainActivity : Activity() {
 
         val protectionCard = card().apply {
             status = text("", 25f, Color.WHITE, true)
-            detail = text("", 14f, Color.rgb(165, 173, 190), false)
+            detail = text("", 14f, AmriTheme.detailTextColor, false)
             actionButton = svgPowerButton()
-            actionLabel = text("", 14f, Color.rgb(205, 225, 245), true).apply {
+            actionLabel = text("", 14f, AmriTheme.actionTextColor, true).apply {
                 gravity = Gravity.CENTER
             }
             addView(status)
@@ -156,7 +167,10 @@ class MainActivity : Activity() {
             addView(space(16))
             addView(
                 actionButton,
-                LinearLayout.LayoutParams(dp(124), dp(124)).apply {
+                LinearLayout.LayoutParams(
+                    dp(AmriTheme.powerButtonSize),
+                    dp(AmriTheme.powerButtonSize),
+                ).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
                 },
             )
@@ -229,7 +243,7 @@ class MainActivity : Activity() {
                 isAllCaps = false
                 setTextColor(Color.WHITE)
                 backgroundTintList = ColorStateList.valueOf(
-                    if (index == 0) Color.rgb(67, 104, 255) else Color.rgb(34, 40, 52),
+                    if (index == 0) AmriTheme.accentColor else AmriTheme.inactiveControlColor,
                 )
             })
         }
@@ -248,7 +262,7 @@ class MainActivity : Activity() {
             val labels = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(text(title, 16f, Color.WHITE, true))
-                addView(text(subtitle, 12f, Color.rgb(145, 153, 170), false))
+                addView(text(subtitle, 12f, AmriTheme.mutedTextColor, false))
             }
             row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(Switch(this@MainActivity).apply { isChecked = enabled })
@@ -392,12 +406,12 @@ class MainActivity : Activity() {
         target.setImageDrawable(PictureDrawable(svg.renderToPicture()))
     }
 
-    private fun card(padding: Int = 22): LinearLayout = LinearLayout(this).apply {
+    private fun card(padding: Int = AmriTheme.cardPadding): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(padding), dp(padding), dp(padding), dp(padding))
         background = GradientDrawable().apply {
-            setColor(Color.argb(238, 24, 30, 41))
-            cornerRadius = dp(22).toFloat()
+            setColor(AmriTheme.cardColor)
+            cornerRadius = dp(AmriTheme.cardRadius).toFloat()
         }
     }
 
