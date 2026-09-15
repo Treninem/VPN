@@ -81,7 +81,7 @@ impl WindowsSystemForwardingConfig {
         if !(MIN_MTU..=MAX_MTU).contains(&mtu) {
             return Err("Windows TUN MTU must be between 1280 and 1500".into());
         }
-        let bypass_ips = bypass_ips
+        let bypass_ips: Vec<IpAddr> = bypass_ips
             .into_iter()
             .collect::<BTreeSet<_>>()
             .into_iter()
