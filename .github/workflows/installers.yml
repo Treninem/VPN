@@ -71,7 +71,6 @@ jobs:
       - name: Install pinned cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
       - name: Verify assets and generated theme
-        working-directory: .
         run: |
           python3 ../../scripts/verify_visual_assets.py
           python3 ../../scripts/generate_ui_theme.py --check
