@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Назад"><defs><radialGradient id="a"><stop stop-color="#173d79"/><stop offset=".7" stop-color="#081a3e"/><stop offset="1" stop-color="#030914"/></radialGradient><linearGradient id="b" x1=".15" y1=".9" x2=".85" y2=".1"><stop stop-color="#1478ff"/><stop offset=".5" stop-color="#10d8ee"/><stop offset="1" stop-color="#b8feff"/></linearGradient><filter id="g"><feGaussianBlur stdDeviation="9"/></filter></defs><circle cx="256" cy="256" r="186" fill="#08c8ec" opacity=".18" filter="url(#g)"/><circle cx="256" cy="256" r="174" fill="url(#a)" stroke="#4ab9f8" stroke-opacity=".62" stroke-width="8"/><path d="M292 138 174 256l118 118M184 256h154" fill="none" stroke="url(#b)" stroke-linecap="round" stroke-linejoin="round" stroke-width="29"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Назад">
+  <defs>
+    <radialGradient id="bg" cx="0" cy="0" r="1" gradientTransform="translate(212 174) rotate(52) scale(270)"><stop stop-color="#123E83"/><stop offset="0.55" stop-color="#071D47"/><stop offset="1" stop-color="#020A1A"/></radialGradient>
+    <linearGradient id="g" x1="150" y1="365" x2="365" y2="145" gradientUnits="userSpaceOnUse"><stop stop-color="#0757F1"/><stop offset="0.46" stop-color="#0BA9FF"/><stop offset="0.76" stop-color="#23E1F5"/><stop offset="1" stop-color="#C8FDFF"/></linearGradient>
+    <linearGradient id="edge" x1="140" y1="382" x2="378" y2="134" gradientUnits="userSpaceOnUse"><stop stop-color="#1877FF"/><stop offset="0.55" stop-color="#52ECFF"/><stop offset="1" stop-color="#F4FFFF"/></linearGradient>
+    <filter id="glow" x="-18%" y="-18%" width="136%" height="136%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <circle cx="256" cy="256" r="168" fill="url(#bg)" stroke="url(#edge)" stroke-width="10"/>
+  <circle cx="256" cy="256" r="144" fill="none" stroke="#56E9FF" stroke-opacity="0.20" stroke-width="4"/>
+  <path d="M286 170L200 256L286 342M204 256H350" fill="none" stroke="url(#g)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M149 166C178 134 215 118 255 118" fill="none" stroke="#F3FFFF" stroke-opacity="0.28" stroke-width="8" stroke-linecap="round"/>
+</svg>
