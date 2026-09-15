@@ -36,3 +36,13 @@ AMRI VPN — Windows-first VPN-клиент с локальным адаптив
 ## Статус
 
 Проект находится в активной разработке.
+
+
+### AMRI Route Proof
+
+The shared Rust core can produce privacy-safe, tamper-evident local receipts for routing decisions. Raw destination and process identity are replaced by an installation-keyed pseudonym; receipts are hash-linked and can be verified or replayed locally for the “Почему?” screen.
+
+
+### Interface languages
+
+The shared catalog supports English, Russian, Spanish, Portuguese, French, German, Simplified Chinese, Hindi and Arabic. Windows exposes an in-app language selector; Android uses localized resources and the system locale with RTL support.

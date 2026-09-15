@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN</string>
+    <string name="notification_ready">El servicio VPN está listo</string>
+    <string name="product_subtitle">VPN adaptativa de múltiples rutas</string>
+    <string name="mode">Modo</string>
+    <string name="smart_routing">Enrutamiento inteligente</string>
+    <string name="smart_routing_description">La mejor ruta para cada destino</string>
+    <string name="dns_protection">Protección DNS</string>
+    <string name="dns_protection_description">Enviar DNS por la ruta protegida seleccionada</string>
+    <string name="kill_switch">Interruptor de seguridad</string>
+    <string name="kill_switch_description">Bloquear tráfico protegido si se pierde la ruta VPN</string>
+    <string name="local_learning">Aprendizaje local</string>
+    <string name="local_learning_description">El historial permanece solo en este dispositivo</string>
+    <string name="federated_learning">Aprendizaje compartido anónimo</string>
+    <string name="federated_learning_description">Desactivado por defecto</string>
+    <string name="status_service_ready">El servicio VPN está listo</string>
+    <string name="detail_service_ready">El tráfico público no se captura hasta conectar un transporte protegido</string>
+    <string name="stop">Detener</string>
+    <string name="status_preparing">Preparando…</string>
+    <string name="detail_preparing">Android está creando una interfaz protegida</string>
+    <string name="wait">Espere</string>
+    <string name="status_failed">Falló la preparación de VPN</string>
+    <string name="detail_failed">No se creó la interfaz; la red normal no cambió</string>
+    <string name="retry">Reintentar</string>
+    <string name="status_off">Protección desactivada</string>
+    <string name="detail_off">Preparar VpnService para el transporte AMRI</string>
+    <string name="prepare_vpn">Preparar VPN</string>
+    <string-array name="vpn_modes">
+        <item>Smart</item>
+        <item>Velocidad</item>
+        <item>Ping</item>
+        <item>Privacidad</item>
+        <item>Streaming</item>
+        <item>Juegos</item>
+        <item>Manual</item>
+    </string-array>
+</resources>

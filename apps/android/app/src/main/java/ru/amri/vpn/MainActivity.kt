@@ -55,7 +55,7 @@ class MainActivity : Activity() {
         }
 
         root.addView(text("AMRI", 30f, Color.WHITE, true))
-        root.addView(text("Adaptive multi-route VPN", 14f, Color.rgb(145, 153, 170), false))
+        root.addView(text(getString(R.string.product_subtitle), 14f, Color.rgb(145, 153, 170), false))
         root.addView(space(24))
 
         val scroll = ScrollView(this)
@@ -75,19 +75,19 @@ class MainActivity : Activity() {
         }
         content.addView(protectionCard)
         content.addView(space(18))
-        content.addView(text("Режим", 19f, Color.WHITE, true))
+        content.addView(text(getString(R.string.mode), 19f, Color.WHITE, true))
         content.addView(space(10))
         content.addView(modeSelector())
         content.addView(space(18))
-        content.addView(toggleCard("Smart Routing", "Отдельный лучший маршрут для каждого назначения", true))
+        content.addView(toggleCard(getString(R.string.smart_routing), getString(R.string.smart_routing_description), true))
         content.addView(space(10))
-        content.addView(toggleCard("DNS protection", "DNS будет направляться через выбранный защищённый маршрут", true))
+        content.addView(toggleCard(getString(R.string.dns_protection), getString(R.string.dns_protection_description), true))
         content.addView(space(10))
-        content.addView(toggleCard("Kill Switch", "Блокировка защищаемого трафика при потере маршрута", true))
+        content.addView(toggleCard(getString(R.string.kill_switch), getString(R.string.kill_switch_description), true))
         content.addView(space(10))
-        content.addView(toggleCard("Локальное обучение", "История решений остаётся только на устройстве", true))
+        content.addView(toggleCard(getString(R.string.local_learning), getString(R.string.local_learning_description), true))
         content.addView(space(10))
-        content.addView(toggleCard("Обмен обезличенным опытом", "Выключен по умолчанию", false))
+        content.addView(toggleCard(getString(R.string.federated_learning), getString(R.string.federated_learning_description), false))
 
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -96,7 +96,7 @@ class MainActivity : Activity() {
 
     private fun modeSelector(): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("Smart", "Speed", "Ping", "Privacy", "Streaming", "Gaming", "Manual").forEachIndexed { index, label ->
+        resources.getStringArray(R.array.vpn_modes).toList().forEachIndexed { index, label ->
             row.addView(Button(this).apply {
                 text = label
                 isAllCaps = false
@@ -156,28 +156,28 @@ class MainActivity : Activity() {
         if (!::status.isInitialized) return
         when (AmriVpnService.STATE.state) {
             VpnControllerState.SERVICE_READY -> {
-                status.text = "VPN-служба готова"
-                detail.text = "Android VpnService активен; публичный трафик не перехватывается до подключения transport adapter"
-                actionButton.text = "Остановить"
+                status.text = getString(R.string.status_service_ready)
+                detail.text = getString(R.string.detail_service_ready)
+                actionButton.text = getString(R.string.stop)
                 actionButton.setOnClickListener { stopController() }
             }
             VpnControllerState.PREPARING -> {
-                status.text = "Подготовка…"
-                detail.text = "Android создаёт защищённый системный интерфейс"
-                actionButton.text = "Подождите"
+                status.text = getString(R.string.status_preparing)
+                detail.text = getString(R.string.detail_preparing)
+                actionButton.text = getString(R.string.wait)
                 actionButton.isEnabled = false
             }
             VpnControllerState.FAILED -> {
-                status.text = "Не удалось подготовить VPN"
-                detail.text = "Системный интерфейс не был создан; обычная сеть не затронута"
-                actionButton.text = "Повторить"
+                status.text = getString(R.string.status_failed)
+                detail.text = getString(R.string.detail_failed)
+                actionButton.text = getString(R.string.retry)
                 actionButton.isEnabled = true
                 actionButton.setOnClickListener { requestVpnStart() }
             }
             else -> {
-                status.text = "Защита выключена"
-                detail.text = "Подготовить Android VpnService для подключения AMRI transport"
-                actionButton.text = "Подготовить VPN"
+                status.text = getString(R.string.status_off)
+                detail.text = getString(R.string.detail_off)
+                actionButton.text = getString(R.string.prepare_vpn)
                 actionButton.isEnabled = true
                 actionButton.setOnClickListener { requestVpnStart() }
             }
