@@ -167,10 +167,6 @@ fn connect_node(
     executable: PathBuf,
     local_port: u16,
 ) -> Result<ActiveTransport, String> {
-    if !executable.is_file() {
-        return Err("sing-box executable was not found".into());
-    }
-
     let request = materialize_connect_request(
         node,
         BOOTSTRAP_ROUTE_ID,
@@ -226,6 +222,6 @@ mod tests {
             .unwrap();
 
         assert!(!error.contains("private-password"));
-        assert!(error.contains("not found"));
+        assert!(error.contains("failed to start"));
     }
 }
