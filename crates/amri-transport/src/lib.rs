@@ -560,7 +560,7 @@ mod tests {
             calls.lock().unwrap().events,
             [
                 "connect:video:wrong-node-result",
-                "disconnect:video:unknown"
+                "disconnect:video:wrong-node-result"
             ]
         );
     }
