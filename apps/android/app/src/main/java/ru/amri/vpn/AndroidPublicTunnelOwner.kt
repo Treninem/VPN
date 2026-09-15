@@ -36,7 +36,7 @@ internal data class AndroidPublicTunnelReadiness(
 internal class AndroidPublicTunnelOwner(
     private val service: VpnService,
     private val nativeBridge: NativeTunnelBridge = ProductionNativeTunnelBridge,
-    private val egressVerifier: PublicEgressVerifier = NumericTcpEgressVerifier,
+    private val egressVerifier: PublicEgressVerifier = Socks5EgressVerifier,
 ) : AutoCloseable {
     private val lock = Any()
     private var tunnel: ParcelFileDescriptor? = null
@@ -80,9 +80,11 @@ internal class AndroidPublicTunnelOwner(
             return null
         }
 
-        // These sockets are deliberately NOT VpnService.protect()'ed: they must traverse the new
-        // public TUN, then tun2proxy and the confirmed SOCKS transport. Numeric endpoints avoid DNS.
-        val egressVerified = egressVerifier.verify()
+        // The AMRI package is excluded from its own public TUN so the bundled transport process
+        // can reach the real VPN server without recursively entering the TUN. Because a raw socket
+        // opened by this process would also bypass the TUN, egress must be proven THROUGH the
+        // confirmed local SOCKS transport instead of by a direct app-originated TCP probe.
+        val egressVerified = egressVerifier.verify(config.localSocksPort)
         val protectionState = try {
             nativeBridge.evaluateProtection(
                 requested = true,
@@ -157,6 +159,7 @@ internal class AndroidPublicTunnelOwner(
             .addRoute("::", 0)
             .addDnsServer(IPV4_DNS)
             .addDnsServer(IPV6_DNS)
+            .addDisallowedApplication(service.packageName)
             .setBlocking(false)
             .establish()
     } catch (_: Exception) {
@@ -232,7 +235,7 @@ internal class AndroidPublicTunnelOwner(
     }
 
     internal fun interface PublicEgressVerifier {
-        fun verify(): Boolean
+        fun verify(localSocksPort: Int): Boolean
     }
 
     private object ProductionNativeTunnelBridge : NativeTunnelBridge {
@@ -261,13 +264,48 @@ internal class AndroidPublicTunnelOwner(
         )
     }
 
-    private object NumericTcpEgressVerifier : PublicEgressVerifier {
-        override fun verify(): Boolean = boundedTcpProbe(
-            targets = EGRESS_TARGETS.map { InetSocketAddress(it, 443) }.toTypedArray(),
-            connectTimeoutMs = EGRESS_CONNECT_TIMEOUT_MS,
-            totalTimeoutMs = EGRESS_VERIFY_TIMEOUT_MS,
-            threadName = "amri-egress-verify",
-        )
+    private object Socks5EgressVerifier : PublicEgressVerifier {
+        override fun verify(localSocksPort: Int): Boolean {
+            val task = FutureTask {
+                EGRESS_TARGETS.any { target -> socks5Connect(localSocksPort, target, 443) }
+            }
+            Thread(task, "amri-socks-egress-verify").apply { isDaemon = true }.start()
+            return try {
+                task.get(EGRESS_VERIFY_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (_: Exception) {
+                task.cancel(true)
+                false
+            }
+        }
+
+        private fun socks5Connect(localPort: Int, target: ByteArray, targetPort: Int): Boolean = try {
+            Socket().use { socket ->
+                socket.soTimeout = EGRESS_CONNECT_TIMEOUT_MS
+                socket.connect(InetSocketAddress("127.0.0.1", localPort), EGRESS_CONNECT_TIMEOUT_MS)
+                val output = socket.getOutputStream()
+                val input = socket.getInputStream()
+
+                output.write(byteArrayOf(0x05, 0x01, 0x00))
+                output.flush()
+                val hello = input.readNBytes(2)
+                if (hello.size != 2 || hello[0] != 0x05.toByte() || hello[1] != 0x00.toByte()) {
+                    return false
+                }
+
+                val request = byteArrayOf(
+                    0x05, 0x01, 0x00, 0x01,
+                    target[0], target[1], target[2], target[3],
+                    ((targetPort ushr 8) and 0xff).toByte(),
+                    (targetPort and 0xff).toByte(),
+                )
+                output.write(request)
+                output.flush()
+                val reply = input.readNBytes(4)
+                reply.size == 4 && reply[0] == 0x05.toByte() && reply[1] == 0x00.toByte()
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     companion object {
@@ -275,11 +313,14 @@ internal class AndroidPublicTunnelOwner(
         private const val IPV6_TUN_ADDRESS = "fd00:616d:7269::2"
         private const val IPV4_DNS = "1.1.1.1"
         private const val IPV6_DNS = "2606:4700:4700::1111"
-        private val EGRESS_TARGETS = arrayOf("1.1.1.1", "8.8.8.8")
+        private val EGRESS_TARGETS = arrayOf(
+            byteArrayOf(1, 1, 1, 1),
+            byteArrayOf(8, 8, 8, 8),
+        )
         private const val LOOPBACK_CONNECT_TIMEOUT_MS = 250
         private const val LOOPBACK_VERIFY_TIMEOUT_MS = 600L
-        private const val EGRESS_CONNECT_TIMEOUT_MS = 800
-        private const val EGRESS_VERIFY_TIMEOUT_MS = 1800L
+        private const val EGRESS_CONNECT_TIMEOUT_MS = 1000
+        private const val EGRESS_VERIFY_TIMEOUT_MS = 2500L
         private const val STARTUP_POLLS = 20
         private const val STARTUP_POLL_MS = 25L
     }
