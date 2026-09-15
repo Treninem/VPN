@@ -22,6 +22,9 @@ jobs:
       - name: Format workspace
         run: cargo fmt --all -- --check
 
+      - name: Verify generated UI theme
+        run: python scripts/generate_ui_theme.py --check
+
       - name: Run tests
         run: cargo test --workspace
 
@@ -38,7 +41,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify canonical AMRI visual assets
-        run: python3 ../../scripts/verify_visual_assets.py
+        run: |
+          python3 ../../scripts/verify_visual_assets.py
+          python3 ../../scripts/generate_ui_theme.py --check
 
       - name: Install JDK 17
         uses: actions/setup-java@v4

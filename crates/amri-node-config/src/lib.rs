@@ -35,6 +35,8 @@ pub enum NodeConfigError {
     UnsupportedShadowsocksPlugin,
     #[error("Shadowsocks URI is malformed")]
     InvalidShadowsocks,
+    #[error("VMess URI is malformed")]
+    InvalidVmess,
     #[error("node option '{0}' is invalid")]
     InvalidOption(&'static str),
 }
@@ -70,6 +72,7 @@ pub fn materialize_connect_request(
         NodeProtocol::Hysteria2 => parse_hysteria2(&raw_uri, materialize)?,
         NodeProtocol::Shadowsocks => parse_shadowsocks(&raw_uri, materialize)?,
         NodeProtocol::Tuic => parse_tuic(&raw_uri, materialize)?,
+        NodeProtocol::Vmess => parse_vmess(&raw_uri, materialize)?,
         other => return Err(NodeConfigError::UnsupportedProtocol(other)),
     };
 
@@ -87,6 +90,79 @@ struct MaterializedNode {
     endpoint: TransportEndpoint,
     credentials: TransportCredentials,
     options: BTreeMap<String, String>,
+}
+
+fn parse_vmess(
+    raw_uri: &str,
+    materialize: MaterializeOptions,
+) -> Result<MaterializedNode, NodeConfigError> {
+    let encoded = raw_uri
+        .strip_prefix("vmess://")
+        .ok_or(NodeConfigError::InvalidVmess)?
+        .split('#')
+        .next()
+        .unwrap_or_default();
+    let decoded = decode_base64_text(encoded).map_err(|_| NodeConfigError::InvalidVmess)?;
+    let document: serde_json::Value =
+        serde_json::from_str(&decoded).map_err(|_| NodeConfigError::InvalidVmess)?;
+
+    let text = |key: &str| {
+        document
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    };
+    let host = text("add").ok_or(NodeConfigError::MissingHost)?;
+    let port = document
+        .get("port")
+        .and_then(|value| {
+            value
+                .as_u64()
+                .and_then(|value| u16::try_from(value).ok())
+                .or_else(|| value.as_str()?.parse::<u16>().ok())
+        })
+        .filter(|port| *port != 0)
+        .ok_or(NodeConfigError::MissingPort)?;
+    let uuid = text("id").ok_or(NodeConfigError::MissingCredential)?;
+    let transport = text("net").unwrap_or("tcp");
+    if !transport.eq_ignore_ascii_case("tcp") {
+        return Err(NodeConfigError::UnsupportedTransport(transport.to_string()));
+    }
+
+    let mut options = base_options(materialize);
+    let security = text("scy").unwrap_or("auto").to_ascii_lowercase();
+    if !matches!(
+        security.as_str(),
+        "auto" | "aes-128-gcm" | "chacha20-poly1305" | "none" | "zero"
+    ) {
+        return Err(NodeConfigError::InvalidOption("vmess_security"));
+    }
+    options.insert("security".into(), security);
+    if let Some(alter_id) = document
+        .get("aid")
+        .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse().ok()))
+    {
+        options.insert("alter_id".into(), alter_id.to_string());
+    }
+    let tls_enabled = text("tls")
+        .map(|value| value.eq_ignore_ascii_case("tls"))
+        .unwrap_or(false);
+    options.insert("tls".into(), tls_enabled.to_string());
+    if tls_enabled {
+        if let Some(server_name) = text("sni").or_else(|| text("host")) {
+            options.insert("server_name".into(), server_name.to_string());
+        }
+    }
+
+    Ok(MaterializedNode {
+        endpoint: TransportEndpoint {
+            host: host.to_string(),
+            port,
+        },
+        credentials: TransportCredentials::single(uuid),
+        options,
+    })
 }
 
 fn parse_vless(
@@ -555,5 +631,55 @@ mod tests {
         let debug = format!("{request:?}");
         assert!(!debug.contains("password"));
         assert!(!debug.contains("user"));
+    }
+
+    #[test]
+    fn vmess_json_materializes_uuid_and_supported_tcp_options() {
+        let document = serde_json::json!({
+            "v": "2", "ps": "NL", "add": "vmess.example", "port": "443",
+            "id": "123e4567-e89b-12d3-a456-426614174000", "aid": "0",
+            "scy": "auto", "net": "tcp", "tls": "tls", "sni": "edge.example"
+        });
+        let raw = format!(
+            "vmess://{}",
+            general_purpose::STANDARD.encode(document.to_string())
+        );
+        let node = parse_node_uri("a", &raw).unwrap();
+        let request = materialize_connect_request(
+            node,
+            "web",
+            MaterializeOptions { local_port: Some(20800) },
+        )
+        .unwrap();
+
+        assert_eq!(request.protocol, NodeProtocol::Vmess);
+        assert_eq!(request.endpoint.host, "vmess.example");
+        assert_eq!(request.endpoint.port, 443);
+        assert_eq!(
+            request.credentials.as_single(),
+            Some("123e4567-e89b-12d3-a456-426614174000")
+        );
+        assert_eq!(request.options.get("tls").map(String::as_str), Some("true"));
+        assert_eq!(
+            request.options.get("server_name").map(String::as_str),
+            Some("edge.example")
+        );
+    }
+
+    #[test]
+    fn vmess_websocket_is_rejected_fail_closed() {
+        let document = serde_json::json!({
+            "add": "vmess.example", "port": 443,
+            "id": "123e4567-e89b-12d3-a456-426614174000", "net": "ws"
+        });
+        let raw = format!(
+            "vmess://{}",
+            general_purpose::STANDARD.encode(document.to_string())
+        );
+        let node = parse_node_uri("a", &raw).unwrap();
+        assert_eq!(
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err(),
+            NodeConfigError::UnsupportedTransport("ws".into())
+        );
     }
 }

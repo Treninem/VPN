@@ -1,0 +1,92 @@
+name: Build installable packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  SING_BOX_VERSION: "1.14.1"
+  SING_BOX_WINDOWS_SHA256: "5197f16d492d93202dc623622149a6ed040f8eca263128f91d603f2b901baa89"
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify generated theme
+        run: python scripts/generate_ui_theme.py --check
+      - name: Build AMRI Windows
+        run: cargo build --release -p amri-windows
+      - name: Stage pinned official sing-box
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "sing-box.zip"
+          $url = "https://github.com/SagerNet/sing-box/releases/download/v$env:SING_BOX_VERSION/sing-box-$env:SING_BOX_VERSION-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:SING_BOX_WINDOWS_SHA256) { throw "sing-box archive checksum mismatch" }
+          $expanded = Join-Path $env:RUNNER_TEMP "sing-box"
+          Expand-Archive $archive -DestinationPath $expanded
+          New-Item -ItemType Directory -Force dist/windows | Out-Null
+          Copy-Item target/release/amri-windows.exe dist/windows/AMRI-VPN.exe
+          Copy-Item (Get-ChildItem $expanded -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName dist/windows/sing-box.exe
+          $license = Get-ChildItem $expanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
+          if ($license) { Copy-Item $license.FullName dist/windows/sing-box-LICENSE }
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          choco install nsis --yes --no-progress
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" packaging/windows/AMRI-VPN.nsi
+          if (-not (Test-Path dist/AMRI-VPN-Windows-Setup.exe)) { throw "installer was not created" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AMRI-VPN-Windows-Installer
+          path: dist/AMRI-VPN-Windows-Setup.exe
+          if-no-files-found: error
+
+  android-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Install pinned cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Verify assets and generated theme
+        working-directory: .
+        run: |
+          python3 ../../scripts/verify_visual_assets.py
+          python3 ../../scripts/generate_ui_theme.py --check
+      - name: Build installable Android APK
+        env:
+          AMRI_BUILD_NATIVE: "1"
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME"
+          gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk ../../AMRI-VPN-Android.apk
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/arm64-v8a/libamri_android_ffi.so"
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libamri_android_ffi.so"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AMRI-VPN-Android-Installer
+          path: AMRI-VPN-Android.apk
+          if-no-files-found: error

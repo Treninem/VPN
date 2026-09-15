@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "colors": {
+    "background": "#030812",
+    "panel": "#0D1016",
+    "window": "#13171F",
+    "surface_muted": "#181D27",
+    "surface": "#161B24",
+    "hero_surface": "#181F2C",
+    "accent": "#4368FF",
+    "text_muted": "#969696",
+    "detail_text": "#A5ADBE",
+    "action_text": "#CDE1F5",
+    "inactive_control": "#222834"
+  },
+  "shape": {
+    "card_radius": 18,
+    "hero_radius": 24,
+    "control_radius": 12,
+    "mode_radius": 16
+  },
+  "spacing": {
+    "screen_horizontal": 22,
+    "screen_top": 22,
+    "screen_bottom": 28,
+    "item_x": 12,
+    "item_y": 12,
+    "button_x": 16,
+    "button_y": 10,
+    "card_padding": 22,
+    "hero_padding": 24,
+    "section_gap": 18
+  },
+  "controls": {
+    "icon_button": 46,
+    "power_button": 124
+  }
+}

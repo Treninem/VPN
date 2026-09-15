@@ -165,13 +165,13 @@ class MainActivity : Activity() {
             addView(actionLabel, LinearLayout.LayoutParams(-1, -2))
         }
         content.addView(protectionCard)
-        content.addView(space(18))
+        content.addView(space(AmriTheme.sectionGap))
         content.addView(text(getString(R.string.mode), 19f, Color.WHITE, true))
         content.addView(space(10))
         content.addView(modeSelector())
-        content.addView(space(18))
+        content.addView(space(AmriTheme.sectionGap))
         content.addView(routeSelectionCard())
-        content.addView(space(18))
+        content.addView(space(AmriTheme.sectionGap))
 
         settingsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

@@ -37,6 +37,17 @@ AMRI VPN — Windows-first VPN-клиент с локальным адаптив
 
 Проект находится в активной разработке.
 
+## Установочные сборки
+
+Workflow `Build installable packages` создаёт два скачиваемых артефакта:
+
+- `AMRI-VPN-Windows-Installer` — NSIS `.exe` с AMRI и закреплённым официальным sing-box;
+- `AMRI-VPN-Android-Installer` — устанавливаемый debug-signed `.apk` для тестовых устройств.
+
+Android production-публикация потребует отдельного закрытого release keystore. Windows installer и
+Android APK не должны называться полностью защищающим VPN до прохождения реальных device E2E и
+закрытия отмеченных в журнале TUN/transport-owner блокеров.
+
 
 ### Route Proof and interface languages
 

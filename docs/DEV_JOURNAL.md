@@ -99,6 +99,25 @@ Main commit: `2d58a1e5d7f7bc5710fc418ba1ac422af6dd73a9`.
 - ON artwork используется исключительно для `PROTECTED`; Windows local transport readiness остаётся с OFF artwork до system forwarding gate.
 - Android дополнительно использует canonical `more-button.svg` через build-time copy; все assets по-прежнему проверяются byte lock.
 
+### Release packaging, common visual source and VMess TCP
+
+- `design/amri-ui-theme.json` стал общим редактируемым источником цветов, радиусов, отступов и
+  размеров Windows/Android; generated-файлы проверяются CI на актуальность.
+- Добавлен локальный `tools/amri-ui-studio`: browser preview для телефона/Windows с экспортом JSON.
+  Абсолютные координаты намеренно не генерируются, чтобы не ломать responsive/RTL.
+- Release workflow собирает устанавливаемый Android debug APK и Windows NSIS installer. Windows
+  комплектует отдельный официальный sing-box 1.14.1 из pinned URL только после SHA-256 verification;
+  приложение ищет `sing-box.exe` рядом с собой независимо от working directory shortcut.
+- VMess v2 base64 JSON материализуется в typed UUID secret и production sing-box outbound для TCP
+  с allowlisted security/alterId/TLS/SNI. Неподдерживаемые WS/gRPC варианты отклоняются fail-closed.
+- Импортированные Windows nodes теперь восстанавливаются из DPAPI-protected per-user persistence;
+  plaintext JSON существует только в zeroizing memory на время сохранения.
+
+Почему: два UI не должны расходиться после ручной правки; install artifact должен быть
+воспроизводимым и не скачивать непроверенный transport; VMess нельзя передавать как raw URI через
+transport boundary. Рассматривались Figma/Qt Designer и absolute drag layout: они пригодны как
+прототип, но не дают безопасный общий runtime layout для egui + Android и RTL.
+
 ## CURRENT STATE
 
 - Rust workspace, Android app и native JNI pipeline имеют полноценный CI.
@@ -107,13 +126,17 @@ Main commit: `2d58a1e5d7f7bc5710fc418ba1ac422af6dd73a9`.
 - Android shared readiness/Adaptive MTU layer реализован в PR #25; normal startup всё ещё control-only, потому что production Android transport owner пока не создаёт local SOCKS + protected underlying sockets для всех протоколов и не вызывает activation boundary.
 - Windows имеет production-oriented external transport bootstrap, но system TUN/DNS forwarding пока отсутствует.
 - UI не должен показывать Protected только от local proxy/control TUN.
+- CI умеет выпускать два installable preview artifact; Android APK пока debug-signed, а Windows
+  installer не превращает local proxy readiness в system VPN protection.
+- VMess TCP production-rendered; VMess WS/gRPC и WireGuard остаются fail-closed.
 
 ## NEXT PRIORITIES
 
 1. Windows system forwarding: tun2proxy + official Wintun runtime prerequisite + admin check + all-server-IP bypass + IPv4/IPv6/DNS + public egress/readiness + teardown restore/watchdog.
 2. Подключить Android production transport owner к `prepareTransportSocket` и `activatePublicForwarding`; затем real device E2E tests и реальные nodes в Android route selector.
-4. Закончить typed WireGuard/VMess descriptors/renderers.
-5. Сократить plaintext lifetime `ImportedNode.raw_uri` и добавить encrypted persistence import pool.
+4. Закончить typed WireGuard и VMess WS/gRPC descriptors/renderers.
+5. Подключить Android encrypted persistence/import pool и production route owner; Windows import
+   pool уже хранится через DPAPI.
 6. E2E failover/leak/kill-switch tests; затем per-domain/per-process routing.
 7. После стабильного single-path — optional warm Wi-Fi+cellular failover; настоящий bandwidth bonding только отдельным opt-in AMRI Bond с cooperating relay.
 
@@ -124,9 +147,15 @@ Main commit: `2d58a1e5d7f7bc5710fc418ba1ac422af6dd73a9`.
 - Android active-generation leak capture не равно persistent Android system lockdown.
 - PMTU signal classification ещё должен поступать от реального forwarding/transport telemetry; generic loss использовать запрещено.
 - `ImportedNode.raw_uri` пока обычный `String` в imported pool.
-- TUIC production-rendered; WireGuard/VMess incomplete.
+- VMess TCP production-rendered; WireGuard и VMess WS/gRPC incomplete.
+- Android artifact пока подписан стандартным debug key; production installer требует закрытый
+  release keystore, который запрещено коммитить в репозиторий.
+- Windows/Android installable artifacts пока preview: системная защита Windows и Android production
+  transport owner остаются блокерами полного end-to-end релиза.
 - Mobile bonding требует cooperating relay и может расходовать extra cellular data/battery.
 - JNI APIs должны оставаться capability-style и узкими.
+- `design/amri-ui-theme.json` — единственный ручной источник theme tokens; generated platform files
+  не править напрямую.
 - Android CI пока использует preinstalled runner NDK 29; отдельный pinned/downloaded LTS NDK — будущий supply-chain hardening.
 
 ## Постоянный протокол разработки
