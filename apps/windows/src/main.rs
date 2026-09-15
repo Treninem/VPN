@@ -293,8 +293,8 @@ impl AmriApp {
                     ui.vertical(|ui| {
                         ui.label(
                             RichText::new(ui_text(self.language, UiMessage::ProtectionOff))
-                            .size(24.0)
-                            .strong(),
+                                .size(24.0)
+                                .strong(),
                         );
                         ui.add_space(4.0);
                         ui.label(
@@ -338,9 +338,10 @@ impl AmriApp {
                             .corner_radius(18);
                         let enabled =
                             !matches!(&self.transport_state, TransportUiState::Connecting);
-                        if ui.add_enabled_ui(enabled, |ui| {
-                            ui.add_sized([150.0, 54.0], button)
-                        }).inner.clicked()
+                        if ui
+                            .add_enabled_ui(enabled, |ui| ui.add_sized([150.0, 54.0], button))
+                            .inner
+                            .clicked()
                         {
                             if self.transport_ready() {
                                 self.stop_transport();
@@ -362,24 +363,9 @@ impl AmriApp {
                 if self.transport_ready() { "1" } else { "0" },
                 "",
             );
-            Self::metric_card(
-                ui,
-                ui_text(self.language, UiMessage::AveragePing),
-                "—",
-                "",
-            );
-            Self::metric_card(
-                ui,
-                ui_text(self.language, UiMessage::Jitter),
-                "—",
-                "",
-            );
-            Self::metric_card(
-                ui,
-                ui_text(self.language, UiMessage::RouteScore),
-                "—",
-                "",
-            );
+            Self::metric_card(ui, ui_text(self.language, UiMessage::AveragePing), "—", "");
+            Self::metric_card(ui, ui_text(self.language, UiMessage::Jitter), "—", "");
+            Self::metric_card(ui, ui_text(self.language, UiMessage::RouteScore), "—", "");
         });
 
         ui.add_space(22.0);
@@ -448,11 +434,8 @@ impl AmriApp {
                     );
                     ui.add_space(8.0);
                     ui.label(
-                        RichText::new(ui_text(
-                            self.language,
-                            UiMessage::TransportOnlyWarning,
-                        ))
-                        .color(Color32::from_rgb(238, 187, 88)),
+                        RichText::new(ui_text(self.language, UiMessage::TransportOnlyWarning))
+                            .color(Color32::from_rgb(238, 187, 88)),
                     );
                 }
                 _ => {
@@ -465,15 +448,10 @@ impl AmriApp {
     }
 
     fn subscriptions(&mut self, ui: &mut egui::Ui) {
-        ui.heading(
-            RichText::new(ui_text(self.language, UiMessage::Subscriptions)).size(30.0),
-        );
+        ui.heading(RichText::new(ui_text(self.language, UiMessage::Subscriptions)).size(30.0));
         ui.label(
-            RichText::new(ui_text(
-                self.language,
-                UiMessage::SubscriptionContent,
-            ))
-            .color(Color32::from_gray(150)),
+            RichText::new(ui_text(self.language, UiMessage::SubscriptionContent))
+                .color(Color32::from_gray(150)),
         );
         ui.add(
             egui::TextEdit::multiline(&mut self.subscription_input)
@@ -482,10 +460,7 @@ impl AmriApp {
         );
 
         if ui
-            .add(
-                egui::Button::new(ui_text(self.language, UiMessage::Import))
-                    .corner_radius(12),
-            )
+            .add(egui::Button::new(ui_text(self.language, UiMessage::Import)).corner_radius(12))
             .clicked()
         {
             self.import_subscription_text();
@@ -523,12 +498,9 @@ impl AmriApp {
         ui.label(ui_text(self.language, UiMessage::LocalPort));
         ui.text_edit_singleline(&mut self.local_port);
         ui.label(
-            RichText::new(ui_text(
-                self.language,
-                UiMessage::TransportOnlyWarning,
-            ))
-            .size(12.0)
-            .color(Color32::from_rgb(238, 187, 88)),
+            RichText::new(ui_text(self.language, UiMessage::TransportOnlyWarning))
+                .size(12.0)
+                .color(Color32::from_rgb(238, 187, 88)),
         );
     }
 
