@@ -63,9 +63,7 @@ impl fmt::Debug for TransportCredentials {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Single(_) => formatter.write_str("Single([REDACTED])"),
-            Self::UsernamePassword { .. } => {
-                formatter.write_str("UsernamePassword([REDACTED])")
-            }
+            Self::UsernamePassword { .. } => formatter.write_str("UsernamePassword([REDACTED])"),
             Self::WireGuard { .. } => formatter.write_str("WireGuard([REDACTED])"),
         }
     }

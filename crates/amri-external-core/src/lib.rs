@@ -404,10 +404,10 @@ impl CoreConfigRenderer for SingBoxRenderer {
                 }
             }
             NodeProtocol::Tuic => {
-                let (uuid, password) = request
-                    .credentials
-                    .as_username_password()
-                    .ok_or_else(|| AdapterError::new("TUIC requires username/password credentials"))?;
+                let (uuid, password) =
+                    request.credentials.as_username_password().ok_or_else(|| {
+                        AdapterError::new("TUIC requires username/password credentials")
+                    })?;
                 if uuid.is_empty() || password.is_empty() {
                     return Err(AdapterError::new("TUIC credentials are empty"));
                 }

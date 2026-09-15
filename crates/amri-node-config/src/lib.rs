@@ -1,7 +1,5 @@
 use amri_subscriptions::{ImportedNode, NodeProtocol};
-use amri_transport::{
-    ConnectRequest, TransportCredentials, TransportEndpoint, TransportSecret,
-};
+use amri_transport::{ConnectRequest, TransportCredentials, TransportEndpoint, TransportSecret};
 use base64::{engine::general_purpose, Engine as _};
 use percent_encoding::percent_decode_str;
 use std::collections::{BTreeMap, HashMap};
@@ -546,8 +544,14 @@ mod tests {
         let request =
             materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
 
-        assert_eq!(request.credentials.as_username_password(), Some(("user", "password")));
-        assert!(!request.options.values().any(|value| value == "user" || value == "password"));
+        assert_eq!(
+            request.credentials.as_username_password(),
+            Some(("user", "password"))
+        );
+        assert!(!request
+            .options
+            .values()
+            .any(|value| value == "user" || value == "password"));
         let debug = format!("{request:?}");
         assert!(!debug.contains("password"));
         assert!(!debug.contains("user"));
