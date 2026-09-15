@@ -64,9 +64,9 @@
 
 Проверка: PR #24 финальный CI `34963347012` — Windows fmt/test/check и Android JVM tests + NDK cross-build + APK ABI verification успешно.
 
-### Android verified readiness + Adaptive MTU — PR #25
+### Android verified readiness + Adaptive MTU — merged PR #25
 
-Рабочая ветка `work/android-readiness-adaptive-mtu`; merge разрешён только после полного зелёного CI на последнем head.
+Main commit: `2d58a1e5d7f7bc5710fc418ba1ac422af6dd73a9`.
 
 - Общий `AdaptiveMtuController` вынесен через узкие JNI операции: reset/current/suspected-PMTU/success.
 - Shared Rust `evaluate_protection` — единственный источник OFF/PREPARING/PROTECTED.
@@ -79,7 +79,7 @@
 - PMTU recommendation не применяется через немедленный teardown/rebuild live default-route TUN, чтобы не создавать direct-route leak window. Новое значение применяется при следующем безопасном establishment/generation swap.
 - Новое состояние PROTECTED локализовано во всех 9 Android языках.
 
-Проверки PR #25: run `34967324260` — Android JVM/NDK/APK полностью green, Windows остановился только на rustfmt; exact formatting исправлен. Run `34967603414` после rustfmt: Android JVM/NDK/APK green, Windows fmt green и продолжил workspace tests. После последней off-main loopback fix обязателен новый полный CI перед merge.
+Проверка: финальный CI PR #25 прошёл Android JVM/NDK/APK и Windows fmt/test/check до merge.
 
 ### Windows transport bootstrap
 
@@ -93,6 +93,11 @@
 - PR #23 вынес основные Windows/Android colors/radii/spacing/control sizes в theme tokens и добавил `docs/UI_CUSTOMIZATION.md`.
 - Утверждённые assets остаются единственным источником в `assets/brand`; byte integrity проверяет CI.
 - Логику routing/security не смешивать с ручными визуальными правками.
+- Главные экраны синхронизированы по иерархии: header → honest protection hero → 7 режимов → route selection → настройки/метрики.
+- Windows выбирает реальный импортированный node прямо с главного экрана и блокирует смену во время active/connecting transport. Android показывает только честный AMRI Automatic до подключения Android unified-pool owner — фиктивных серверов нет.
+- Android mode/settings preferences сохраняются локально; state presentation вынесен в тестируемую функцию, UI обновляется bounded ticker только пока Activity видима.
+- ON artwork используется исключительно для `PROTECTED`; Windows local transport readiness остаётся с OFF artwork до system forwarding gate.
+- Android дополнительно использует canonical `more-button.svg` через build-time copy; все assets по-прежнему проверяются byte lock.
 
 ## CURRENT STATE
 
@@ -105,9 +110,8 @@
 
 ## NEXT PRIORITIES
 
-1. Завершить/слить PR #25 после final green CI.
-2. Windows system forwarding: tun2proxy + official Wintun runtime prerequisite + admin check + all-server-IP bypass + IPv4/IPv6/DNS + public egress/readiness + teardown restore/watchdog.
-3. Подключить Android production transport owner к `prepareTransportSocket` и `activatePublicForwarding`; затем real device E2E tests.
+1. Windows system forwarding: tun2proxy + official Wintun runtime prerequisite + admin check + all-server-IP bypass + IPv4/IPv6/DNS + public egress/readiness + teardown restore/watchdog.
+2. Подключить Android production transport owner к `prepareTransportSocket` и `activatePublicForwarding`; затем real device E2E tests и реальные nodes в Android route selector.
 4. Закончить typed WireGuard/VMess descriptors/renderers.
 5. Сократить plaintext lifetime `ImportedNode.raw_uri` и добавить encrypted persistence import pool.
 6. E2E failover/leak/kill-switch tests; затем per-domain/per-process routing.

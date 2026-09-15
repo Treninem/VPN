@@ -15,6 +15,10 @@
     <string name="local_learning_description">История решений остаётся только на устройстве</string>
     <string name="federated_learning">Обезличенное общее обучение</string>
     <string name="federated_learning_description">Выключено по умолчанию</string>
+    <string name="route_selection">Выбор маршрута</string>
+    <string name="automatic_route">AMRI автоматически</string>
+    <string name="no_imported_servers">Импортированных серверов пока нет; AMRI использует единый пул, когда он доступен</string>
+    <string name="choose_server">Выбрать сервер</string>
     <string name="status_service_ready">VPN-служба готова</string>
     <string name="detail_service_ready">Публичный трафик не перехватывается до подключения защищённого транспорта</string>
     <string name="status_protected">Защита включена</string>

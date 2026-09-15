@@ -15,6 +15,10 @@
     <string name="local_learning_description">يبقى سجل القرارات على هذا الجهاز فقط</string>
     <string name="federated_learning">تعلم مشترك مجهول</string>
     <string name="federated_learning_description">متوقف افتراضيًا</string>
+    <string name="route_selection">اختيار المسار</string>
+    <string name="automatic_route">اختيار AMRI التلقائي</string>
+    <string name="no_imported_servers">لا توجد خوادم مستوردة بعد؛ سيستخدم AMRI المجموعة الموحدة عند توفرها</string>
+    <string name="choose_server">اختيار خادم</string>
     <string name="status_service_ready">خدمة VPN جاهزة</string>
     <string name="detail_service_ready">لن يتم التقاط البيانات العامة حتى يتصل النقل المحمي</string>
     <string name="status_protected">الحماية مفعّلة</string>

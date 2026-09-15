@@ -15,6 +15,10 @@
     <string name="local_learning_description">决策历史仅保存在此设备</string>
     <string name="federated_learning">匿名共享学习</string>
     <string name="federated_learning_description">默认关闭</string>
+    <string name="route_selection">路由选择</string>
+    <string name="automatic_route">AMRI 自动选择</string>
+    <string name="no_imported_servers">尚未导入服务器；统一池可用后 AMRI 将自动使用</string>
+    <string name="choose_server">选择服务器</string>
     <string name="status_service_ready">VPN 服务已就绪</string>
     <string name="detail_service_ready">连接安全传输前不会接管公共流量</string>
     <string name="status_protected">保护已开启</string>

@@ -4,7 +4,8 @@ mod theme;
 mod transport_worker;
 
 use amri_core::{
-    evaluate_protection, ui_text, Language, ProtectionSignals, ProtectionState, UiMessage,
+    evaluate_protection, routing_mode_text, ui_text, Language, ProtectionSignals, ProtectionState,
+    RoutingMode, UiMessage,
 };
 use amri_subscriptions::{parse_subscription_text, ImportedNode};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
@@ -94,6 +95,7 @@ struct AmriApp {
     subscription_input: String,
     imported_nodes: Vec<ImportedNode>,
     selected_node: usize,
+    routing_mode: RoutingMode,
     editing_node: Option<usize>,
     delete_confirmation: Option<usize>,
     info_node: Option<usize>,
@@ -143,6 +145,7 @@ impl AmriApp {
             subscription_input: String::new(),
             imported_nodes: Vec::new(),
             selected_node: 0,
+            routing_mode: RoutingMode::Smart,
             editing_node: None,
             delete_confirmation: None,
             info_node: None,
@@ -459,20 +462,20 @@ impl AmriApp {
             .corner_radius(theme::HERO_RADIUS)
             .inner_margin(theme::HERO_MARGIN)
             .show(ui, |ui| {
+                let transport_ready =
+                    matches!(&self.transport_state, TransportUiState::Ready { .. });
+                let protection = evaluate_protection(ProtectionSignals {
+                    requested: !matches!(&self.transport_state, TransportUiState::Idle),
+                    transport_ready,
+                    // These remain false until Windows TUN/DNS/leak adapters confirm the same
+                    // route generation.
+                    packet_forwarding_active: false,
+                    dns_protection_ready: false,
+                    leak_protection_ready: false,
+                    public_egress_verified: false,
+                });
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        let transport_ready =
-                            matches!(&self.transport_state, TransportUiState::Ready { .. });
-                        let protection = evaluate_protection(ProtectionSignals {
-                            requested: !matches!(&self.transport_state, TransportUiState::Idle),
-                            transport_ready,
-                            // These remain false until the Windows TUN/DNS/leak adapters report
-                            // readiness for the same route generation.
-                            packet_forwarding_active: false,
-                            dns_protection_ready: false,
-                            leak_protection_ready: false,
-                            public_egress_verified: false,
-                        });
                         let protection_message = if protection.state == ProtectionState::Protected {
                             UiMessage::ProtectionOn
                         } else {
@@ -516,7 +519,7 @@ impl AmriApp {
                         };
                         let enabled =
                             !matches!(&self.transport_state, TransportUiState::Connecting);
-                        let source = if self.transport_ready() {
+                        let source = if protection.state == ProtectionState::Protected {
                             egui::include_image!("../../../assets/brand/vpn-power-on.svg")
                         } else {
                             egui::include_image!("../../../assets/brand/vpn-power-off.svg")
@@ -541,6 +544,90 @@ impl AmriApp {
                     });
                 });
             });
+
+        ui.add_space(18.0);
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::Mode))
+                .size(20.0)
+                .strong(),
+        );
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            for mode in RoutingMode::ALL {
+                ui.selectable_value(
+                    &mut self.routing_mode,
+                    mode,
+                    routing_mode_text(self.language, mode),
+                );
+            }
+        });
+
+        ui.add_space(18.0);
+        let mut open_subscriptions = false;
+        egui::Frame::new()
+            .fill(theme::SURFACE)
+            .corner_radius(theme::CARD_RADIUS)
+            .inner_margin(theme::CARD_MARGIN)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(ui_text(self.language, UiMessage::Routes))
+                                .size(18.0)
+                                .strong(),
+                        );
+                        ui.add_space(4.0);
+                        if self.imported_nodes.is_empty() {
+                            ui.label(
+                                RichText::new(ui_text(
+                                    self.language,
+                                    UiMessage::AddSubscriptionFirst,
+                                ))
+                                .color(theme::TEXT_MUTED),
+                            );
+                        } else {
+                            let selected_text = self
+                                .imported_nodes
+                                .get(self.selected_node)
+                                .map(|node| format!("{} · {:?}", node.display_name, node.protocol))
+                                .unwrap_or_else(|| "AMRI".into());
+                            let can_change = !matches!(
+                                &self.transport_state,
+                                TransportUiState::Connecting | TransportUiState::Ready { .. }
+                            );
+                            ui.add_enabled_ui(can_change, |ui| {
+                                egui::ComboBox::from_id_salt("home-route-selection")
+                                    .selected_text(selected_text)
+                                    .show_ui(ui, |ui| {
+                                        for (index, node) in self.imported_nodes.iter().enumerate()
+                                        {
+                                            ui.selectable_value(
+                                                &mut self.selected_node,
+                                                index,
+                                                format!(
+                                                    "{} · {:?}",
+                                                    node.display_name, node.protocol
+                                                ),
+                                            );
+                                        }
+                                    });
+                            });
+                        }
+                    });
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        open_subscriptions = brand_button(
+                            ui,
+                            egui::include_image!("../../../assets/brand/more-button.svg"),
+                            38.0,
+                            ui_text(self.language, UiMessage::Subscriptions),
+                        )
+                        .clicked();
+                    });
+                });
+            });
+        if open_subscriptions {
+            self.navigate_to(Page::Subscriptions);
+        }
 
         ui.add_space(18.0);
         ui.horizontal_wrapped(|ui| {

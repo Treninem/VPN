@@ -15,6 +15,10 @@
     <string name="local_learning_description">Decision history stays only on this device</string>
     <string name="federated_learning">Anonymous shared learning</string>
     <string name="federated_learning_description">Disabled by default</string>
+    <string name="route_selection">Route selection</string>
+    <string name="automatic_route">AMRI automatic</string>
+    <string name="no_imported_servers">No imported servers yet; AMRI will use the unified pool when available</string>
+    <string name="choose_server">Choose server</string>
     <string name="status_protected">Protection is on</string>
     <string name="detail_protected">Transport, packet forwarding, DNS path and public egress are verified for this tunnel</string>
     <string name="status_service_ready">VPN service is ready</string>

@@ -15,6 +15,10 @@
     <string name="local_learning_description">El historial permanece solo en este dispositivo</string>
     <string name="federated_learning">Aprendizaje compartido anónimo</string>
     <string name="federated_learning_description">Desactivado por defecto</string>
+    <string name="route_selection">Selección de ruta</string>
+    <string name="automatic_route">AMRI automático</string>
+    <string name="no_imported_servers">Aún no hay servidores importados; AMRI usará el grupo unificado cuando esté disponible</string>
+    <string name="choose_server">Elegir servidor</string>
     <string name="status_service_ready">El servicio VPN está listo</string>
     <string name="detail_service_ready">El tráfico público no se captura hasta conectar un transporte protegido</string>
     <string name="status_protected">Protección activada</string>

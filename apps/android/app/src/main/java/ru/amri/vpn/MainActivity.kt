@@ -15,6 +15,8 @@ import android.graphics.drawable.PictureDrawable
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -35,6 +37,13 @@ class MainActivity : Activity() {
     private lateinit var actionButton: ImageButton
     private lateinit var actionLabel: TextView
     private lateinit var settingsContainer: LinearLayout
+    private val stateHandler = Handler(Looper.getMainLooper())
+    private val stateRefresh = object : Runnable {
+        override fun run() {
+            refreshState()
+            stateHandler.postDelayed(this, AmriTheme.stateRefreshMs)
+        }
+    }
 
     override fun attachBaseContext(newBase: Context) {
         val storedTag = newBase
@@ -62,7 +71,13 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        refreshState()
+        stateHandler.removeCallbacks(stateRefresh)
+        stateHandler.post(stateRefresh)
+    }
+
+    override fun onPause() {
+        stateHandler.removeCallbacks(stateRefresh)
+        super.onPause()
     }
 
     @Deprecated("Uses the platform VPN permission result for API 26+ compatibility")
@@ -155,19 +170,21 @@ class MainActivity : Activity() {
         content.addView(space(10))
         content.addView(modeSelector())
         content.addView(space(18))
+        content.addView(routeSelectionCard())
+        content.addView(space(18))
 
         settingsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            addView(toggleCard(getString(R.string.smart_routing), getString(R.string.smart_routing_description), true))
+            addView(toggleCard(getString(R.string.smart_routing), getString(R.string.smart_routing_description), KEY_SMART_ROUTING, true))
             addView(space(10))
-            addView(toggleCard(getString(R.string.dns_protection), getString(R.string.dns_protection_description), true))
+            addView(toggleCard(getString(R.string.dns_protection), getString(R.string.dns_protection_description), KEY_DNS_PROTECTION, true))
             addView(space(10))
-            addView(toggleCard(getString(R.string.kill_switch), getString(R.string.kill_switch_description), true))
+            addView(toggleCard(getString(R.string.kill_switch), getString(R.string.kill_switch_description), KEY_KILL_SWITCH, true))
             addView(space(10))
-            addView(toggleCard(getString(R.string.local_learning), getString(R.string.local_learning_description), true))
+            addView(toggleCard(getString(R.string.local_learning), getString(R.string.local_learning_description), KEY_LOCAL_LEARNING, true))
             addView(space(10))
-            addView(toggleCard(getString(R.string.federated_learning), getString(R.string.federated_learning_description), false))
+            addView(toggleCard(getString(R.string.federated_learning), getString(R.string.federated_learning_description), KEY_FEDERATED_LEARNING, false))
         }
         content.addView(settingsContainer)
         scroll.addView(content)
@@ -178,23 +195,76 @@ class MainActivity : Activity() {
 
     private fun modeSelector(): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        resources.getStringArray(R.array.vpn_modes).toList().forEachIndexed { index, label ->
-            row.addView(Button(this).apply {
+        val labels = resources.getStringArray(R.array.vpn_modes)
+        val selected = uiPreferences().getInt(KEY_ROUTING_MODE, 0).coerceIn(labels.indices)
+        val buttons = mutableListOf<Button>()
+        fun refreshButtons(active: Int) {
+            buttons.forEachIndexed { index, button ->
+                button.backgroundTintList = ColorStateList.valueOf(
+                    if (index == active) AmriTheme.accentColor else AmriTheme.inactiveControlColor,
+                )
+            }
+        }
+        labels.forEachIndexed { index, label ->
+            val button = Button(this).apply {
                 text = label
                 isAllCaps = false
                 setTextColor(Color.WHITE)
-                backgroundTintList = ColorStateList.valueOf(
-                    if (index == 0) AmriTheme.accentColor else AmriTheme.inactiveControlColor,
-                )
-            })
+                setOnClickListener {
+                    uiPreferences().edit().putInt(KEY_ROUTING_MODE, index).apply()
+                    refreshButtons(index)
+                }
+            }
+            buttons += button
+            row.addView(button)
         }
+        refreshButtons(selected)
         return HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             addView(row)
         }
     }
 
-    private fun toggleCard(title: String, subtitle: String, enabled: Boolean): View = card(16).apply {
+    private fun routeSelectionCard(): View = card(16).apply {
+        val row = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val labels = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text(getString(R.string.route_selection), 16f, Color.WHITE, true))
+            addView(text(getString(R.string.automatic_route), 14f, AmriTheme.actionTextColor, true))
+            addView(text(getString(R.string.no_imported_servers), 12f, AmriTheme.mutedTextColor, false))
+        }
+        row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(
+            svgIconButton(R.raw.amri_more_button, getString(R.string.choose_server)).apply {
+                setOnClickListener { showServerDialog() }
+            },
+            LinearLayout.LayoutParams(
+                dp(AmriTheme.iconButtonSize),
+                dp(AmriTheme.iconButtonSize),
+            ),
+        )
+        addView(row)
+    }
+
+    private fun showServerDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.choose_server))
+            .setSingleChoiceItems(arrayOf(getString(R.string.automatic_route)), 0) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun toggleCard(
+        title: String,
+        subtitle: String,
+        preferenceKey: String,
+        defaultValue: Boolean,
+    ): View = card(16).apply {
         val row = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -205,7 +275,12 @@ class MainActivity : Activity() {
             addView(text(subtitle, 12f, AmriTheme.mutedTextColor, false))
         }
         row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
-        row.addView(Switch(this@MainActivity).apply { isChecked = enabled })
+        row.addView(Switch(this@MainActivity).apply {
+            isChecked = uiPreferences().getBoolean(preferenceKey, defaultValue)
+            setOnCheckedChangeListener { _, checked ->
+                uiPreferences().edit().putBoolean(preferenceKey, checked).apply()
+            }
+        })
         addView(row)
     }
 
@@ -253,40 +328,22 @@ class MainActivity : Activity() {
 
     private fun refreshState() {
         if (!::status.isInitialized) return
-        when (AmriVpnService.STATE.state) {
-            VpnControllerState.PROTECTED -> {
-                status.text = getString(R.string.status_protected)
-                detail.text = getString(R.string.detail_protected)
-                setPowerState(R.raw.amri_vpn_power_on, getString(R.string.stop), true)
-                actionButton.setOnClickListener { stopController() }
-            }
-            VpnControllerState.SERVICE_READY -> {
-                status.text = getString(R.string.status_service_ready)
-                detail.text = getString(R.string.detail_service_ready)
-                // Service ownership/control TUN is not public protection.
-                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.stop), true)
-                actionButton.setOnClickListener { stopController() }
-            }
-            VpnControllerState.PREPARING -> {
-                status.text = getString(R.string.status_preparing)
-                detail.text = getString(R.string.detail_preparing)
-                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.wait), false)
-                actionButton.setOnClickListener(null)
-            }
-            VpnControllerState.FAILED -> {
-                status.text = getString(R.string.status_failed)
-                detail.text = getString(R.string.detail_failed)
-                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.retry), true)
-                actionButton.setOnClickListener { requestVpnStart() }
-            }
-            else -> {
-                status.text = getString(R.string.status_off)
-                detail.text = getString(R.string.detail_off)
-                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.prepare_vpn), true)
-                actionButton.setOnClickListener { requestVpnStart() }
-            }
-        }
+        val presentation = presentControllerState(AmriVpnService.STATE.state)
+        status.setText(presentation.statusRes)
+        detail.setText(presentation.detailRes)
+        setPowerState(
+            if (presentation.powerOn) R.raw.amri_vpn_power_on else R.raw.amri_vpn_power_off,
+            getString(presentation.actionLabelRes),
+            presentation.actionEnabled,
+        )
+        actionButton.setOnClickListener(when (presentation.action) {
+            MainScreenAction.START, MainScreenAction.RETRY -> View.OnClickListener { requestVpnStart() }
+            MainScreenAction.STOP -> View.OnClickListener { stopController() }
+            MainScreenAction.NONE -> null
+        })
     }
+
+    private fun uiPreferences() = getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
 
     private fun setPowerState(imageRes: Int, label: String, enabled: Boolean) {
         setSvg(actionButton, imageRes)
@@ -356,6 +413,12 @@ class MainActivity : Activity() {
         private const val NOTIFICATION_REQUEST = 7002
         private const val UI_PREFS = "amri_ui"
         private const val KEY_LANGUAGE = "language_tag"
+        private const val KEY_ROUTING_MODE = "routing_mode"
+        private const val KEY_SMART_ROUTING = "smart_routing"
+        private const val KEY_DNS_PROTECTION = "dns_protection"
+        private const val KEY_KILL_SWITCH = "kill_switch"
+        private const val KEY_LOCAL_LEARNING = "local_learning"
+        private const val KEY_FEDERATED_LEARNING = "federated_learning"
         private val LANGUAGE_TAGS = arrayOf("en", "ru", "es", "pt", "fr", "de", "zh-CN", "hi", "ar")
         private val LANGUAGE_NAMES = arrayOf(
             "English", "Русский", "Español", "Português", "Français", "Deutsch", "简体中文", "हिन्दी", "العربية",

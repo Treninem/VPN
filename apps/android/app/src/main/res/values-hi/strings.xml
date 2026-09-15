@@ -15,6 +15,10 @@
     <string name="local_learning_description">निर्णय इतिहास केवल इस डिवाइस पर रहता है</string>
     <string name="federated_learning">अनाम साझा सीख</string>
     <string name="federated_learning_description">डिफ़ॉल्ट रूप से बंद</string>
+    <string name="route_selection">रूट चयन</string>
+    <string name="automatic_route">AMRI स्वचालित</string>
+    <string name="no_imported_servers">अभी कोई सर्वर आयातित नहीं है; उपलब्ध होने पर AMRI एकीकृत पूल का उपयोग करेगा</string>
+    <string name="choose_server">सर्वर चुनें</string>
     <string name="status_service_ready">VPN सेवा तैयार है</string>
     <string name="detail_service_ready">सुरक्षित ट्रांसपोर्ट जुड़ने तक सार्वजनिक ट्रैफ़िक कैप्चर नहीं होगा</string>
     <string name="status_protected">सुरक्षा चालू है</string>
