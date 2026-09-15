@@ -7,14 +7,8 @@ import org.junit.Test
 class AmriNativeBridgeTest {
     @Test
     fun existingAndCreatedStatusesAreDistinctSuccesses() {
-        assertEquals(
-            RouteProofKeyState.EXISTING,
-            AmriNativeBridge.decodeRouteProofKeyStatus(0),
-        )
-        assertEquals(
-            RouteProofKeyState.CREATED,
-            AmriNativeBridge.decodeRouteProofKeyStatus(1),
-        )
+        assertEquals(RouteProofKeyState.EXISTING, AmriNativeBridge.decodeRouteProofKeyStatus(0))
+        assertEquals(RouteProofKeyState.CREATED, AmriNativeBridge.decodeRouteProofKeyStatus(1))
     }
 
     @Test
@@ -40,10 +34,7 @@ class AmriNativeBridgeTest {
 
     @Test
     fun mobilePolicyBitFieldIsDecoded() {
-        val policy = AmriNativeBridge.decodeMobilePolicy(
-            1 or (1 shl 2),
-        )
-
+        val policy = AmriNativeBridge.decodeMobilePolicy(1 or (1 shl 2))
         assertEquals(ProbeIntensity.CONSERVATIVE, policy.probeIntensity)
         assertEquals(true, policy.allowBackgroundWarmup)
         assertEquals(false, policy.allowSecondaryPath)
@@ -85,6 +76,29 @@ class AmriNativeBridgeTest {
         }
         assertThrows(NativeBridgeSecurityException::class.java) {
             AmriNativeBridge.decodePacketForwarderStart(-99)
+        }
+    }
+
+    @Test
+    fun adaptiveMtuMustStayInSharedBounds() {
+        assertEquals(1280, AmriNativeBridge.decodeMtu(1280))
+        assertEquals(1420, AmriNativeBridge.decodeMtu(1420))
+        assertEquals(1500, AmriNativeBridge.decodeMtu(1500))
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodeMtu(1279)
+        }
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodeMtu(-1)
+        }
+    }
+
+    @Test
+    fun protectionStateIsStrictlyDecoded() {
+        assertEquals(NativeProtectionState.OFF, AmriNativeBridge.decodeProtectionState(0))
+        assertEquals(NativeProtectionState.PREPARING, AmriNativeBridge.decodeProtectionState(1))
+        assertEquals(NativeProtectionState.PROTECTED, AmriNativeBridge.decodeProtectionState(2))
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodeProtectionState(3)
         }
     }
 }
