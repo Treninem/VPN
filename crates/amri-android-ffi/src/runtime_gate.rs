@@ -101,7 +101,10 @@ mod tests {
 
     #[test]
     fn protection_requires_every_signal() {
-        assert_eq!(protection_state(false, false, false, false, false, false), 0);
+        assert_eq!(
+            protection_state(false, false, false, false, false, false),
+            0
+        );
         assert_eq!(protection_state(true, true, true, true, true, false), 1);
         assert_eq!(protection_state(true, true, true, true, true, true), 2);
     }
