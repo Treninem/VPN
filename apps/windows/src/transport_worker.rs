@@ -184,7 +184,9 @@ fn connect_node(
         ))
         .map_err(|error| error.to_string())?;
 
-    let session = manager.connect(request).map_err(|error| error.to_string())?;
+    let session = manager
+        .connect(request)
+        .map_err(|error| error.to_string())?;
     Ok(ActiveTransport { manager, session })
 }
 
