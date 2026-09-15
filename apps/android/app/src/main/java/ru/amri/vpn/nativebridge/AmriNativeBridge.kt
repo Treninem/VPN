@@ -7,6 +7,49 @@ enum class RouteProofKeyState {
     CREATED,
 }
 
+enum class AccessNetworkKind(val nativeCode: Int) {
+    WIFI(0),
+    CELLULAR(1),
+    ETHERNET(2),
+    OTHER(3),
+}
+
+enum class MobileAccelerationMode(val nativeCode: Int) {
+    OFF(0),
+    BALANCED(1),
+    SPEED(2),
+}
+
+data class MobileNetworkSnapshot(
+    val kind: AccessNetworkKind,
+    val validated: Boolean,
+    val metered: Boolean,
+    val roaming: Boolean,
+    val dataSaver: Boolean,
+    val batterySaver: Boolean,
+    val estimatedDownstreamKbps: Int?,
+    val estimatedUpstreamKbps: Int?,
+)
+
+data class MobileAccelerationPreferences(
+    val mode: MobileAccelerationMode = MobileAccelerationMode.BALANCED,
+    val allowMeteredSecondary: Boolean = false,
+    val allowLatencyDuplication: Boolean = false,
+)
+
+enum class ProbeIntensity {
+    MINIMAL,
+    CONSERVATIVE,
+    NORMAL,
+}
+
+data class MobilePathPolicy(
+    val probeIntensity: ProbeIntensity,
+    val allowBackgroundWarmup: Boolean,
+    val allowSecondaryPath: Boolean,
+    val allowLatencyDuplication: Boolean,
+)
+
 class NativeBridgeUnavailableException : IllegalStateException(
     "AMRI native runtime is not packaged for this Android build",
 )
@@ -45,6 +88,29 @@ object AmriNativeBridge {
         return decodeRouteProofKeyStatus(nativeEnsureRouteProofKey(store))
     }
 
+    fun evaluateMobilePolicy(
+        snapshot: MobileNetworkSnapshot,
+        preferences: MobileAccelerationPreferences = MobileAccelerationPreferences(),
+    ): MobilePathPolicy {
+        ensureLoadAttempted()
+        if (!libraryLoaded) throw NativeBridgeUnavailableException()
+        return decodeMobilePolicy(
+            nativeEvaluateMobilePolicy(
+                snapshot.kind.nativeCode,
+                snapshot.validated,
+                snapshot.metered,
+                snapshot.roaming,
+                snapshot.dataSaver,
+                snapshot.batterySaver,
+                snapshot.estimatedDownstreamKbps ?: UNKNOWN_BANDWIDTH,
+                snapshot.estimatedUpstreamKbps ?: UNKNOWN_BANDWIDTH,
+                preferences.mode.nativeCode,
+                preferences.allowMeteredSecondary,
+                preferences.allowLatencyDuplication,
+            ),
+        )
+    }
+
     internal fun decodeRouteProofKeyStatus(status: Int): RouteProofKeyState = when (status) {
         STATUS_EXISTING -> RouteProofKeyState.EXISTING
         STATUS_CREATED -> RouteProofKeyState.CREATED
@@ -55,6 +121,24 @@ object AmriNativeBridge {
             "secure random generator failed",
         )
         else -> throw NativeBridgeSecurityException("unknown native security status")
+    }
+
+    internal fun decodeMobilePolicy(packed: Int): MobilePathPolicy {
+        if (packed < 0 || packed and POLICY_RESERVED_BITS != 0) {
+            throw NativeBridgeSecurityException("invalid native mobile policy")
+        }
+        val probeIntensity = when (packed and POLICY_PROBE_MASK) {
+            0 -> ProbeIntensity.MINIMAL
+            1 -> ProbeIntensity.CONSERVATIVE
+            2 -> ProbeIntensity.NORMAL
+            else -> throw NativeBridgeSecurityException("invalid native probe policy")
+        }
+        return MobilePathPolicy(
+            probeIntensity = probeIntensity,
+            allowBackgroundWarmup = packed and POLICY_WARMUP != 0,
+            allowSecondaryPath = packed and POLICY_SECONDARY != 0,
+            allowLatencyDuplication = packed and POLICY_DUPLICATION != 0,
+        )
     }
 
     private fun ensureLoadAttempted() {
@@ -79,4 +163,26 @@ object AmriNativeBridge {
 
     @JvmStatic
     private external fun nativeEnsureRouteProofKey(store: AndroidKeystoreSecretStore): Int
+
+    @JvmStatic
+    private external fun nativeEvaluateMobilePolicy(
+        kind: Int,
+        validated: Boolean,
+        metered: Boolean,
+        roaming: Boolean,
+        dataSaver: Boolean,
+        batterySaver: Boolean,
+        downstreamKbps: Int,
+        upstreamKbps: Int,
+        mode: Int,
+        allowMeteredSecondary: Boolean,
+        allowLatencyDuplication: Boolean,
+    ): Int
+
+    private const val UNKNOWN_BANDWIDTH = -1
+    private const val POLICY_PROBE_MASK = 0b11
+    private const val POLICY_WARMUP = 1 shl 2
+    private const val POLICY_SECONDARY = 1 shl 3
+    private const val POLICY_DUPLICATION = 1 shl 4
+    private const val POLICY_RESERVED_BITS = ((1 shl 5) - 1).inv()
 }

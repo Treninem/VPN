@@ -37,4 +37,29 @@ class AmriNativeBridgeTest {
             AmriNativeBridge.decodeRouteProofKeyStatus(99)
         }
     }
+
+    @Test
+    fun mobilePolicyBitFieldIsDecoded() {
+        val policy = AmriNativeBridge.decodeMobilePolicy(
+            1 or (1 shl 2),
+        )
+
+        assertEquals(ProbeIntensity.CONSERVATIVE, policy.probeIntensity)
+        assertEquals(true, policy.allowBackgroundWarmup)
+        assertEquals(false, policy.allowSecondaryPath)
+        assertEquals(false, policy.allowLatencyDuplication)
+    }
+
+    @Test
+    fun invalidMobilePolicyFailsClosed() {
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodeMobilePolicy(-1)
+        }
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodeMobilePolicy(1 shl 8)
+        }
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodeMobilePolicy(3)
+        }
+    }
 }
