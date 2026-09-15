@@ -291,50 +291,62 @@ impl AmriApp {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(
-                            RichText::new(if self.connected {
-                                ui_text(self.language, UiMessage::ProtectionOn)
-                            } else {
-                                ui_text(self.language, UiMessage::ProtectionOff)
-                            })
+                            RichText::new(ui_text(self.language, UiMessage::ProtectionOff))
                             .size(24.0)
                             .strong(),
                         );
                         ui.add_space(4.0);
                         ui.label(
-                            RichText::new(if self.connected {
-                                ui_text(self.language, UiMessage::EngineReady)
-                            } else {
-                                ui_text(self.language, UiMessage::AddSubscriptionFirst)
+                            RichText::new(match &self.transport_state {
+                                TransportUiState::Idle => {
+                                    ui_text(self.language, UiMessage::AddSubscriptionFirst).into()
+                                }
+                                TransportUiState::Connecting => {
+                                    ui_text(self.language, UiMessage::TransportConnecting).into()
+                                }
+                                TransportUiState::Ready {
+                                    node_name,
+                                    local_port,
+                                    ..
+                                } => format!(
+                                    "{} · {} · 127.0.0.1:{}",
+                                    ui_text(self.language, UiMessage::TransportReady),
+                                    node_name,
+                                    local_port
+                                ),
+                                TransportUiState::Failed(error) => error.clone(),
                             })
                             .color(Color32::from_gray(155)),
                         );
                     });
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let label = if self.connected {
+                        let label = if self.transport_ready() {
                             ui_text(self.language, UiMessage::Disconnect)
                         } else {
                             ui_text(self.language, UiMessage::Connect)
                         };
-                        let fill = if self.connected {
+                        let fill = if self.transport_ready() {
                             Color32::from_rgb(58, 72, 98)
                         } else {
                             Color32::from_rgb(67, 104, 255)
                         };
-                        if ui
-                            .add_sized(
-                                [150.0, 54.0],
-                                egui::Button::new(RichText::new(label).size(16.0).strong())
-                                    .fill(fill)
-                                    .stroke(Stroke::NONE)
-                                    .corner_radius(18),
-                            )
-                            .clicked()
+                        let button = egui::Button::new(RichText::new(label).size(16.0).strong())
+                            .fill(fill)
+                            .stroke(Stroke::NONE)
+                            .corner_radius(18);
+                        let enabled =
+                            !matches!(self.transport_state, TransportUiState::Connecting);
+                        if ui.add_enabled_ui(enabled, |ui| {
+                            ui.add_sized([150.0, 54.0], button)
+                        }).inner.clicked()
                         {
-                            if self.connected {
-                                self.connected = false;
-                            } else {
+                            if self.transport_ready() {
+                                self.stop_transport();
+                            } else if self.imported_nodes.is_empty() {
                                 self.page = Page::Subscriptions;
+                            } else {
+                                self.start_transport();
                             }
                         }
                     });
@@ -346,25 +358,25 @@ impl AmriApp {
             Self::metric_card(
                 ui,
                 ui_text(self.language, UiMessage::ActiveRoutes),
-                if self.connected { "4" } else { "0" },
+                if self.transport_ready() { "4" } else { "0" },
                 "",
             );
             Self::metric_card(
                 ui,
                 ui_text(self.language, UiMessage::AveragePing),
-                if self.connected { "31 ms" } else { "—" },
+                "—",
                 "",
             );
             Self::metric_card(
                 ui,
                 ui_text(self.language, UiMessage::Jitter),
-                if self.connected { "2.8 ms" } else { "—" },
+                "—",
                 "",
             );
             Self::metric_card(
                 ui,
                 ui_text(self.language, UiMessage::RouteScore),
-                if self.connected { "94" } else { "—" },
+                "—",
                 "",
             );
         });
