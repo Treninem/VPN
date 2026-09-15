@@ -21,6 +21,12 @@ Use only the files in this folder as the current approved visual set. `assets/br
 
 Do **not** use the earlier raster ON button with the solid dark square background. It was superseded by `vpn-power-on.svg`.
 
+## Byte-for-byte integrity
+
+`asset-blobs.lock` records the exact Git blob ID of every approved image. CI runs `scripts/verify_visual_assets.py` and fails if an approved file changes byte-for-byte, disappears, gains a platform-specific duplicate, or stops being referenced from the canonical path.
+
+When the user intentionally approves a replacement image, review that exact final file first, commit that file, then update only its corresponding entry in `asset-blobs.lock` to the new value from `git hash-object assets/brand/<file>`. Never update the lock merely to silence CI for an unreviewed visual change.
+
 ## Platform wiring
 
 Windows loads its approved visuals directly from `assets/brand` with compile-time image includes. Do not create a second Windows artwork directory for these files.
