@@ -88,6 +88,37 @@ pub struct MobilePathPolicy {
     pub allow_latency_duplication: bool,
 }
 
+/// Bounded execution limits consumed by probe and hot-pool orchestration.
+///
+/// Keeping this conversion in the shared core prevents platform clients from interpreting the
+/// mobile policy differently. A zero hot-pool capacity disables background reserve warmup; it
+/// never disables the currently active route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MobileRuntimeBudget {
+    pub max_parallel_probes: usize,
+    pub hot_pool_capacity: usize,
+    pub allow_background_warmup: bool,
+    pub allow_secondary_path: bool,
+    pub allow_latency_duplication: bool,
+}
+
+impl From<MobilePathPolicy> for MobileRuntimeBudget {
+    fn from(policy: MobilePathPolicy) -> Self {
+        let max_parallel_probes = policy.probe_intensity.max_parallel_probes();
+        Self {
+            max_parallel_probes,
+            hot_pool_capacity: if policy.allow_background_warmup {
+                max_parallel_probes
+            } else {
+                0
+            },
+            allow_background_warmup: policy.allow_background_warmup,
+            allow_secondary_path: policy.allow_secondary_path,
+            allow_latency_duplication: policy.allow_latency_duplication,
+        }
+    }
+}
+
 impl MobilePathPolicy {
     pub fn evaluate(
         snapshot: MobileNetworkSnapshot,
@@ -309,6 +340,29 @@ mod tests {
 
         assert_eq!(policy.probe_intensity.max_parallel_probes(), 1);
         assert!(!policy.allow_secondary_path);
+    }
+
+    #[test]
+    fn runtime_budget_is_bounded_by_shared_mobile_policy() {
+        let minimal = MobileRuntimeBudget::from(MobilePathPolicy {
+            probe_intensity: ProbeIntensity::Minimal,
+            allow_background_warmup: false,
+            allow_secondary_path: false,
+            allow_latency_duplication: false,
+        });
+        assert_eq!(minimal.max_parallel_probes, 1);
+        assert_eq!(minimal.hot_pool_capacity, 0);
+
+        let speed = MobileRuntimeBudget::from(MobilePathPolicy {
+            probe_intensity: ProbeIntensity::Normal,
+            allow_background_warmup: true,
+            allow_secondary_path: true,
+            allow_latency_duplication: true,
+        });
+        assert_eq!(speed.max_parallel_probes, 4);
+        assert_eq!(speed.hot_pool_capacity, 4);
+        assert!(speed.allow_secondary_path);
+        assert!(speed.allow_latency_duplication);
     }
 
     #[test]

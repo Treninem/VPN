@@ -202,6 +202,20 @@
 
 **Проверка:** GitHub Actions `34927570349` и `34927732769` — Rust fmt/test/check + Android tests/assemble успешно.
 
+### Mobile execution budgets, socket safety и public-tunnel gate
+
+- `MobileRuntimeBudget` преобразует общий `MobilePathPolicy` в реальные ограничения: parallel probes и hot-pool capacity; `amri-probe` и `amri-runtime` применяют их напрямую.
+- Бюджет не меняет short race deadline/settle window и не добавляет искусственных countdown: ограничивается только объём одновременно запущенной работы.
+- Android хранит текущий `Network` только как ephemeral service-owned lease. TCP/UDP transport socket сначала проходит `VpnService.protect`, затем bind к текущей underlying network; missing/stale lease или любая ошибка дают fail-closed `false`.
+- В `amri-core` добавлен единый `ProtectionReadiness`: public traffic и UI-статус «защищено» разрешаются только при одновременном подтверждении transport, packet forwarding, DNS protection, leak protection и public egress.
+- Windows UI уже использует этот gate; пока TUN/DNS/leak adapters не готовы, local proxy остаётся только transport-ready и не показывается как полная защита.
+
+**Почему:** mobile policy должна управлять исполнением, а не быть неиспользуемым DTO. Socket protection предотвращает VPN loop, а единый gate исключает ложный статус защиты на обеих платформах.
+
+**Альтернативы:** отдельные Kotlin/Windows readiness-правила, сохранение Android `Network` handle, последовательные races и признание local proxy/control TUN полноценным VPN отвергнуты.
+
+**Проверка:** unit-тесты покрывают bounded budgets, отсутствие добавочной задержки, disabled warmup, stale/missing socket lease и все обязательные protection signals; окончательная проверка выполняется CI.
+
 ## Постоянный протокол разработки
 
 - `AGENTS.md` + этот журнал — canonical cross-chat/cross-account handoff mechanism.
@@ -222,16 +236,17 @@
 - Route Proof persistent/authenticated и привязан к transport-confirmed executed node.
 - Windows UI подключён к real external-core transport bootstrap для VLESS/Trojan/Shadowsocks/Hysteria2.
 - Windows secrets защищены DPAPI; Android persistence защищён Keystore.
-- Live Android `NetworkCapabilities` проходят privacy-safe JNI boundary и оцениваются общим mobile policy core; socket binding/forwarder consumption ещё не подключены.
+- Live Android `NetworkCapabilities` проходят privacy-safe JNI boundary; общий policy реально ограничивает probe/hot-pool budgets.
+- Android TCP/UDP socket protection + ephemeral underlying-network binding boundary готов для transport adapters.
+- Общий public-tunnel readiness gate реализован и подключён к Windows UI; полный набор platform signals ещё не производится.
 - Полноценный public packet forwarding end-to-end на Windows/Android ещё не подтверждён.
 - Android `VpnService` остаётся control-only до production forwarding.
 
 # NEXT PRIORITIES
 
-1. Подключить mobile policy к probe scheduler/hot-pool и добавить per-socket Android network binding.
-2. Применить `AdaptiveMtuController` в production forwarding path.
-3. Реализовать public packet forwarding: Android TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
-4. Добавить public-tunnel confirmation gate; только после него UI показывает реальную защиту.
+1. Реализовать public packet forwarding: Android TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
+2. Подключить Android transport adapters к готовому socket gate и применить `AdaptiveMtuController` в forwarding path.
+3. Подать platform readiness signals и public egress verification в готовый public-tunnel gate.
 5. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
 6. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover; AMRI Bond relay проектировать отдельным opt-in этапом.
 7. Добавить end-to-end failover/leak tests, kill-switch, затем per-domain/per-process routing.
@@ -240,7 +255,8 @@
 
 - Нет полноценного подтверждённого public packet forwarding end-to-end.
 - Loopback readiness подтверждает local inbound, но не Internet traffic через tunnel.
-- Android mobile policy пока не управляет реальными probe workers/sockets/TUN MTU; observer и core evaluation уже готовы.
+- Android mobile policy управляет общими budgets, но реальный Android probe worker/transport ещё не вызывает эти API.
+- Android socket gate реализован, но production transport adapter ещё не создаёт через него свои sockets.
 - `ImportedNode.raw_uri` всё ещё существует как обычный `String` в импортированном пуле; нужна encrypted persistence и сокращение plaintext lifetime.
 - TUIC/WireGuard/VMess ещё не production-rendered.
 - Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
@@ -265,6 +281,8 @@
 - External core transport-ready только после process + loopback readiness.
 - Transport-confirmed node fingerprint — единственный допустимый executed Route Proof node id.
 - UI не показывает protected state до transport + packet forwarding + leak-protection/public-tunnel gates.
+- Public-tunnel readiness вычисляется только общим `amri-core` gate; public traffic разрешён исключительно при полном наборе сигналов текущего маршрута.
+- Android underlying `Network` handle может жить только ephemeral в памяти сервиса; persistence/logging запрещены, stale lease отклоняется.
 - QUIC migration не считать bandwidth bonding.
 - Дополнительный cellular usage — только explicit opt-in.
 - MTU adaptation не реагирует на generic loss.

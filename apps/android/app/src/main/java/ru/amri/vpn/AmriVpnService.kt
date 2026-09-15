@@ -10,10 +10,13 @@ import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import java.net.DatagramSocket
+import java.net.Socket
 
 class AmriVpnService : VpnService() {
     private var controlInterface: ParcelFileDescriptor? = null
     private var networkObserver: AndroidNetworkObserver? = null
+    private val networkLease = AndroidNetworkLease()
     private val runtimeOwner by lazy(LazyThreadSafetyMode.NONE) {
         AndroidRuntimeOwner.production(this)
     }
@@ -96,14 +99,25 @@ class AmriVpnService : VpnService() {
 
     private fun startNetworkObservation() {
         if (networkObserver != null) return
-        networkObserver = AndroidNetworkObserver(applicationContext, mobilePolicyOwner::update)
+        networkObserver = AndroidNetworkObserver(applicationContext) { network, snapshot ->
+            networkLease.update(network)
+            mobilePolicyOwner.update(snapshot)
+        }
             .also { it.start() }
     }
 
     private fun stopNetworkObservation() {
         networkObserver?.close()
         networkObserver = null
+        networkLease.clear()
     }
+
+    /** Transport adapters must reject and close a socket when this returns false. */
+    internal fun prepareTransportSocket(socket: Socket): Boolean = networkLease.prepare(this, socket)
+
+    /** UDP equivalent used by WireGuard/Hysteria2/TUIC adapters. */
+    internal fun prepareTransportSocket(socket: DatagramSocket): Boolean =
+        networkLease.prepare(this, socket)
 
     private fun createNotificationChannel() {
         val manager = getSystemService(NotificationManager::class.java)

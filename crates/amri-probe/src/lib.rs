@@ -1,4 +1,4 @@
-use amri_core::ProbeSample;
+use amri_core::{MobilePathPolicy, MobileRuntimeBudget, ProbeSample};
 use chrono::Utc;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{mpsc, Arc};
@@ -54,6 +54,15 @@ impl Default for ProbeRaceConfig {
             settle_window: Duration::from_millis(35),
             max_parallel: 4,
         }
+    }
+}
+
+impl ProbeRaceConfig {
+    /// Applies shared mobile policy without changing the latency budget of an instant race.
+    pub fn for_mobile_policy(mut self, policy: MobilePathPolicy) -> Self {
+        let budget = MobileRuntimeBudget::from(policy);
+        self.max_parallel = self.max_parallel.min(budget.max_parallel_probes);
+        self
     }
 }
 
@@ -386,5 +395,18 @@ mod tests {
 
         assert_eq!(outcome.started, 2);
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn mobile_policy_caps_parallel_work_without_adding_delay() {
+        let config = race_config().for_mobile_policy(MobilePathPolicy {
+            probe_intensity: amri_core::ProbeIntensity::Minimal,
+            allow_background_warmup: false,
+            allow_secondary_path: false,
+            allow_latency_duplication: false,
+        });
+        assert_eq!(config.max_parallel, 1);
+        assert_eq!(config.overall_timeout, Duration::from_millis(120));
+        assert_eq!(config.settle_window, Duration::from_millis(30));
     }
 }
