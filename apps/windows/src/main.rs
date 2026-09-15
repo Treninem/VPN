@@ -733,9 +733,11 @@ impl AmriApp {
                             );
                             ui.add_space(4.0);
                             ui.label(
-                                RichText::new("Secret URI and credentials are intentionally hidden.")
-                                    .size(11.0)
-                                    .color(Color32::from_gray(155)),
+                                RichText::new(
+                                    "Secret URI and credentials are intentionally hidden.",
+                                )
+                                .size(11.0)
+                                .color(Color32::from_gray(155)),
                             );
                         });
                 }
