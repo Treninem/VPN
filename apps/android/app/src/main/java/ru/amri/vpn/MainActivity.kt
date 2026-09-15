@@ -8,22 +8,28 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.PictureDrawable
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
+import com.caverock.androidsvg.SVG
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var detail: TextView
-    private lateinit var actionButton: Button
+    private lateinit var actionButton: ImageButton
+    private lateinit var actionLabel: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,17 +54,32 @@ class MainActivity : Activity() {
     }
 
     private fun buildContent(): View {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(22), dp(22), dp(28))
-            setBackgroundColor(Color.rgb(13, 16, 22))
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(3, 8, 18))
         }
 
-        root.addView(text("AMRI", 30f, Color.WHITE, true))
-        root.addView(text(getString(R.string.product_subtitle), 14f, Color.rgb(145, 153, 170), false))
-        root.addView(space(24))
+        val background = svgImageView(R.raw.amri_background_mobile).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = null
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        root.addView(background, FrameLayout.LayoutParams(-1, -1))
 
-        val scroll = ScrollView(this)
+        val foreground = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(22), dp(22), dp(28))
+        }
+
+        foreground.addView(text("AMRI", 30f, Color.WHITE, true))
+        foreground.addView(
+            text(getString(R.string.product_subtitle), 14f, Color.rgb(145, 153, 170), false),
+        )
+        foreground.addView(space(24))
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+        }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -66,12 +87,22 @@ class MainActivity : Activity() {
         val protectionCard = card().apply {
             status = text("", 25f, Color.WHITE, true)
             detail = text("", 14f, Color.rgb(165, 173, 190), false)
-            actionButton = primaryButton()
+            actionButton = svgPowerButton()
+            actionLabel = text("", 14f, Color.rgb(205, 225, 245), true).apply {
+                gravity = Gravity.CENTER
+            }
             addView(status)
             addView(space(6))
             addView(detail)
-            addView(space(20))
-            addView(actionButton)
+            addView(space(16))
+            addView(
+                actionButton,
+                LinearLayout.LayoutParams(dp(124), dp(124)).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                },
+            )
+            addView(space(6))
+            addView(actionLabel, LinearLayout.LayoutParams(-1, -2))
         }
         content.addView(protectionCard)
         content.addView(space(18))
@@ -79,18 +110,49 @@ class MainActivity : Activity() {
         content.addView(space(10))
         content.addView(modeSelector())
         content.addView(space(18))
-        content.addView(toggleCard(getString(R.string.smart_routing), getString(R.string.smart_routing_description), true))
+        content.addView(
+            toggleCard(
+                getString(R.string.smart_routing),
+                getString(R.string.smart_routing_description),
+                true,
+            ),
+        )
         content.addView(space(10))
-        content.addView(toggleCard(getString(R.string.dns_protection), getString(R.string.dns_protection_description), true))
+        content.addView(
+            toggleCard(
+                getString(R.string.dns_protection),
+                getString(R.string.dns_protection_description),
+                true,
+            ),
+        )
         content.addView(space(10))
-        content.addView(toggleCard(getString(R.string.kill_switch), getString(R.string.kill_switch_description), true))
+        content.addView(
+            toggleCard(
+                getString(R.string.kill_switch),
+                getString(R.string.kill_switch_description),
+                true,
+            ),
+        )
         content.addView(space(10))
-        content.addView(toggleCard(getString(R.string.local_learning), getString(R.string.local_learning_description), true))
+        content.addView(
+            toggleCard(
+                getString(R.string.local_learning),
+                getString(R.string.local_learning_description),
+                true,
+            ),
+        )
         content.addView(space(10))
-        content.addView(toggleCard(getString(R.string.federated_learning), getString(R.string.federated_learning_description), false))
+        content.addView(
+            toggleCard(
+                getString(R.string.federated_learning),
+                getString(R.string.federated_learning_description),
+                false,
+            ),
+        )
 
         scroll.addView(content)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        foreground.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(foreground, FrameLayout.LayoutParams(-1, -1))
         return root
     }
 
@@ -158,30 +220,52 @@ class MainActivity : Activity() {
             VpnControllerState.SERVICE_READY -> {
                 status.text = getString(R.string.status_service_ready)
                 detail.text = getString(R.string.detail_service_ready)
-                actionButton.text = getString(R.string.stop)
+                setPowerState(
+                    imageRes = R.raw.amri_vpn_power_on,
+                    label = getString(R.string.stop),
+                    enabled = true,
+                )
                 actionButton.setOnClickListener { stopController() }
             }
             VpnControllerState.PREPARING -> {
                 status.text = getString(R.string.status_preparing)
                 detail.text = getString(R.string.detail_preparing)
-                actionButton.text = getString(R.string.wait)
-                actionButton.isEnabled = false
+                setPowerState(
+                    imageRes = R.raw.amri_vpn_power_off,
+                    label = getString(R.string.wait),
+                    enabled = false,
+                )
+                actionButton.setOnClickListener(null)
             }
             VpnControllerState.FAILED -> {
                 status.text = getString(R.string.status_failed)
                 detail.text = getString(R.string.detail_failed)
-                actionButton.text = getString(R.string.retry)
-                actionButton.isEnabled = true
+                setPowerState(
+                    imageRes = R.raw.amri_vpn_power_off,
+                    label = getString(R.string.retry),
+                    enabled = true,
+                )
                 actionButton.setOnClickListener { requestVpnStart() }
             }
             else -> {
                 status.text = getString(R.string.status_off)
                 detail.text = getString(R.string.detail_off)
-                actionButton.text = getString(R.string.prepare_vpn)
-                actionButton.isEnabled = true
+                setPowerState(
+                    imageRes = R.raw.amri_vpn_power_off,
+                    label = getString(R.string.prepare_vpn),
+                    enabled = true,
+                )
                 actionButton.setOnClickListener { requestVpnStart() }
             }
         }
+    }
+
+    private fun setPowerState(imageRes: Int, label: String, enabled: Boolean) {
+        setSvg(actionButton, imageRes)
+        actionLabel.text = label
+        actionButton.contentDescription = label
+        actionButton.isEnabled = enabled
+        actionButton.alpha = if (enabled) 1f else 0.58f
     }
 
     private fun requestNotificationPermission() {
@@ -193,19 +277,29 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun primaryButton(): Button = Button(this).apply {
-        isAllCaps = false
-        textSize = 17f
-        setTextColor(Color.WHITE)
-        backgroundTintList = ColorStateList.valueOf(Color.rgb(67, 104, 255))
-        minHeight = dp(56)
+    private fun svgPowerButton(): ImageButton = ImageButton(this).apply {
+        background = null
+        setPadding(0, 0, 0, 0)
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        setSvg(this, R.raw.amri_vpn_power_off)
+    }
+
+    private fun svgImageView(resourceId: Int): ImageView = ImageView(this).apply {
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        setSvg(this, resourceId)
+    }
+
+    private fun setSvg(target: ImageView, resourceId: Int) {
+        val svg = SVG.getFromResource(this, resourceId)
+        target.setImageDrawable(PictureDrawable(svg.renderToPicture()))
     }
 
     private fun card(padding: Int = 22): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(padding), dp(padding), dp(padding), dp(padding))
         background = GradientDrawable().apply {
-            setColor(Color.rgb(24, 30, 41))
+            setColor(Color.argb(238, 24, 30, 41))
             cornerRadius = dp(22).toFloat()
         }
     }
