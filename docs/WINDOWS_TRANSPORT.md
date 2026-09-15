@@ -32,6 +32,17 @@ protection and kill-switch enforcement are confirmed.
 
 ## Current protocols
 
-The production renderer currently accepts VLESS, Trojan, Shadowsocks, Hysteria2 and TUIC
-configurations supported by `amri-node-config`. VMess and WireGuard still need their full typed
-transport descriptors.
+The production renderer currently accepts VLESS, VMess-over-TCP, Trojan, Shadowsocks, Hysteria2
+and TUIC configurations supported by `amri-node-config`. WireGuard and VMess transports other than
+TCP still need complete typed transport descriptors.
+
+## Installer packaging
+
+`.github/workflows/installers.yml` creates an NSIS installer and puts the AMRI executable and a
+separate official sing-box executable next to each other. The app resolves this sibling executable
+independently of the shortcut working directory. The sing-box archive is pinned to version 1.14.1
+and SHA-256 `5197f16d492d93202dc623622149a6ed040f8eca263128f91d603f2b901baa89`.
+
+This installer makes the current application installable; it does not change the honest protection
+gate. Until Windows TUN/DNS/kill-switch is implemented, transport readiness remains local-proxy
+readiness and the power artwork stays OFF.

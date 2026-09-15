@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AMRI UI Studio</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,sans-serif;background:#090d14;color:#eef3ff}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh}.app{display:grid;grid-template-columns:340px 1fr;min-height:100vh}
+    aside{padding:22px;background:#111722;border-right:1px solid #273044;overflow:auto}h1{font-size:22px;margin:0 0 6px}p{color:#a5adbe;line-height:1.45}
+    fieldset{border:1px solid #2a3448;border-radius:16px;margin:16px 0;padding:14px}legend{padding:0 8px;font-weight:700}
+    label{display:grid;grid-template-columns:1fr 90px;gap:10px;align-items:center;margin:10px 0;font-size:13px}input{width:100%}
+    input[type=color]{height:34px;border:0;border-radius:8px;background:none}.number{display:flex;align-items:center;gap:8px}.number output{min-width:28px;text-align:right}
+    button,.file{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:12px;padding:11px 14px;background:#4368ff;color:white;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}
+    button.secondary,.file.secondary{background:#222a39}.file input{display:none}.actions{position:sticky;bottom:0;background:#111722;padding:12px 0}
+    main{display:grid;place-items:center;padding:30px;background:radial-gradient(circle at 70% 20%,#162d6c 0,transparent 35%),#060a12}
+    .device{--bg:#030812;--surface:#161b24;--accent:#4368ff;--muted:#969696;--detail:#a5adbe;--action:#cde1f5;--inactive:#222834;--card-radius:18px;--hero-radius:24px;--control-radius:12px;--screen-x:22px;--screen-top:22px;--screen-bottom:28px;--card-pad:22px;--section-gap:18px;--icon:46px;--power:124px;width:min(430px,90vw);height:min(840px,88vh);padding:var(--screen-top) var(--screen-x) var(--screen-bottom);border:9px solid #20283a;border-radius:36px;background:linear-gradient(155deg,#10275766,transparent 38%),var(--bg);box-shadow:0 30px 90px #0009;overflow:auto}
+    .device.desktop{width:min(980px,90vw);height:min(690px,88vh);border-radius:22px}.header{display:flex;align-items:center;margin-bottom:24px}.brand{font-size:28px;font-weight:900;letter-spacing:1px}.subtitle{font-size:12px;color:var(--muted)}.spacer{flex:1}.icon{width:var(--icon);height:var(--icon);border-radius:50%;background:linear-gradient(145deg,#33405a,#151b27);margin-left:8px}
+    .section{margin-bottom:var(--section-gap)}.hero,.card{background:var(--surface);border-radius:var(--card-radius);padding:var(--card-pad);box-shadow:inset 0 1px #ffffff0c}.hero{border-radius:var(--hero-radius);text-align:center}.status{font-size:24px;font-weight:800}.detail{color:var(--detail);font-size:13px;margin-top:6px}.power{width:var(--power);height:var(--power);margin:18px auto 8px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 40% 35%,#7390ff,var(--accent) 46%,#152455 70%);box-shadow:0 0 40px #4368ff66;font-size:40px}.action{color:var(--action);font-weight:700}
+    .title{font-size:18px;font-weight:800;margin-bottom:10px}.modes{display:flex;gap:8px;overflow:hidden}.pill{white-space:nowrap;padding:10px 15px;border-radius:var(--control-radius);background:var(--inactive)}.pill.active{background:var(--accent)}.route{display:flex;align-items:center}.route strong{display:block}.route small{color:var(--muted)}
+    .hint{font-size:12px;color:#8e9ab2}.desktop .content{display:grid;grid-template-columns:1.2fr .8fr;gap:var(--section-gap)}.desktop .hero{grid-row:span 2}.desktop .section{margin-bottom:0}
+    @media(max-width:800px){.app{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid #273044}main{min-height:760px}}
+  </style>
+</head>
+<body><div class="app"><aside>
+  <h1>AMRI UI Studio</h1><p>Меняйте оформление визуально. Результат одинаково применяется к Windows и Android.</p>
+  <fieldset id="colors"><legend>Цвета</legend></fieldset>
+  <fieldset id="shape"><legend>Форма</legend></fieldset>
+  <fieldset id="spacing"><legend>Расположение</legend></fieldset>
+  <fieldset id="controls"><legend>Кнопки</legend></fieldset>
+  <div class="actions">
+    <button id="mobile">Телефон</button><button class="secondary" id="desktop">Windows</button><br>
+    <label class="file secondary">Открыть JSON<input id="open" type="file" accept="application/json"></label>
+    <button id="save">Скачать JSON</button><button class="secondary" id="reset">Сбросить</button>
+  </div><p class="hint">После скачивания замените <b>design/amri-ui-theme.json</b> и запустите генератор из инструкции.</p>
+</aside><main><div class="device" id="device">
+  <div class="header"><div><div class="brand">AMRI</div><div class="subtitle">Adaptive Multi-Route Intelligence</div></div><div class="spacer"></div><div class="icon"></div><div class="icon"></div></div>
+  <div class="content"><section class="hero section"><div class="status">Защита включена</div><div class="detail">Маршрут проверен · Confidence 94%</div><div class="power">⏻</div><div class="action">Отключить</div></section>
+  <section class="section"><div class="title">Режим</div><div class="modes"><div class="pill active">Smart</div><div class="pill">Speed</div><div class="pill">Privacy</div></div></section>
+  <section class="card section route"><div><strong>YouTube → NL-07</strong><small>39 ms · jitter 1.7 ms · RouteScore 92</small></div><div class="spacer"></div><div class="icon"></div></section></div>
+</div></main></div>
+<script>
+const initial={schema_version:1,colors:{background:'#030812',panel:'#0D1016',window:'#13171F',surface_muted:'#181D27',surface:'#161B24',hero_surface:'#181F2C',accent:'#4368FF',text_muted:'#969696',detail_text:'#A5ADBE',action_text:'#CDE1F5',inactive_control:'#222834'},shape:{card_radius:18,hero_radius:24,control_radius:12,mode_radius:16},spacing:{screen_horizontal:22,screen_top:22,screen_bottom:28,item_x:12,item_y:12,button_x:16,button_y:10,card_padding:22,hero_padding:24,section_gap:18},controls:{icon_button:46,power_button:124}};
+let theme=structuredClone(initial);const labels={background:'Фон',panel:'Панель',window:'Окно',surface_muted:'Приглушённая поверхность',surface:'Карточка',hero_surface:'Главная карточка',accent:'Акцент',text_muted:'Вторичный текст',detail_text:'Описание',action_text:'Действие',inactive_control:'Неактивная кнопка',card_radius:'Радиус карточек',hero_radius:'Радиус главной карточки',control_radius:'Радиус кнопок',mode_radius:'Радиус режимов',screen_horizontal:'Отступ по краям',screen_top:'Отступ сверху',screen_bottom:'Отступ снизу',item_x:'Интервал X',item_y:'Интервал Y',button_x:'Кнопка X',button_y:'Кнопка Y',card_padding:'Внутри карточки',hero_padding:'Внутри главной',section_gap:'Между блоками',icon_button:'Размер иконок',power_button:'Кнопка питания'};
+const cssMap={background:'--bg',surface:'--surface',accent:'--accent',text_muted:'--muted',detail_text:'--detail',action_text:'--action',inactive_control:'--inactive',card_radius:'--card-radius',hero_radius:'--hero-radius',control_radius:'--control-radius',screen_horizontal:'--screen-x',screen_top:'--screen-top',screen_bottom:'--screen-bottom',card_padding:'--card-pad',section_gap:'--section-gap',icon_button:'--icon',power_button:'--power'};
+function renderControls(){for(const group of ['colors','shape','spacing','controls']){const box=document.getElementById(group);box.querySelectorAll('label').forEach(x=>x.remove());Object.entries(theme[group]).forEach(([key,value])=>{const label=document.createElement('label');label.append(labels[key]||key);const input=document.createElement('input');input.dataset.group=group;input.dataset.key=key;if(group==='colors'){input.type='color';input.value=value}else{input.type='range';input.min=0;input.max=key==='power_button'?220:80;input.value=value;const wrap=document.createElement('span');wrap.className='number';const out=document.createElement('output');out.textContent=value;input.oninput=()=>{out.textContent=input.value;change(input)};wrap.append(input,out);label.append(wrap);box.append(label);return}input.oninput=()=>change(input);label.append(input);box.append(label)}}apply()}
+function change(input){theme[input.dataset.group][input.dataset.key]=input.type==='color'?input.value:Number(input.value);apply()}
+function apply(){const device=document.getElementById('device');for(const [group,values] of Object.entries(theme))if(typeof values==='object')for(const [key,value] of Object.entries(values)){const prop=cssMap[key];if(prop)device.style.setProperty(prop,typeof value==='number'?value+'px':value)}}
+document.getElementById('mobile').onclick=()=>document.getElementById('device').classList.remove('desktop');document.getElementById('desktop').onclick=()=>document.getElementById('device').classList.add('desktop');
+document.getElementById('reset').onclick=()=>{theme=structuredClone(initial);renderControls()};document.getElementById('save').onclick=()=>{const blob=new Blob([JSON.stringify(theme,null,2)+'\n'],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='amri-ui-theme.json';a.click();URL.revokeObjectURL(a.href)};
+document.getElementById('open').onchange=async e=>{try{const parsed=JSON.parse(await e.target.files[0].text());if(parsed.schema_version!==1)throw Error();theme=parsed;renderControls()}catch{alert('Неверный файл темы AMRI')}};renderControls();
+</script></body></html>

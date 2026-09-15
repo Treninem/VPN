@@ -15,6 +15,7 @@
 - VLESS: UUID -> `TransportSecret`; TCP + TLS/none; SNI; allowInsecure; flow.
 - Trojan: password -> `TransportSecret`; TCP + TLS; SNI; allowInsecure.
 - Hysteria2: password -> `TransportSecret`; SNI; allowInsecure; up/down Mbps.
+- VMess v2 JSON: base64 payload -> typed UUID secret; TCP, cipher/security, alterId and optional TLS/SNI.
 - Shadowsocks:
   - SIP002 base64 userinfo `ss://BASE64(method:password)@host:port`;
   - clear userinfo `ss://method:password@host:port`;
@@ -31,7 +32,8 @@ Materializer не должен молча отбрасывать парамет�
 - VLESS/Trojan transport кроме TCP, например WS/gRPC;
 - VLESS Reality и неизвестные security modes;
 - Shadowsocks plugins;
-- WireGuard/VMess и другие протоколы, которым ещё нужен полный typed transport descriptor;
+- VMess transports кроме TCP (WS/gRPC и другие варианты должны получить отдельные typed descriptors);
+- WireGuard и другие протоколы, которым ещё нужен полный typed transport descriptor;
 - нулевой local port и некорректные numeric/bool options.
 
 Это лучше, чем показать пользователю «Connected», запустив другой transport, чем был задан подпиской.
@@ -46,4 +48,6 @@ Materializer не должен молча отбрасывать парамет�
 
 ## Следующий шаг
 
-Материализовать полный WireGuard/VMess descriptor и затем добавить typed transport descriptors для WS/gRPC/Reality вместо строкового копирования неизвестных query-параметров. TUIC уже использует отдельный username/password variant и не кладёт секреты в options.
+Материализовать полный WireGuard descriptor и добавить typed transport descriptors для VMess/VLESS
+WS/gRPC/Reality вместо строкового копирования неизвестных параметров. TUIC уже использует отдельный
+username/password variant и не кладёт секреты в options.

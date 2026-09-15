@@ -7,7 +7,7 @@ secrets, transports и protection gate.
 
 | Что | Windows | Android |
 |---|---|---|
-| Цвета, радиусы, основные отступы и размеры | `apps/windows/src/theme.rs` | `apps/android/app/src/main/java/ru/amri/vpn/AmriTheme.kt` |
+| Цвета, радиусы, основные отступы и размеры | `design/amri-ui-theme.json` | тот же общий JSON |
 | Расположение экранов и карточек | `apps/windows/src/main.rs` | `apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt` |
 | Тексты и 9 языков | `crates/amri-core/src/i18n.rs` | `apps/android/app/src/main/res/values*/strings.xml` |
 | Фон, иконка, кнопки | `assets/brand/` | тот же `assets/brand/`, Gradle копирует нужные файлы при сборке |
@@ -32,3 +32,21 @@ Lock нужен не для запрета редактирования, а чт
 - Сохранять accessibility description у icon buttons и адаптацию к длинным переводам/RTL.
 - Не размещать credentials, subscription URL или raw destination в UI diagnostics.
 - После изменения размеров проверить Windows minimum window и Android narrow/large screens.
+
+## Визуальный редактор без правки кода
+
+В репозитории есть локальный `tools/amri-ui-studio/index.html`. Он показывает телефонный и Windows
+preview и позволяет мышью/ползунками менять цвета, скругление, отступы и размеры кнопок.
+
+1. В корне репозитория выполнить `python -m http.server 8080`.
+2. Открыть `http://localhost:8080/tools/amri-ui-studio/`.
+3. Изменить оформление и скачать `amri-ui-theme.json`.
+4. Заменить `design/amri-ui-theme.json` скачанным файлом.
+5. Выполнить `python scripts/generate_ui_theme.py`.
+6. Выполнить `python scripts/generate_ui_theme.py --check` и обычные проверки обеих платформ.
+
+Генератор обновляет `theme_generated.rs` и `GeneratedAmriTheme.kt`; эти два generated-файла вручную
+не редактировать. Так одна настройка не расходится между Windows и Android. Свободная абсолютная
+расстановка блоков не экспортируется намеренно: она ломает узкие экраны, длинные переводы и RTL.
+Для полной смены структуры сначала удобно собрать макет в Figma или бесплатном open-source Penpot,
+затем перенести структуру в два layout-файла из таблицы выше.

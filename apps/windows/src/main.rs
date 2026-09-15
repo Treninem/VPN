@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod secure_nodes;
 mod theme;
 mod transport_worker;
 
@@ -57,6 +58,20 @@ fn desktop_background(ui: &mut egui::Ui) {
     ))
     .fit_to_exact_size(size)
     .paint_at(ui, rect);
+}
+
+fn default_sing_box_path() -> String {
+    if let Ok(configured) = std::env::var("AMRI_SING_BOX_PATH") {
+        if !configured.trim().is_empty() {
+            return configured;
+        }
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("sing-box.exe")))
+        .unwrap_or_else(|| PathBuf::from("sing-box.exe"))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn main() -> eframe::Result {
@@ -135,23 +150,27 @@ impl AmriApp {
             .map(|tag| Language::from_tag(&tag))
             .unwrap_or(Language::English);
 
+        let (imported_nodes, transport_state) = match secure_nodes::load() {
+            Ok(nodes) => (nodes, TransportUiState::Idle),
+            Err(error) => (Vec::new(), TransportUiState::Failed(error)),
+        };
+
         Self {
             page: Page::Home,
             navigation_history: Vec::new(),
             language,
             language_menu_open: false,
             transport: TransportWorker::new(),
-            transport_state: TransportUiState::Idle,
+            transport_state,
             subscription_input: String::new(),
-            imported_nodes: Vec::new(),
+            imported_nodes,
             selected_node: 0,
             routing_mode: RoutingMode::Smart,
             editing_node: None,
             delete_confirmation: None,
             info_node: None,
             node_actions_open: false,
-            core_path: std::env::var("AMRI_SING_BOX_PATH")
-                .unwrap_or_else(|_| "sing-box.exe".into()),
+            core_path: default_sing_box_path(),
             local_port: "20800".into(),
             smart_routing: true,
             kill_switch: true,
@@ -220,6 +239,13 @@ impl AmriApp {
         if matches!(&self.transport_state, TransportUiState::Failed(_)) {
             self.transport_state = TransportUiState::Idle;
         }
+        self.persist_imported_nodes();
+    }
+
+    fn persist_imported_nodes(&mut self) {
+        if let Err(error) = secure_nodes::save(&self.imported_nodes) {
+            self.transport_state = TransportUiState::Failed(error);
+        }
     }
 
     fn begin_edit_selected_node(&mut self) {
@@ -250,6 +276,7 @@ impl AmriApp {
         }
 
         self.imported_nodes.remove(index);
+        self.persist_imported_nodes();
         self.info_node = None;
         self.node_actions_open = false;
         match self.editing_node {

@@ -357,6 +357,25 @@ impl CoreConfigRenderer for SingBoxRenderer {
         outbound.insert("server_port".into(), json!(request.endpoint.port));
 
         match request.protocol {
+            NodeProtocol::Vmess => {
+                let secret = single_secret(request)?;
+                outbound.insert("type".into(), json!("vmess"));
+                outbound.insert("uuid".into(), json!(secret));
+                outbound.insert(
+                    "security".into(),
+                    json!(request
+                        .options
+                        .get("security")
+                        .map(String::as_str)
+                        .unwrap_or("auto")),
+                );
+                if let Some(alter_id) = option_u64(request, "alter_id")? {
+                    outbound.insert("alter_id".into(), json!(alter_id));
+                }
+                if option_bool(request, "tls", false)? {
+                    outbound.insert("tls".into(), tls_config(request)?);
+                }
+            }
             NodeProtocol::Vless => {
                 let secret = single_secret(request)?;
                 outbound.insert("type".into(), json!("vless"));
@@ -454,6 +473,7 @@ pub fn sing_box_process_spec(executable: impl Into<PathBuf>) -> ExternalCoreSpec
         args: vec!["run".into(), "-c".into(), "stdin".into()],
         supported_protocols: vec![
             NodeProtocol::Vless,
+            NodeProtocol::Vmess,
             NodeProtocol::Trojan,
             NodeProtocol::Shadowsocks,
             NodeProtocol::Hysteria2,
@@ -585,6 +605,26 @@ mod tests {
         assert_eq!(value["outbounds"][0]["tls"]["server_name"], "sni.example");
         assert_eq!(value["inbounds"][0]["listen"], "127.0.0.1");
         assert_eq!(value["inbounds"][0]["listen_port"], 20800);
+    }
+
+    #[test]
+    fn renders_vmess_with_typed_uuid_and_tls() {
+        let mut request = request(NodeProtocol::Vmess);
+        request.options.insert("security".into(), "auto".into());
+        request.options.insert("alter_id".into(), "0".into());
+        request.options.insert("tls".into(), "true".into());
+        request
+            .options
+            .insert("server_name".into(), "edge.example".into());
+
+        let config = SingBoxRenderer.render(&request).unwrap();
+        let value: Value = serde_json::from_str(config.expose_secret()).unwrap();
+        let outbound = &value["outbounds"][0];
+        assert_eq!(outbound["type"], "vmess");
+        assert_eq!(outbound["uuid"], "secret-value");
+        assert_eq!(outbound["security"], "auto");
+        assert_eq!(outbound["alter_id"], 0);
+        assert_eq!(outbound["tls"]["server_name"], "edge.example");
     }
 
     #[test]
