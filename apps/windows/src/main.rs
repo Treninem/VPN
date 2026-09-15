@@ -1,7 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod transport_worker;
+
 use amri_core::{ui_text, Language, UiMessage};
+use amri_subscriptions::{parse_subscription_text, ImportedNode};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
+use std::path::PathBuf;
+use std::time::Duration;
+use transport_worker::{TransportUiState, TransportWorker};
 
 fn amri_window_icon() -> egui::IconData {
     let image = image::load_from_memory(include_bytes!("../../../assets/brand/amri-icon.png"))
@@ -45,7 +51,13 @@ enum Page {
 struct AmriApp {
     page: Page,
     language: Language,
-    connected: bool,
+    transport: TransportWorker,
+    transport_state: TransportUiState,
+    subscription_input: String,
+    imported_nodes: Vec<ImportedNode>,
+    selected_node: usize,
+    core_path: String,
+    local_port: String,
     smart_routing: bool,
     kill_switch: bool,
     learning: bool,
@@ -79,7 +91,14 @@ impl AmriApp {
         Self {
             page: Page::Home,
             language,
-            connected: false,
+            transport: TransportWorker::new(),
+            transport_state: TransportUiState::Idle,
+            subscription_input: String::new(),
+            imported_nodes: Vec::new(),
+            selected_node: 0,
+            core_path: std::env::var("AMRI_SING_BOX_PATH")
+                .unwrap_or_else(|_| "sing-box.exe".into()),
+            local_port: "20800".into(),
             smart_routing: true,
             kill_switch: true,
             learning: true,
