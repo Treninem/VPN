@@ -26,7 +26,6 @@ impl RenderedConfig {
     pub fn expose_secret(&self) -> &str {
         self.0.as_str()
     }
-
 }
 
 impl fmt::Debug for RenderedConfig {
@@ -172,6 +171,14 @@ impl LoopbackReadiness {
         request: &ConnectRequest,
         policy: ReadinessPolicy,
     ) -> Result<Self, AdapterError> {
+        if policy.startup_timeout.is_zero()
+            || policy.poll_interval.is_zero()
+            || policy.connect_timeout.is_zero()
+        {
+            return Err(AdapterError::new(
+                "external VPN core readiness durations must be non-zero",
+            ));
+        }
         let port = option_u16(request, "local_port")?
             .filter(|port| *port != 0)
             .ok_or_else(|| AdapterError::new("external VPN core requires a non-zero local_port"))?;
@@ -681,6 +688,29 @@ mod tests {
         let error = adapter.connect(&request(NodeProtocol::Vless)).unwrap_err();
 
         assert!(error.message.contains("non-zero local_port"));
+        assert!(adapter.processes.is_empty());
+    }
+
+    #[test]
+    fn zero_readiness_duration_is_rejected_without_spawning() {
+        let stopped = Arc::new(AtomicBool::new(false));
+        let mut adapter = SupervisedProcessAdapter::with_spawner_and_policy(
+            sing_box_process_spec("sing-box"),
+            SingBoxRenderer,
+            FakeSpawner {
+                exit_after_connect_check: false,
+                stopped,
+            },
+            ReadinessPolicy {
+                startup_timeout: Duration::ZERO,
+                ..ReadinessPolicy::default()
+            },
+        );
+        let (request, _listener) = ready_request(NodeProtocol::Vless);
+
+        let error = adapter.connect(&request).unwrap_err();
+
+        assert!(error.message.contains("durations must be non-zero"));
         assert!(adapter.processes.is_empty());
     }
 }
