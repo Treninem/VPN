@@ -107,6 +107,60 @@ impl AmriApp {
         }
     }
 
+    fn transport_ready(&self) -> bool {
+        matches!(self.transport_state, TransportUiState::Ready { .. })
+    }
+
+    fn refresh_transport_state(&mut self, ctx: &egui::Context) {
+        if let Some(state) = self.transport.latest_state() {
+            self.transport_state = state;
+        }
+        if matches!(self.transport_state, TransportUiState::Connecting) {
+            ctx.request_repaint_after(Duration::from_millis(40));
+        }
+    }
+
+    fn import_subscription_text(&mut self) {
+        self.imported_nodes = parse_subscription_text("windows-manual", &self.subscription_input);
+        self.selected_node = 0;
+        if self.imported_nodes.is_empty() {
+            self.transport_state =
+                TransportUiState::Failed("no supported VPN nodes were found".into());
+        } else if matches!(self.transport_state, TransportUiState::Failed(_)) {
+            self.transport_state = TransportUiState::Idle;
+        }
+    }
+
+    fn start_transport(&mut self) {
+        let Some(node) = self.imported_nodes.get(self.selected_node).cloned() else {
+            self.page = Page::Subscriptions;
+            return;
+        };
+        let port = match self.local_port.trim().parse::<u16>() {
+            Ok(port) if port != 0 => port,
+            _ => {
+                self.transport_state =
+                    TransportUiState::Failed("local port must be between 1 and 65535".into());
+                return;
+            }
+        };
+
+        match self
+            .transport
+            .connect(node, PathBuf::from(self.core_path.trim()), port)
+        {
+            Ok(()) => self.transport_state = TransportUiState::Connecting,
+            Err(error) => self.transport_state = TransportUiState::Failed(error),
+        }
+    }
+
+    fn stop_transport(&mut self) {
+        match self.transport.disconnect() {
+            Ok(()) => self.transport_state = TransportUiState::Connecting,
+            Err(error) => self.transport_state = TransportUiState::Failed(error),
+        }
+    }
+
     fn sidebar(&mut self, ui: &mut egui::Ui) {
         ui.set_width(220.0);
         ui.add_space(8.0);
