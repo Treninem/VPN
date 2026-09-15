@@ -44,6 +44,21 @@ The first exposed operation is intentionally specific: initialize or validate th
 - Temporary Java `byte[]` copies used for the JNI transfer are overwritten after a successful read/write handoff.
 - `AmriNativeBridge` loads `libamri_android_ffi.so` lazily. Builds that do not package the native library remain usable as the existing control-only Android client, and a native-only operation reports an unavailable runtime instead of crashing app startup.
 
+## Native Android packaging
+
+The Gradle task `buildAmriRustNative` cross-compiles `amri-android-ffi` through pinned `cargo-ndk 4.1.2` when `AMRI_BUILD_NATIVE=1`.
+
+- Android API level is supplied through `CARGO_NDK_PLATFORM=26`, matching the application's `minSdk`.
+- The current required ABIs are `arm64-v8a` and `x86_64`.
+- Generated `.so` files are written under the app build directory and exposed to AGP through a generated `jniLibs` source directory.
+- Native binaries are build products, not source-controlled artifacts.
+- The generated native directory is cleared before each enabled native build so stale `.so` files cannot make a failing build look healthy.
+- Normal local JVM/UI development can omit `AMRI_BUILD_NATIVE`; CI always enables it.
+- CI aligns `ANDROID_NDK`, `ANDROID_NDK_HOME` and `ANDROID_NDK_ROOT` to one runner NDK before invoking Gradle.
+- CI does not trust Gradle success alone: it opens the completed debug APK and requires both `lib/arm64-v8a/libamri_android_ffi.so` and `lib/x86_64/libamri_android_ffi.so` to exist.
+
+The runner currently uses its preinstalled NDK 29 for this verification. Moving the build to a separately downloaded/pinned NDK LTS can be done as an infrastructure update without changing the JNI contract.
+
 ## Security boundaries
 
 - Plaintext credentials are never written to SharedPreferences.
@@ -52,14 +67,17 @@ The first exposed operation is intentionally specific: initialize or validate th
 - Android Keystore remains the owner of platform persistence; Rust does not create a second plaintext/key file.
 - Android Keystore is platform-local. Secrets are not designed to be copied between Windows and Android.
 - New JNI operations must remain capability-like and exact-slot/exact-operation based. Do not add a generic "dump/import all secrets" JNI API.
+- Prebuilt `.so` files are not committed as opaque source assets; CI reproduces them from the Rust source.
 
 ## Current integration status
 
-The Android Keystore adapter and the narrow Rust/JNI secret bridge compile and are unit-tested. The native `.so` is not yet built for Android ABIs or packaged into the APK, so the bridge is not invoked by production Android runtime ownership yet.
+The Android Keystore adapter and narrow Rust/JNI secret bridge compile and are unit-tested. CI now cross-compiles and packages `libamri_android_ffi.so` for both `arm64-v8a` and `x86_64`, and verifies those exact entries inside the finished APK.
+
+The remaining gap is runtime ownership: the packaged bridge is not yet invoked by the Android VPN/runtime bootstrap, so Route Proof initialization still needs to be wired deliberately rather than from UI code.
 
 Next steps:
 
-1. build/package `libamri_android_ffi.so` for Android ABIs (arm64-v8a first; x86_64 useful for debug/emulator);
-2. initialize the Route Proof/runtime owner through the packaged bridge;
-3. keep the same narrow-boundary rule for any additional secret operation;
-4. proceed to `NetworkCapabilities` observation, per-socket network binding and production packet forwarding.
+1. initialize the Route Proof/runtime owner through the packaged `AmriNativeBridge` at an application/service boundary;
+2. keep the same narrow-boundary rule for any additional secret operation;
+3. connect Android `NetworkCapabilities` observation to the common mobile policy;
+4. add per-socket network binding, adaptive MTU application and production packet forwarding.
