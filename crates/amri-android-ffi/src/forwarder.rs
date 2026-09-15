@@ -70,7 +70,10 @@ mod android {
         };
         if let Some(existing) = guard.as_ref() {
             let state = existing.state.load(Ordering::Acquire);
-            if matches!(state, FORWARDER_STARTING | FORWARDER_RUNNING | FORWARDER_STOPPING) {
+            if matches!(
+                state,
+                FORWARDER_STARTING | FORWARDER_RUNNING | FORWARDER_STOPPING
+            ) {
                 return START_BUSY;
             }
         }
