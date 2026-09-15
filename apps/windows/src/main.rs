@@ -204,6 +204,13 @@ impl AmriApp {
         self.info_node = None;
     }
 
+    fn cancel_node_edit(&mut self) {
+        self.editing_node = None;
+        self.subscription_input.clear();
+        self.delete_confirmation = None;
+        self.info_node = None;
+    }
+
     fn delete_confirmed_node(&mut self) {
         let Some(index) = self.delete_confirmation.take() else {
             return;
@@ -620,6 +627,16 @@ impl AmriApp {
                         .size(12.0)
                         .color(Color32::from_rgb(115, 225, 240)),
                 );
+                if brand_button(
+                    ui,
+                    egui::include_image!("../../../assets/brand/close-button.svg"),
+                    36.0,
+                    "Cancel editing",
+                )
+                .clicked()
+                {
+                    self.cancel_node_edit();
+                }
             }
         });
 
