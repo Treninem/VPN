@@ -69,7 +69,7 @@
 ### Preview installers / packaging
 
 - `.github/workflows/installers.yml` собирает Windows NSIS installer и Android APK artifact.
-- Windows комплектует pinned official sing-box 1.14.1 после SHA-256 verification; license/source notice сохранены.
+- Windows комплектует pinned official sing-box 1.14.0 после SHA-256 verification; license/source notice сохранены. Ранее в параллельной ветке ошибочно был указан 1.14.1; pin исправлен на существующий стабильный 1.14.0 до release merge.
 - Android artifact пока debug-signed и предназначен для тестовой установки; production signing key в git не допускается.
 
 ## Активный этап: Windows Protected lifecycle — PR #31
@@ -104,6 +104,7 @@
 - Из official archive берётся amd64 `wintun.dll` и upstream license/provenance; self-built/random DLL не принимается.
 - NSIS устанавливает `wintun.dll` рядом с `AMRI-VPN.exe` и удаляет его при uninstall.
 - Installed AMRI executable получает normal Windows `RUNASADMIN` UAC behavior, чтобы preflight не падал только после нажатия Connect.
+- Windows transport pin: official sing-box 1.14.0, archive SHA-256 `3ffb56267da14e287be48bd10cf7e6505260125bad940b75101fbb4d5d58e5d6`.
 - `THIRD_PARTY_NOTICES.md` объединяет sing-box GPL notice, tun2proxy/tproxy-config MIT и Wintun runtime provenance.
 
 ### Verification status
