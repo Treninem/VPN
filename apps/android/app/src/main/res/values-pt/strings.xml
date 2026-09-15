@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN</string>
+    <string name="notification_ready">O serviço VPN está pronto</string>
+    <string name="product_subtitle">VPN adaptativa de múltiplas rotas</string>
+    <string name="mode">Modo</string>
+    <string name="smart_routing">Roteamento inteligente</string>
+    <string name="smart_routing_description">A melhor rota para cada destino</string>
+    <string name="dns_protection">Proteção DNS</string>
+    <string name="dns_protection_description">Enviar DNS pela rota protegida selecionada</string>
+    <string name="kill_switch">Bloqueio de emergência</string>
+    <string name="kill_switch_description">Bloquear tráfego protegido se a rota VPN cair</string>
+    <string name="local_learning">Aprendizado local</string>
+    <string name="local_learning_description">O histórico fica apenas neste dispositivo</string>
+    <string name="federated_learning">Aprendizado compartilhado anônimo</string>
+    <string name="federated_learning_description">Desativado por padrão</string>
+    <string name="status_service_ready">O serviço VPN está pronto</string>
+    <string name="detail_service_ready">O tráfego público não é capturado até conectar um transporte protegido</string>
+    <string name="stop">Parar</string>
+    <string name="status_preparing">Preparando…</string>
+    <string name="detail_preparing">O Android está criando uma interface protegida</string>
+    <string name="wait">Aguarde</string>
+    <string name="status_failed">Falha ao preparar a VPN</string>
+    <string name="detail_failed">A interface não foi criada; a rede normal não mudou</string>
+    <string name="retry">Tentar novamente</string>
+    <string name="status_off">Proteção desativada</string>
+    <string name="detail_off">Preparar o VpnService para o transporte AMRI</string>
+    <string name="prepare_vpn">Preparar VPN</string>
+    <string-array name="vpn_modes">
+        <item>Smart</item>
+        <item>Velocidade</item>
+        <item>Ping</item>
+        <item>Privacidade</item>
+        <item>Streaming</item>
+        <item>Jogos</item>
+        <item>Manual</item>
+    </string-array>
+</resources>

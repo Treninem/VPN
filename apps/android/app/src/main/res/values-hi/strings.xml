@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN</string>
+    <string name="notification_ready">VPN सेवा तैयार है</string>
+    <string name="product_subtitle">अनुकूली मल्टी-रूट VPN</string>
+    <string name="mode">मोड</string>
+    <string name="smart_routing">स्मार्ट रूटिंग</string>
+    <string name="smart_routing_description">हर गंतव्य के लिए अलग सर्वोत्तम रूट</string>
+    <string name="dns_protection">DNS सुरक्षा</string>
+    <string name="dns_protection_description">DNS को चुने गए सुरक्षित रूट से भेजें</string>
+    <string name="kill_switch">किल स्विच</string>
+    <string name="kill_switch_description">VPN रूट खोने पर सुरक्षित ट्रैफ़िक रोकें</string>
+    <string name="local_learning">स्थानीय सीख</string>
+    <string name="local_learning_description">निर्णय इतिहास केवल इस डिवाइस पर रहता है</string>
+    <string name="federated_learning">अनाम साझा सीख</string>
+    <string name="federated_learning_description">डिफ़ॉल्ट रूप से बंद</string>
+    <string name="status_service_ready">VPN सेवा तैयार है</string>
+    <string name="detail_service_ready">सुरक्षित ट्रांसपोर्ट जुड़ने तक सार्वजनिक ट्रैफ़िक कैप्चर नहीं होगा</string>
+    <string name="stop">रोकें</string>
+    <string name="status_preparing">तैयारी…</string>
+    <string name="detail_preparing">Android सुरक्षित सिस्टम इंटरफ़ेस बना रहा है</string>
+    <string name="wait">कृपया प्रतीक्षा करें</string>
+    <string name="status_failed">VPN तैयारी विफल</string>
+    <string name="detail_failed">सिस्टम इंटरफ़ेस नहीं बना; सामान्य नेटवर्क अपरिवर्तित है</string>
+    <string name="retry">फिर प्रयास करें</string>
+    <string name="status_off">सुरक्षा बंद है</string>
+    <string name="detail_off">AMRI ट्रांसपोर्ट के लिए VpnService तैयार करें</string>
+    <string name="prepare_vpn">VPN तैयार करें</string>
+    <string-array name="vpn_modes">
+        <item>स्मार्ट</item>
+        <item>गति</item>
+        <item>पिंग</item>
+        <item>गोपनीयता</item>
+        <item>स्ट्रीमिंग</item>
+        <item>गेमिंग</item>
+        <item>मैनुअल</item>
+    </string-array>
+</resources>

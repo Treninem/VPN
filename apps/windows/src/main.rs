@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use amri_core::{ui_text, Language, UiMessage};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
 
 fn amri_window_icon() -> egui::IconData {
@@ -43,6 +44,7 @@ enum Page {
 
 struct AmriApp {
     page: Page,
+    language: Language,
     connected: bool,
     smart_routing: bool,
     kill_switch: bool,
@@ -70,8 +72,13 @@ impl AmriApp {
         style.spacing.button_padding = Vec2::new(16.0, 10.0);
         cc.egui_ctx.set_style_of(egui::Theme::Dark, style);
 
+        let language = std::env::var("LANG")
+            .map(|tag| Language::from_tag(&tag))
+            .unwrap_or(Language::English);
+
         Self {
             page: Page::Home,
+            language,
             connected: false,
             smart_routing: true,
             kill_switch: true,
@@ -85,14 +92,34 @@ impl AmriApp {
         ui.set_width(220.0);
         ui.add_space(8.0);
         ui.label(RichText::new("AMRI").size(28.0).strong());
-        ui.label(RichText::new("Adaptive VPN").color(Color32::from_gray(145)));
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::AdaptiveVpn))
+                .color(Color32::from_gray(145)),
+        );
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::LanguageLabel))
+                .size(11.0)
+                .color(Color32::from_gray(125)),
+        );
+        egui::ComboBox::from_id_salt("ui-language")
+            .selected_text(self.language.native_name())
+            .show_ui(ui, |ui| {
+                for language in Language::ALL {
+                    ui.selectable_value(&mut self.language, language, language.native_name());
+                }
+            });
         ui.add_space(26.0);
 
-        self.nav_button(ui, Page::Home, "⌂  Главная");
-        self.nav_button(ui, Page::Routes, "↗  Маршруты");
-        self.nav_button(ui, Page::Subscriptions, "⊕  Подписки");
-        self.nav_button(ui, Page::Rules, "◎  Правила");
-        self.nav_button(ui, Page::Settings, "⚙  Настройки");
+        let language = self.language;
+        self.nav_button(ui, Page::Home, ui_text(language, UiMessage::Home));
+        self.nav_button(ui, Page::Routes, ui_text(language, UiMessage::Routes));
+        self.nav_button(
+            ui,
+            Page::Subscriptions,
+            ui_text(language, UiMessage::Subscriptions),
+        );
+        self.nav_button(ui, Page::Rules, ui_text(language, UiMessage::Rules));
+        self.nav_button(ui, Page::Settings, ui_text(language, UiMessage::Settings));
 
         ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
             ui.add_space(8.0);
@@ -105,7 +132,7 @@ impl AmriApp {
                 let (rect, _) = ui.allocate_exact_size(Vec2::splat(8.0), egui::Sense::hover());
                 ui.painter()
                     .circle_filled(rect.center(), 4.0, Color32::from_rgb(70, 210, 130));
-                ui.label(RichText::new("AMRI активен").size(12.0));
+                ui.label(RichText::new(ui_text(self.language, UiMessage::EngineReady)).size(12.0));
             });
         });
     }
@@ -145,7 +172,7 @@ impl AmriApp {
                         );
                     });
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let state_text = if *value { "Вкл" } else { "Выкл" };
+                        let state_text = if *value { "ON" } else { "OFF" };
                         ui.toggle_value(value, state_text);
                     });
                 });
@@ -176,9 +203,9 @@ impl AmriApp {
     }
 
     fn home(&mut self, ui: &mut egui::Ui) {
-        ui.heading(RichText::new("Главная").size(30.0));
+        ui.heading(RichText::new(ui_text(self.language, UiMessage::Home)).size(30.0));
         ui.label(
-            RichText::new("Автоматический выбор лучшего маршрута для каждого соединения")
+            RichText::new(ui_text(self.language, UiMessage::SmartRoutingDescription))
                 .color(Color32::from_gray(150)),
         );
         ui.add_space(18.0);
@@ -192,9 +219,9 @@ impl AmriApp {
                     ui.vertical(|ui| {
                         ui.label(
                             RichText::new(if self.connected {
-                                "Защита включена"
+                                ui_text(self.language, UiMessage::ProtectionOn)
                             } else {
-                                "Защита выключена"
+                                ui_text(self.language, UiMessage::ProtectionOff)
                             })
                             .size(24.0)
                             .strong(),
@@ -202,9 +229,9 @@ impl AmriApp {
                         ui.add_space(4.0);
                         ui.label(
                             RichText::new(if self.connected {
-                                "AMRI распределяет трафик между оптимальными маршрутами"
+                                ui_text(self.language, UiMessage::EngineReady)
                             } else {
-                                "Нажмите кнопку, чтобы включить Smart VPN"
+                                ui_text(self.language, UiMessage::AddSubscriptionFirst)
                             })
                             .color(Color32::from_gray(155)),
                         );
@@ -212,9 +239,9 @@ impl AmriApp {
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let label = if self.connected {
-                            "Отключить"
+                            ui_text(self.language, UiMessage::Disconnect)
                         } else {
-                            "Подключить"
+                            ui_text(self.language, UiMessage::Connect)
                         };
                         let fill = if self.connected {
                             Color32::from_rgb(58, 72, 98)
@@ -231,7 +258,11 @@ impl AmriApp {
                             )
                             .clicked()
                         {
-                            self.connected = !self.connected;
+                            if self.connected {
+                                self.connected = false;
+                            } else {
+                                self.page = Page::Subscriptions;
+                            }
                         }
                     });
                 });
@@ -241,103 +272,92 @@ impl AmriApp {
         ui.horizontal_wrapped(|ui| {
             Self::metric_card(
                 ui,
-                "Активные маршруты",
+                ui_text(self.language, UiMessage::ActiveRoutes),
                 if self.connected { "4" } else { "0" },
-                "из горячего пула",
+                "",
             );
             Self::metric_card(
                 ui,
-                "Средний ping",
+                ui_text(self.language, UiMessage::AveragePing),
                 if self.connected { "31 ms" } else { "—" },
-                "по активным маршрутам",
+                "",
             );
             Self::metric_card(
                 ui,
-                "Jitter",
+                ui_text(self.language, UiMessage::Jitter),
                 if self.connected { "2.8 ms" } else { "—" },
-                "realtime score",
+                "",
             );
             Self::metric_card(
                 ui,
-                "RouteScore",
+                ui_text(self.language, UiMessage::RouteScore),
                 if self.connected { "94" } else { "—" },
-                "лучший текущий маршрут",
+                "",
             );
         });
 
         ui.add_space(22.0);
-        ui.label(RichText::new("Умная маршрутизация").size(20.0).strong());
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::SmartRouting))
+                .size(20.0)
+                .strong(),
+        );
         ui.add_space(8.0);
 
         Self::toggle_row(
             ui,
-            "Smart Routing",
-            "Выбирать сервер отдельно для каждого сайта и приложения",
+            ui_text(self.language, UiMessage::SmartRouting),
+            ui_text(self.language, UiMessage::SmartRoutingDescription),
             &mut self.smart_routing,
         );
         Self::toggle_row(
             ui,
-            "Локальное обучение",
-            "Запоминать лучшие маршруты только на этом компьютере",
+            ui_text(self.language, UiMessage::LocalLearning),
+            ui_text(self.language, UiMessage::LocalLearningDescription),
             &mut self.learning,
         );
         Self::toggle_row(
             ui,
-            "Обмен обезличенным опытом",
-            "Передавать только агрегированное обучение AMRI без истории сайтов и личных данных",
+            ui_text(self.language, UiMessage::FederatedLearning),
+            ui_text(self.language, UiMessage::FederatedDescription),
             &mut self.federated_learning,
         );
         Self::toggle_row(
             ui,
-            "Фоновое тестирование",
-            "Проверять альтернативные серверы без вмешательства пользователя",
+            ui_text(self.language, UiMessage::BackgroundTesting),
+            ui_text(self.language, UiMessage::BackgroundDescription),
             &mut self.background_probing,
         );
         Self::toggle_row(
             ui,
-            "Kill Switch",
-            "Блокировать защищённый трафик при потере VPN-маршрута",
+            ui_text(self.language, UiMessage::KillSwitch),
+            ui_text(self.language, UiMessage::KillSwitchDescription),
             &mut self.kill_switch,
         );
     }
 
     fn routes(&mut self, ui: &mut egui::Ui) {
-        ui.heading(RichText::new("Маршруты").size(30.0));
+        ui.heading(RichText::new(ui_text(self.language, UiMessage::Routes)).size(30.0));
         ui.label(
-            RichText::new(
-                "Здесь будет живой список: приложение/домен → выбранный узел → причина решения",
-            )
-            .color(Color32::from_gray(150)),
+            RichText::new(ui_text(self.language, UiMessage::NoActiveRoutes))
+                .color(Color32::from_gray(150)),
         );
         ui.add_space(18.0);
-        for (name, route, score) in [
-            ("YouTube", "NL-07", "94"),
-            ("Discord", "DE-03", "91"),
-            ("Telegram", "FI-02", "89"),
-            ("Steam", "DIRECT", "100"),
-        ] {
-            egui::Frame::new()
-                .fill(Color32::from_rgb(22, 27, 36))
-                .corner_radius(18)
-                .inner_margin(16)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(name).size(15.0).strong());
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(format!("Score {score}"))
-                                    .color(Color32::from_gray(140)),
-                            );
-                            ui.label(RichText::new(route).strong());
-                        });
-                    });
-                });
-        }
+        egui::Frame::new()
+            .fill(Color32::from_rgb(22, 27, 36))
+            .corner_radius(18)
+            .inner_margin(18)
+            .show(ui, |ui| {
+                ui.label(ui_text(self.language, UiMessage::AddSubscriptionFirst));
+            });
     }
 
-    fn placeholder(&self, ui: &mut egui::Ui, title: &str, subtitle: &str) {
+    fn placeholder(&self, ui: &mut egui::Ui, title: &str) {
         ui.heading(RichText::new(title).size(30.0));
-        ui.label(RichText::new(subtitle).color(Color32::from_gray(150)));
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::NoActiveRoutes))
+                .color(Color32::from_gray(150)),
+        );
     }
 }
 
@@ -368,19 +388,13 @@ impl eframe::App for AmriApp {
                                 Page::Routes => self.routes(ui),
                                 Page::Subscriptions => self.placeholder(
                                     ui,
-                                    "Подписки",
-                                    "Добавление нескольких подписок, единый пул узлов и приоритеты будут подключены к amri-subscriptions.",
+                                    ui_text(self.language, UiMessage::Subscriptions),
                                 ),
-                                Page::Rules => self.placeholder(
-                                    ui,
-                                    "Правила",
-                                    "Настройки DIRECT / VPN / BLOCK, приложения, домены и резервные маршруты.",
-                                ),
-                                Page::Settings => self.placeholder(
-                                    ui,
-                                    "Настройки",
-                                    "Системная интеграция, темы, DNS, запуск с Windows, обучение, федеративный обмен и приватность.",
-                                ),
+                                Page::Rules => {
+                                    self.placeholder(ui, ui_text(self.language, UiMessage::Rules))
+                                }
+                                Page::Settings => self
+                                    .placeholder(ui, ui_text(self.language, UiMessage::Settings)),
                             }
                         });
                 });

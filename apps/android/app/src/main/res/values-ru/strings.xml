@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMRI VPN</string>
+    <string name="notification_channel">AMRI VPN</string>
+    <string name="notification_ready">VPN-служба готова</string>
+    <string name="product_subtitle">Адаптивный многомаршрутный VPN</string>
+    <string name="mode">Режим</string>
+    <string name="smart_routing">Умная маршрутизация</string>
+    <string name="smart_routing_description">Отдельный лучший маршрут для каждого назначения</string>
+    <string name="dns_protection">Защита DNS</string>
+    <string name="dns_protection_description">DNS направляется через выбранный защищённый маршрут</string>
+    <string name="kill_switch">Kill Switch</string>
+    <string name="kill_switch_description">Блокировка защищённого трафика при потере маршрута</string>
+    <string name="local_learning">Локальное обучение</string>
+    <string name="local_learning_description">История решений остаётся только на устройстве</string>
+    <string name="federated_learning">Обезличенное общее обучение</string>
+    <string name="federated_learning_description">Выключено по умолчанию</string>
+    <string name="status_service_ready">VPN-служба готова</string>
+    <string name="detail_service_ready">Публичный трафик не перехватывается до подключения защищённого транспорта</string>
+    <string name="stop">Остановить</string>
+    <string name="status_preparing">Подготовка…</string>
+    <string name="detail_preparing">Android создаёт защищённый системный интерфейс</string>
+    <string name="wait">Подождите</string>
+    <string name="status_failed">Не удалось подготовить VPN</string>
+    <string name="detail_failed">Системный интерфейс не создан; обычная сеть не затронута</string>
+    <string name="retry">Повторить</string>
+    <string name="status_off">Защита выключена</string>
+    <string name="detail_off">Подготовить Android VpnService для транспорта AMRI</string>
+    <string name="prepare_vpn">Подготовить VPN</string>
+    <string-array name="vpn_modes">
+        <item>Smart</item>
+        <item>Скорость</item>
+        <item>Ping</item>
+        <item>Приватность</item>
+        <item>Стриминг</item>
+        <item>Игры</item>
+        <item>Ручной</item>
+    </string-array>
+</resources>

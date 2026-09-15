@@ -108,9 +108,22 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Runtime orchestration: GitHub Actions run `34895978521` — Rust fmt/tests/check + Android tests/assemble успешно; PR #5 объединён в `main` commit `3f937872cb1ed171d19bdeae3c12656a2d614e39`.
 - Secure external-core boundary: GitHub Actions run `34897729724` — Rust fmt/tests/check + Android tests/assemble успешно; PR #6 объединён в `main` commit `6ce0f10b3a111ebb736cb9a7b7fce443e0531c4b`.
 
+
+## 2026-09-15 — Instant Shadow Race, Route Proof и локализация
+
+- Shadow Race переработана как синхронная оценка уже завершённого параллельного burst: никаких timer/countdown и последовательного ожидания.
+- Переключение требует quality/confidence quorum; одиночный score spike не проходит.
+- Route Proof создаёт HMAC-связанную локальную цепочку evidence; raw host/process в записи отсутствуют, подмена и удаление промежуточной записи обнаруживаются.
+- Добавлен общий Rust i18n-каталог и девять языков.
+- Windows получил мгновенный selector; Android — локализованные resources и RTL.
+- Экспериментальный Route Galaxy и неподтверждённые визуальные изменения не включались.
+- Актуальные параллельные изменения ядра, amri-secrets, external-core, runtime и brand assets из main сохранены.
+
 # CURRENT STATE
 
 - Rust workspace компилируется и проходит unit-тесты.
+- Route Proof и instant Shadow Race burst реализованы в общем ядре.
+- Основной UI локализован на 9 языков; Android поддерживает RTL.
 - Android app компилируется, unit-тесты проходят, debug APK собирается.
 - Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool и micro-race реализованы.
 - Probe/race результаты реально влияют на dynamic quarantine и stable route decision через `amri-runtime`.
@@ -122,15 +135,16 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 
 # NEXT PRIORITIES
 
-1. Добавить безопасное typed преобразование `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
-2. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и других протоколов вместо секретов в обычном `options` map.
-3. Усилить external-core readiness: кроме process liveness подтверждать, что локальный inbound/туннель действительно готов принимать трафик.
-4. Подключить Windows app к `SecretStore` + `TransportManager` + external-core adapter и получить первый настоящий end-to-end connect/disconnect.
-5. Реализовать Windows packet forwarding/TUN/WFP + DNS leak protection.
-6. Реализовать Android Keystore + Rust FFI + production packet forwarding через `VpnService`.
-7. Добавить end-to-end integration tests connect → health → failover → make-before-break → disconnect.
-8. Только после рабочего туннеля переходить к DIRECT/VPN/BLOCK, per-domain/per-process Smart Routing и kill-switch.
-9. Перед bundling стороннего core провести отдельный license/security review, pin версии и проверку hash/signature binary.
+1. Подключить Route Proof key к amri-secrets и сохранять verified receipts в SQLite.
+2. Добавить безопасное typed преобразование `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
+3. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и других протоколов вместо секретов в обычном `options` map.
+4. Усилить external-core readiness: кроме process liveness подтверждать, что локальный inbound/туннель действительно готов принимать трафик.
+5. Подключить Windows app к `SecretStore` + `TransportManager` + external-core adapter и получить первый настоящий end-to-end connect/disconnect.
+6. Реализовать Windows packet forwarding/TUN/WFP + DNS leak protection.
+7. Реализовать Android Keystore + Rust FFI + production packet forwarding через `VpnService`.
+8. Добавить end-to-end integration tests connect → health → failover → make-before-break → disconnect.
+9. Только после рабочего туннеля переходить к DIRECT/VPN/BLOCK, per-domain/per-process Smart Routing и kill-switch.
+10. Перед bundling стороннего core провести отдельный license/security review, pin версии и проверку hash/signature binary.
 
 # KNOWN ISSUES
 
