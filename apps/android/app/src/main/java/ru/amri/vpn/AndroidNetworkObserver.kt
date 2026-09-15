@@ -11,7 +11,7 @@ import ru.amri.vpn.nativebridge.MobileNetworkSnapshot
 /** Observes only privacy-safe properties of Android's current default network. */
 internal class AndroidNetworkObserver(
     context: Context,
-    private val onSnapshot: (MobileNetworkSnapshot) -> Unit,
+    private val onSnapshot: (Network?, MobileNetworkSnapshot) -> Unit,
 ) : AutoCloseable {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
     private val power = context.getSystemService(PowerManager::class.java)
@@ -21,7 +21,7 @@ internal class AndroidNetworkObserver(
         override fun onAvailable(network: Network) = publishCurrent()
 
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-            onSnapshot(snapshot(caps))
+            onSnapshot(network, snapshot(caps))
         }
 
         override fun onLost(network: Network) = publishCurrent()
@@ -44,7 +44,7 @@ internal class AndroidNetworkObserver(
 
     private fun publishCurrent() {
         val caps = connectivity.activeNetwork?.let(connectivity::getNetworkCapabilities)
-        onSnapshot(caps?.let(::snapshot) ?: unavailableSnapshot())
+        onSnapshot(connectivity.activeNetwork, caps?.let(::snapshot) ?: unavailableSnapshot())
     }
 
     private fun snapshot(caps: NetworkCapabilities): MobileNetworkSnapshot {

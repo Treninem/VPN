@@ -106,12 +106,14 @@ Mobile acceleration must remain opt-in where it can consume extra metered data.
 
 ## Implementation order
 
-1. Finish production Android packet forwarding/Rust FFI.
-2. Add Android network observation and per-socket binding boundary.
-3. Implement mobile-aware path snapshots and MTU policy.
-4. Add warm failover across Wi-Fi/cellular without traffic striping.
-5. Design the AMRI aggregation relay protocol.
-6. Add optional bonding/duplication modes only after privacy, metered-data and battery tests.
+Completed foundations: Android network observation, shared mobile-aware policy/budgets, adaptive
+MTU controller and fail-closed per-socket protection/binding boundary.
+
+1. Finish production Android packet forwarding and connect transport sockets to the binding gate.
+2. Feed forwarding observations into adaptive MTU and public-tunnel readiness.
+3. Add warm failover across Wi-Fi/cellular without traffic striping.
+4. Design the AMRI aggregation relay protocol.
+5. Add optional bonding/duplication modes only after privacy, metered-data and battery tests.
 
 ## Important distinction
 

@@ -2,7 +2,9 @@
 
 mod transport_worker;
 
-use amri_core::{ui_text, Language, UiMessage};
+use amri_core::{
+    evaluate_protection, ui_text, Language, ProtectionSignals, ProtectionState, UiMessage,
+};
 use amri_subscriptions::{parse_subscription_text, ImportedNode};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
 use std::path::PathBuf;
@@ -457,10 +459,25 @@ impl AmriApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        // A ready local proxy is not proof of public packet forwarding. Keep the
-                        // protection claim off until TUN/system routing and leak protection pass
-                        // the future public-tunnel gate.
-                        let protection_message = UiMessage::ProtectionOff;
+                        let transport_ready = matches!(
+                            &self.transport_state,
+                            TransportUiState::Ready { .. }
+                        );
+                        let protection = evaluate_protection(ProtectionSignals {
+                            requested: !matches!(&self.transport_state, TransportUiState::Idle),
+                            transport_ready,
+                            // These remain false until the Windows TUN/DNS/leak adapters report
+                            // readiness for the same route generation.
+                            packet_forwarding_active: false,
+                            dns_protection_ready: false,
+                            leak_protection_ready: false,
+                            public_egress_verified: false,
+                        });
+                        let protection_message = if protection.state == ProtectionState::Protected {
+                            UiMessage::ProtectionOn
+                        } else {
+                            UiMessage::ProtectionOff
+                        };
                         ui.label(
                             RichText::new(ui_text(self.language, protection_message))
                                 .size(24.0)

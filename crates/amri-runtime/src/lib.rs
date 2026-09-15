@@ -1,8 +1,8 @@
 use amri_core::{
     build_hot_pool, score_candidate, CandidateEvidence, CircuitBreakerPolicy, DestinationKey,
-    HotPoolEntry, HotPoolPolicy, NodeId, RouteCandidate, RouteHealthState, RouteHealthTracker,
-    RouteProof, RouteProofChain, RouteSelector, RouteTransitionDecision, ScoringProfile,
-    SelectionPolicy, TrafficClass,
+    HotPoolEntry, HotPoolPolicy, MobilePathPolicy, MobileRuntimeBudget, NodeId, RouteCandidate,
+    RouteHealthState, RouteHealthTracker, RouteProof, RouteProofChain, RouteSelector,
+    RouteTransitionDecision, ScoringProfile, SelectionPolicy, TrafficClass,
 };
 use amri_probe::{ProbeAttemptOutcome, ProbeRaceOutcome};
 use chrono::{DateTime, Utc};
@@ -131,6 +131,27 @@ impl RouteRuntime {
             candidates,
             traffic,
             self.hot_pool_policy,
+            Some(&self.health),
+            now_ms,
+        )
+    }
+
+    /// Builds the quality/diversity filtered reserve while enforcing live mobile limits.
+    pub fn hot_pool_for_mobile_path(
+        &self,
+        candidates: &[RouteCandidate],
+        traffic: TrafficClass,
+        now_ms: u64,
+        mobile_policy: MobilePathPolicy,
+    ) -> Vec<HotPoolEntry> {
+        let budget = MobileRuntimeBudget::from(mobile_policy);
+        let mut policy = self.hot_pool_policy;
+        policy.max_candidates = policy.max_candidates.min(budget.hot_pool_capacity);
+        policy.diversity_slots = policy.diversity_slots.min(policy.max_candidates);
+        build_hot_pool(
+            candidates,
+            traffic,
+            policy,
             Some(&self.health),
             now_ms,
         )
@@ -347,6 +368,41 @@ mod tests {
 
         assert_eq!(pool.len(), 1);
         assert_eq!(pool[0].node_id, "good");
+    }
+
+    #[test]
+    fn mobile_policy_disables_or_bounds_hot_pool_warmup() {
+        let runtime = RouteRuntime::default();
+        let candidates = vec![
+            candidate("a", "provider-a", 1.0),
+            candidate("b", "provider-b", 0.99),
+            candidate("c", "provider-c", 0.98),
+        ];
+        let disabled = runtime.hot_pool_for_mobile_path(
+            &candidates,
+            TrafficClass::Web,
+            200,
+            MobilePathPolicy {
+                probe_intensity: amri_core::ProbeIntensity::Minimal,
+                allow_background_warmup: false,
+                allow_secondary_path: false,
+                allow_latency_duplication: false,
+            },
+        );
+        assert!(disabled.is_empty());
+
+        let bounded = runtime.hot_pool_for_mobile_path(
+            &candidates,
+            TrafficClass::Web,
+            200,
+            MobilePathPolicy {
+                probe_intensity: amri_core::ProbeIntensity::Conservative,
+                allow_background_warmup: true,
+                allow_secondary_path: false,
+                allow_latency_duplication: false,
+            },
+        );
+        assert!(bounded.len() <= 2);
     }
 
     #[test]
