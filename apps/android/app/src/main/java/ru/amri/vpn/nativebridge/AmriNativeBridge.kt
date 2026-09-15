@@ -184,5 +184,5 @@ object AmriNativeBridge {
     private const val POLICY_WARMUP = 1 shl 2
     private const val POLICY_SECONDARY = 1 shl 3
     private const val POLICY_DUPLICATION = 1 shl 4
-    private const val POLICY_RESERVED_BITS = (1 shl 5).inv()
+    private const val POLICY_RESERVED_BITS = ((1 shl 5) - 1).inv()
 }
