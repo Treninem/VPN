@@ -132,6 +132,20 @@
 
 **Проверка:** окончательная проверка — полный GitHub Actions CI ветки (Rust fmt/test/check, Android tests/native build/APK и canonical asset lock).
 
+### Live Android network policy bridge
+
+- `AndroidNetworkObserver` живёт в `VpnService`, подписывается на default-network callbacks и передаёт только access kind, validated/metered/roaming, Data Saver, Battery Saver и Android bandwidth estimates.
+- Добавлен `ACCESS_NETWORK_STATE`; SSID/BSSID, cell ID, оператор, device ID и устойчивый `Network` handle не читаются и не сохраняются.
+- Узкий JNI method передаёт snapshot в общий `amri-core::MobilePathPolicy`; Rust возвращает compact policy: probe intensity, warmup, secondary path и latency duplication.
+- Неверные коды/bit fields отклоняются. При native/policy ошибке Android fallback разрешает только minimal probes и запрещает warmup/secondary/duplication.
+- Observer стартует только после успешного Route Proof runtime bootstrap и закрывается при stop/failure/destroy.
+
+**Почему:** Android не должен дублировать алгоритм выбора режима; платформа поставляет факты, а решение остаётся в общем AMRI core. Privacy-safe DTO нельзя заменять сериализацией полного `NetworkCapabilities`.
+
+**Альтернативы:** чтение SSID/operator для профиля, UI-owned callbacks, Kotlin-копия scoring и автоматическое использование metered secondary path отвергнуты.
+
+**Проверка:** Rust unit tests покрывают mapping/fail-closed input; JVM tests — policy decode и conservative fallback; окончательная проверка выполняется CI.
+
 ### Route Proof / Shadow Race
 
 - Shadow Race оценивает завершённый параллельный burst без искусственного countdown.
@@ -208,14 +222,14 @@
 - Route Proof persistent/authenticated и привязан к transport-confirmed executed node.
 - Windows UI подключён к real external-core transport bootstrap для VLESS/Trojan/Shadowsocks/Hysteria2.
 - Windows secrets защищены DPAPI; Android persistence защищён Keystore.
-- Mobile acceleration имеет общий policy/MTU core; live Android `NetworkCapabilities`/socket binding ещё не подключены.
+- Live Android `NetworkCapabilities` проходят privacy-safe JNI boundary и оцениваются общим mobile policy core; socket binding/forwarder consumption ещё не подключены.
 - Полноценный public packet forwarding end-to-end на Windows/Android ещё не подтверждён.
 - Android `VpnService` остаётся control-only до production forwarding.
 
 # NEXT PRIORITIES
 
-1. Подключить Android `NetworkCapabilities`/callbacks к `MobileNetworkSnapshot` и держать наблюдение за сетью отдельно от UI.
-2. Добавить per-socket network binding и применение `AdaptiveMtuController` в production forwarding path.
+1. Подключить mobile policy к probe scheduler/hot-pool и добавить per-socket Android network binding.
+2. Применить `AdaptiveMtuController` в production forwarding path.
 3. Реализовать public packet forwarding: Android TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
 4. Добавить public-tunnel confirmation gate; только после него UI показывает реальную защиту.
 5. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
@@ -226,7 +240,7 @@
 
 - Нет полноценного подтверждённого public packet forwarding end-to-end.
 - Loopback readiness подтверждает local inbound, но не Internet traffic через tunnel.
-- Android mobile snapshot пока не получает live `NetworkCapabilities`; core policy ещё не управляет реальными sockets/TUN MTU.
+- Android mobile policy пока не управляет реальными probe workers/sockets/TUN MTU; observer и core evaluation уже готовы.
 - `ImportedNode.raw_uri` всё ещё существует как обычный `String` в импортированном пуле; нужна encrypted persistence и сокращение plaintext lifetime.
 - TUIC/WireGuard/VMess ещё не production-rendered.
 - Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
@@ -244,6 +258,7 @@
 - Multi-secret credentials не помещаются в generic options map.
 - OS-backed storage платформенный: DPAPI Windows, Android Keystore Android.
 - Android JNI secret boundary — exact operation/exact slot; whole-store serialization запрещена.
+- Android network JNI boundary принимает только ephemeral privacy-safe scalar snapshot; routing policy остаётся в Rust core.
 - Android native `.so` — воспроизводимый build artifact; непрозрачные committed binaries не являются источником истины.
 - Native packaging CI обязан проверять фактические APK entries, а не только exit code Gradle.
 - Third-party core distribution требует отдельного license review.

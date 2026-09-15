@@ -1,33 +1,33 @@
 # Android architecture
 
-## Текущий фундамент
+## Границы платформы и общего ядра
 
-Android-клиент расположен в `apps/android` и собирается как самостоятельное приложение с AGP 9.4, Gradle 9.6 и JDK 17.
+- Kotlin владеет `VpnService`, permission/foreground lifecycle, Android Keystore и наблюдением за Android network state.
+- Rust владеет AMRI scoring/routing policy, mobile path policy, Route Proof, общим пулом и transport contracts.
+- JNI остаётся capability-oriented: secret API умеет только создать/проверить exact Route Proof slot; network API принимает только краткоживущий обезличенный snapshot и возвращает packed policy.
+- UI не владеет runtime, ключами или сетевыми callbacks.
 
-Реализованы:
+## Реализовано
 
-- app module и manifest;
-- современный нативный стартовый экран;
-- системный запрос разрешения `VpnService`;
-- foreground VPN service для Android 8+;
-- обязательный `specialUse` foreground service type для современных Android;
-- безопасный жизненный цикл start/stop/revoke;
-- узкий control-only TUN-интерфейс;
-- unit-тестируемый state machine.
+- нативный адаптивный UI с 9 языками и RTL;
+- canonical icon/background/power/settings/language assets из `assets/brand`;
+- Android 8+ foreground `VpnService` lifecycle и повтор после fail-closed bootstrap;
+- control-only TUN `10.253.0.1/32`, который не перехватывает публичный трафик;
+- Android Keystore AES-GCM persistence и service-owned Route Proof initialization;
+- воспроизводимая Rust JNI cross-build/packaging для `arm64-v8a` и `x86_64`;
+- live `NetworkCapabilities` observer для default network;
+- privacy-safe snapshot: access kind, validated/metered/roaming, Data Saver, Battery Saver и coarse Android bandwidth estimates;
+- shared Rust `MobilePathPolicy` evaluation; при любой JNI/policy ошибке fallback разрешает только minimal probes и запрещает warmup/secondary/duplication.
+
+Никогда не считываются и не передаются в Rust/историю: SSID, BSSID/MAC, cell ID, оператор, Android device ID или устойчивый идентификатор `Network`.
 
 ## Почему TUN пока control-only
 
-До подключения реального transport adapter нельзя направлять `0.0.0.0/0` или `::/0` в TUN: это перехватит весь трафик и создаст чёрную дыру. Текущая реализация создаёт только адрес и маршрут `10.253.0.1/32`, поэтому подтверждает владение VpnService, но не затрагивает публичный трафик.
+До готового transport + packet-forwarder нельзя добавлять `0.0.0.0/0`/`::/0`: это создаст black hole или ложное состояние защиты. UI может показывать готовность службы/локального транспорта, но protection ON разрешён только после будущего public-tunnel gate (forwarding + DNS/leak protection).
 
-UI прямо сообщает, что VPN transport ещё не подключён, и не показывает ложный статус защиты.
+## Следующие этапы
 
-## Общая Rust-часть
-
-Следующая граница — FFI над `amri-core`, `amri-subscriptions` и `amri-transport`. Kotlin отвечает за lifecycle Android и системные разрешения; Rust отвечает за единый пул, RouteScore, выбор и оркестрацию transport adapters.
-
-## Следующий этап
-
-1. Зафиксировать FFI DTO без секретов в логах.
-2. Собрать Rust-библиотеку для Android ABI.
-3. Подключить первый production transport adapter.
-4. Только после готовности packet forwarding добавить default routes, DNS protection и Kill Switch.
+1. Передать runtime policy probe scheduler/hot-pool и добавить platform socket binding без persistence Android `Network` handles.
+2. Подключить первый production Android transport и TUN packet forwarding.
+3. Добавить DNS protection, kill switch и подтверждение public route.
+4. После single-path leak tests включать make-before-break Wi-Fi/cellular failover; платный cellular — только opt-in.

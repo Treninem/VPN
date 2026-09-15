@@ -13,8 +13,12 @@ import android.os.ParcelFileDescriptor
 
 class AmriVpnService : VpnService() {
     private var controlInterface: ParcelFileDescriptor? = null
+    private var networkObserver: AndroidNetworkObserver? = null
     private val runtimeOwner by lazy(LazyThreadSafetyMode.NONE) {
         AndroidRuntimeOwner.production(this)
+    }
+    private val mobilePolicyOwner by lazy(LazyThreadSafetyMode.NONE) {
+        AndroidMobilePolicyOwner.production()
     }
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
@@ -33,6 +37,7 @@ class AmriVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        stopNetworkObservation()
         closeInterface()
         STATE.stop()
         super.onDestroy()
@@ -56,6 +61,7 @@ class AmriVpnService : VpnService() {
 
         try {
             check(runtimeOwner.initialize()) { "AMRI native runtime initialization failed" }
+            startNetworkObservation()
             // This narrow control-only interface proves VpnService ownership without
             // capturing public traffic before a real transport adapter is ready.
             controlInterface = Builder()
@@ -68,6 +74,7 @@ class AmriVpnService : VpnService() {
             STATE.serviceReady()
         } catch (_: Exception) {
             STATE.fail()
+            stopNetworkObservation()
             closeInterface()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -75,6 +82,7 @@ class AmriVpnService : VpnService() {
     }
 
     private fun stopController() {
+        stopNetworkObservation()
         closeInterface()
         STATE.stop()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -84,6 +92,17 @@ class AmriVpnService : VpnService() {
     private fun closeInterface() {
         controlInterface?.close()
         controlInterface = null
+    }
+
+    private fun startNetworkObservation() {
+        if (networkObserver != null) return
+        networkObserver = AndroidNetworkObserver(applicationContext, mobilePolicyOwner::update)
+            .also { it.start() }
+    }
+
+    private fun stopNetworkObservation() {
+        networkObserver?.close()
+        networkObserver = null
     }
 
     private fun createNotificationChannel() {
