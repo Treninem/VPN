@@ -17,6 +17,8 @@
     <string name="federated_learning_description">Выключено по умолчанию</string>
     <string name="status_service_ready">VPN-служба готова</string>
     <string name="detail_service_ready">Публичный трафик не перехватывается до подключения защищённого транспорта</string>
+    <string name="status_protected">Защита включена</string>
+    <string name="detail_protected">Публичный трафик проходит через проверенный туннель AMRI</string>
     <string name="stop">Остановить</string>
     <string name="status_preparing">Подготовка…</string>
     <string name="detail_preparing">Android создаёт защищённый системный интерфейс</string>
