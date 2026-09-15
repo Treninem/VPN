@@ -111,10 +111,7 @@ impl SecretSlotBackend for JniSecretSlot<'_, '_> {
                 self.store,
                 jni_str!("put"),
                 jni_sig!("(Ljava/lang/String;[B)V"),
-                &[
-                    JValue::Object(key.as_ref()),
-                    JValue::Object(bytes.as_ref()),
-                ],
+                &[JValue::Object(key.as_ref()), JValue::Object(bytes.as_ref())],
             )?
             .into_void()?;
 
@@ -140,10 +137,7 @@ pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEnsu
 ) -> jint {
     unowned_env
         .with_env(|env| -> JniResult<jint> {
-            let mut backend = JniSecretSlot {
-                env,
-                store: &store,
-            };
+            let mut backend = JniSecretSlot { env, store: &store };
             ensure_route_proof_key(&mut backend).map(RouteProofKeyStatus::code)
         })
         .resolve::<ThrowRuntimeExAndDefault>()
