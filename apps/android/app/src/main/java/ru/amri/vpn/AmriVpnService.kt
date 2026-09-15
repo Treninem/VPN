@@ -8,7 +8,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import java.net.DatagramSocket
 import java.net.Socket
@@ -17,14 +19,22 @@ class AmriVpnService : VpnService() {
     private var controlInterface: ParcelFileDescriptor? = null
     private var networkObserver: AndroidNetworkObserver? = null
     private val networkLease = AndroidNetworkLease()
-    private val runtimeOwner by lazy(LazyThreadSafetyMode.NONE) {
-        AndroidRuntimeOwner.production(this)
-    }
-    private val mobilePolicyOwner by lazy(LazyThreadSafetyMode.NONE) {
-        AndroidMobilePolicyOwner.production()
-    }
-    private val publicTunnelOwner by lazy(LazyThreadSafetyMode.NONE) {
-        AndroidPublicTunnelOwner(this)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val runtimeOwner by lazy(LazyThreadSafetyMode.NONE) { AndroidRuntimeOwner.production(this) }
+    private val mobilePolicyOwner by lazy(LazyThreadSafetyMode.NONE) { AndroidMobilePolicyOwner.production() }
+    private val publicTunnelOwner by lazy(LazyThreadSafetyMode.NONE) { AndroidPublicTunnelOwner(this) }
+
+    private val protectionWatchdog = object : Runnable {
+        override fun run() {
+            if (STATE.state != VpnControllerState.PROTECTED) return
+            val stillProtected = publicTunnelOwner.isRunning() &&
+                publicTunnelOwner.readiness()?.protected == true
+            if (!stillProtected) {
+                downgradeFromPublicTunnel()
+                return
+            }
+            mainHandler.postDelayed(this, PROTECTION_WATCHDOG_MS)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
@@ -43,6 +53,7 @@ class AmriVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        stopProtectionWatchdog()
         stopNetworkObservation()
         stopPublicForwarding()
         closeInterface()
@@ -51,9 +62,7 @@ class AmriVpnService : VpnService() {
     }
 
     private fun startController() {
-        if (!STATE.startPreparing()) {
-            return
-        }
+        if (!STATE.startPreparing()) return
         createNotificationChannel()
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -83,6 +92,7 @@ class AmriVpnService : VpnService() {
     }
 
     private fun stopController() {
+        stopProtectionWatchdog()
         stopNetworkObservation()
         stopPublicForwarding()
         closeInterface()
@@ -92,31 +102,65 @@ class AmriVpnService : VpnService() {
     }
 
     /**
-     * Promotes the control-only service to public packet forwarding.
-     *
-     * The caller is a future Android transport owner, not the UI. It may call this only after its
-     * loopback SOCKS endpoint is transport-ready and its real network sockets use
-     * [prepareTransportSocket]. If activation fails, the narrow control TUN is restored.
+     * Promotes the control-only service to a verified public packet-forwarding generation.
+     * The caller must already own a transport-ready loopback SOCKS endpoint and protect/bind the
+     * transport's real network sockets through [prepareTransportSocket].
      */
     internal fun activatePublicForwarding(localSocksPort: Int, safeInitialMtu: Int): Boolean {
         if (STATE.state != VpnControllerState.SERVICE_READY) return false
 
         closeInterface()
-        val started = try {
+        val readiness = try {
             publicTunnelOwner.start(AndroidPublicTunnelConfig(localSocksPort, safeInitialMtu))
         } catch (_: Exception) {
-            false
+            null
         }
-        if (started) return true
+        if (readiness?.protected == true) {
+            STATE.protectionReady()
+            startProtectionWatchdog()
+            return true
+        }
 
-        controlInterface = establishControlInterface()
-        if (controlInterface == null) STATE.fail()
+        restoreControlInterfaceOrFail()
         return false
     }
 
     internal fun deactivatePublicForwarding(): Boolean {
+        stopProtectionWatchdog()
+        if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
         stopPublicForwarding()
         if (STATE.state != VpnControllerState.SERVICE_READY) return false
+        return restoreControlInterfaceOrFail()
+    }
+
+    internal fun isPublicForwardingActive(): Boolean =
+        STATE.state == VpnControllerState.PROTECTED && publicTunnelOwner.isRunning()
+
+    /** Generic packet loss must never call this method. */
+    internal fun reportSuspectedPmtuFailure(): Int? = publicTunnelOwner.reportSuspectedPmtuFailure()
+
+    internal fun reportForwardingPathSuccess(): Int? = publicTunnelOwner.reportPathSuccess()
+
+    internal fun isAlwaysOnLockdownActive(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isAlwaysOn && isLockdownEnabled
+
+    private fun startProtectionWatchdog() {
+        mainHandler.removeCallbacks(protectionWatchdog)
+        mainHandler.postDelayed(protectionWatchdog, PROTECTION_WATCHDOG_MS)
+    }
+
+    private fun stopProtectionWatchdog() {
+        mainHandler.removeCallbacks(protectionWatchdog)
+    }
+
+    private fun downgradeFromPublicTunnel() {
+        stopProtectionWatchdog()
+        if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
+        stopPublicForwarding()
+        restoreControlInterfaceOrFail()
+    }
+
+    private fun restoreControlInterfaceOrFail(): Boolean {
         if (controlInterface != null) return true
         controlInterface = establishControlInterface()
         if (controlInterface == null) {
@@ -126,25 +170,19 @@ class AmriVpnService : VpnService() {
         return true
     }
 
-    internal fun isPublicForwardingActive(): Boolean = publicTunnelOwner.isRunning()
-
-    private fun establishControlInterface(): ParcelFileDescriptor? =
-        try {
-            // This narrow control-only interface proves VpnService ownership without capturing
-            // public traffic before a real transport adapter is ready.
-            Builder()
-                .setSession(getString(R.string.app_name))
-                .setMtu(1500)
-                .addAddress(CONTROL_ADDRESS, 32)
-                .addRoute(CONTROL_ADDRESS, 32)
-                .setBlocking(false)
-                .establish()
-        } catch (_: Exception) {
-            null
-        }
+    private fun establishControlInterface(): ParcelFileDescriptor? = try {
+        Builder()
+            .setSession(getString(R.string.app_name))
+            .setMtu(1500)
+            .addAddress(CONTROL_ADDRESS, 32)
+            .addRoute(CONTROL_ADDRESS, 32)
+            .setBlocking(false)
+            .establish()
+    } catch (_: Exception) {
+        null
+    }
 
     private fun stopPublicForwarding() {
-        // Idempotent: also closes a TUN left behind by a failed native worker.
         publicTunnelOwner.stop()
     }
 
@@ -158,8 +196,7 @@ class AmriVpnService : VpnService() {
         networkObserver = AndroidNetworkObserver(applicationContext) { network, snapshot ->
             networkLease.update(network)
             mobilePolicyOwner.update(snapshot)
-        }
-            .also { it.start() }
+        }.also { it.start() }
     }
 
     private fun stopNetworkObservation() {
@@ -210,5 +247,6 @@ class AmriVpnService : VpnService() {
         private const val CHANNEL_ID = "amri_vpn_connection"
         private const val NOTIFICATION_ID = 1001
         private const val CONTROL_ADDRESS = "10.253.0.1"
+        private const val PROTECTION_WATCHDOG_MS = 1000L
     }
 }
