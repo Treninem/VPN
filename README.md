@@ -36,3 +36,8 @@ AMRI VPN — Windows-first VPN-клиент с локальным адаптив
 ## Статус
 
 Проект находится в активной разработке.
+
+
+### Route Proof and interface languages
+
+The shared core provides privacy-safe, tamper-evident routing receipts and a nine-language catalog. Windows exposes an in-app selector; Android uses localized resources with Arabic RTL.
