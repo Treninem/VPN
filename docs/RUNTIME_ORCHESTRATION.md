@@ -84,3 +84,5 @@ Application order is strict:
 5. LocalStore inserts the verified receipt.
 
 A failed transport target must never be recorded as executed. Dynamic quarantine remains visible as zero-score evidence so the “Почему?” screen can explain excluded candidates.
+
+`TransportSession.node_fingerprint` is validated by `TransportManager` against the requested node. If an adapter returns another node identity, the new session is disconnected and cannot reach packet handoff or Route Proof.

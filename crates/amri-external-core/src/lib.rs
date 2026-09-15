@@ -288,6 +288,7 @@ impl TransportAdapter for SupervisedProcessAdapter {
 
         Ok(TransportSession {
             route_id: request.route_id.clone(),
+            node_fingerprint: request.node_fingerprint.clone(),
             adapter_id: self.spec.adapter_id.clone(),
             adapter_session_id,
             state: SessionState::Connected,

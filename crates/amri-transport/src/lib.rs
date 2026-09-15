@@ -49,6 +49,9 @@ pub enum SessionState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransportSession {
     pub route_id: String,
+    /// Fingerprint of the exact node executed by this session. It is safe to expose and lets
+    /// runtime prove the transport-confirmed route without retaining its credential-bearing URI.
+    pub node_fingerprint: String,
     pub adapter_id: String,
     /// Opaque identifier owned by the adapter. It must not contain credentials.
     pub adapter_session_id: String,
@@ -120,6 +123,14 @@ pub enum TransportError {
         "adapter '{actual}' returned a session while '{expected}' handled the connect request"
     )]
     InvalidSessionAdapter { expected: String, actual: String },
+    #[error(
+        "adapter '{adapter_id}' returned node '{actual}', expected transport node '{expected}'"
+    )]
+    InvalidSessionNode {
+        adapter_id: String,
+        expected: String,
+        actual: String,
+    },
     #[error(
         "route '{route_id}' cutover failed while stopping old adapter '{old_adapter_id}': {old_error}; rollback of the new session: {rollback_error:?}"
     )]
@@ -326,6 +337,16 @@ impl TransportManager {
             });
         }
 
+        if session.node_fingerprint != request.node_fingerprint {
+            let actual = session.node_fingerprint.clone();
+            let _ = adapter.disconnect(&session);
+            return Err(TransportError::InvalidSessionNode {
+                adapter_id,
+                expected: request.node_fingerprint.clone(),
+                actual,
+            });
+        }
+
         Ok(session)
     }
 }
@@ -373,6 +394,11 @@ mod tests {
             assert_eq!(request.secret.expose_secret(), "private");
             Ok(TransportSession {
                 route_id: request.route_id.clone(),
+                node_fingerprint: if request.node_fingerprint == "wrong-node-result" {
+                    "different-node".into()
+                } else {
+                    request.node_fingerprint.clone()
+                },
                 adapter_id: self.id().into(),
                 adapter_session_id: format!(
                     "session-{}-{}",
@@ -517,6 +543,26 @@ mod tests {
             .unwrap()
             .adapter_session_id
             .ends_with("-old"));
+    }
+
+    #[test]
+    fn rejects_and_disconnects_session_for_wrong_node() {
+        let calls = Arc::new(Mutex::new(Calls::default()));
+        let mut manager = manager(calls.clone());
+
+        let error = manager
+            .connect(request_for("video", "wrong-node-result"))
+            .unwrap_err();
+
+        assert!(matches!(error, TransportError::InvalidSessionNode { .. }));
+        assert!(manager.session("video").is_none());
+        assert_eq!(
+            calls.lock().unwrap().events,
+            [
+                "connect:video:wrong-node-result",
+                "disconnect:video:wrong-node-result"
+            ]
+        );
     }
 
     #[test]
