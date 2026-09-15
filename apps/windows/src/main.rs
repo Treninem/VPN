@@ -91,6 +91,7 @@ struct AmriApp {
     imported_nodes: Vec<ImportedNode>,
     selected_node: usize,
     editing_node: Option<usize>,
+    delete_confirmation: Option<usize>,
     core_path: String,
     local_port: String,
     smart_routing: bool,
@@ -135,6 +136,7 @@ impl AmriApp {
             imported_nodes: Vec::new(),
             selected_node: 0,
             editing_node: None,
+            delete_confirmation: None,
             core_path: std::env::var("AMRI_SING_BOX_PATH")
                 .unwrap_or_else(|_| "sing-box.exe".into()),
             local_port: "20800".into(),
@@ -182,6 +184,7 @@ impl AmriApp {
             self.selected_node = 0;
         }
 
+        self.delete_confirmation = None;
         self.subscription_input.clear();
         if matches!(&self.transport_state, TransportUiState::Failed(_)) {
             self.transport_state = TransportUiState::Idle;
@@ -194,6 +197,32 @@ impl AmriApp {
         };
         self.subscription_input = node.raw_uri.clone();
         self.editing_node = Some(self.selected_node);
+        self.delete_confirmation = None;
+    }
+
+    fn delete_confirmed_node(&mut self) {
+        let Some(index) = self.delete_confirmation.take() else {
+            return;
+        };
+        if index >= self.imported_nodes.len() {
+            return;
+        }
+
+        self.imported_nodes.remove(index);
+        match self.editing_node {
+            Some(editing) if editing == index => {
+                self.editing_node = None;
+                self.subscription_input.clear();
+            }
+            Some(editing) if editing > index => self.editing_node = Some(editing - 1),
+            _ => {}
+        }
+
+        if self.imported_nodes.is_empty() {
+            self.selected_node = 0;
+        } else {
+            self.selected_node = index.min(self.imported_nodes.len() - 1);
+        }
     }
 
     fn start_transport(&mut self) {
@@ -602,6 +631,7 @@ impl AmriApp {
                 .get(self.selected_node)
                 .map(|node| node.display_name.as_str())
                 .unwrap_or("—");
+            let previous_selected = self.selected_node;
             egui::ComboBox::from_id_salt("transport-node")
                 .selected_text(selected)
                 .show_ui(ui, |ui| {
@@ -613,25 +643,79 @@ impl AmriApp {
                         );
                     }
                 });
+            if self.selected_node != previous_selected {
+                self.delete_confirmation = None;
+            }
 
-            let edit_clicked = ui
+            let (edit_clicked, delete_clicked) = ui
                 .horizontal(|ui| {
-                    let response = brand_button(
+                    let edit = brand_button(
                         ui,
                         egui::include_image!("../../../assets/brand/edit-button.svg"),
                         42.0,
                         "Edit selected node",
-                    );
-                    ui.label(
-                        RichText::new("Edit")
-                            .size(12.0)
-                            .color(Color32::from_gray(170)),
-                    );
-                    response.clicked()
+                    )
+                    .clicked();
+                    let delete = brand_button(
+                        ui,
+                        egui::include_image!("../../../assets/brand/delete-button.svg"),
+                        42.0,
+                        "Delete selected node",
+                    )
+                    .clicked();
+                    (edit, delete)
                 })
                 .inner;
+
             if edit_clicked {
                 self.begin_edit_selected_node();
+            }
+            if delete_clicked {
+                self.delete_confirmation = Some(self.selected_node);
+            }
+
+            if self.delete_confirmation == Some(self.selected_node) {
+                let safe_name = self
+                    .imported_nodes
+                    .get(self.selected_node)
+                    .map(|node| node.display_name.clone())
+                    .unwrap_or_else(|| "selected node".into());
+                let mut confirm = false;
+                let mut cancel = false;
+                egui::Frame::new()
+                    .fill(Color32::from_rgb(45, 28, 34))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(154, 76, 91)))
+                    .corner_radius(14)
+                    .inner_margin(14)
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(format!("Delete ‘{safe_name}’?"))
+                                .strong()
+                                .color(Color32::from_rgb(255, 218, 224)),
+                        );
+                        ui.label(
+                            RichText::new("The credential-bearing URI is not shown here.")
+                                .size(11.0)
+                                .color(Color32::from_gray(155)),
+                        );
+                        ui.horizontal(|ui| {
+                            confirm = ui
+                                .add(
+                                    egui::Button::new("Delete")
+                                        .fill(Color32::from_rgb(118, 43, 58))
+                                        .corner_radius(10),
+                                )
+                                .clicked();
+                            cancel = ui
+                                .add(egui::Button::new("Cancel").corner_radius(10))
+                                .clicked();
+                        });
+                    });
+                if confirm {
+                    self.delete_confirmed_node();
+                } else if cancel {
+                    self.delete_confirmation = None;
+                }
             }
         }
 
