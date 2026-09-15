@@ -248,10 +248,8 @@ mod tests {
 
     #[test]
     fn balanced_mode_does_not_silently_use_metered_secondary_path() {
-        let policy = MobilePathPolicy::evaluate(
-            snapshot(),
-            MobileAccelerationPreferences::default(),
-        );
+        let policy =
+            MobilePathPolicy::evaluate(snapshot(), MobileAccelerationPreferences::default());
 
         assert_eq!(policy.probe_intensity, ProbeIntensity::Conservative);
         assert!(policy.allow_background_warmup);
