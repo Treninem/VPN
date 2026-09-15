@@ -79,7 +79,7 @@
 
 **Отвергнуто:** plaintext SharedPreferences, собственный постоянный AES key в файле приложения, повторное использование Windows DPAPI формата.
 
-**Проверка:** GitHub Actions run `34926996900` — Android unit tests + `assembleDebug` успешно; Rust `fmt/test/check` успешно.
+**Проверка:** GitHub Actions run `34926996900` и финальный run `34927162094` — Android unit tests + `assembleDebug` успешно; Rust `fmt/test/check` успешно.
 
 ### First production-core renderer
 
@@ -126,6 +126,25 @@ TUIC/WireGuard/VMess и другие сложные credential/transport схе�
 
 Bonding/packet duplication должны быть opt-in, metered-data aware и battery aware.
 
+### Mobile path policy + adaptive MTU core
+
+- В `amri-core::mobile` добавлен privacy-safe `MobileNetworkSnapshot`: только тип доступа, validated/metered/roaming, Data Saver/Battery Saver и оценочная пропускная способность; SSID, cell ID, operator identity и device identifiers отсутствуют.
+- `MobileAccelerationMode` разделяет Off / Balanced / Speed.
+- Metered secondary path не разрешается автоматически: для Speed требуется отдельный `allow_metered_secondary`.
+- Latency duplication также требует отдельного явного разрешения и никогда не авторизует bulk duplication.
+- Unvalidated network fail-closed переводится в минимальную probe activity без secondary path.
+- Data Saver/Battery Saver запрещают aggressive probes, background warmup и secondary-path behavior.
+- Metered/roaming снижают parallel probe budget; unmetered validated path может использовать normal hot-pool parallelism.
+- Добавлен `AdaptiveMtuController`: MTU уменьшается только по событию, которое forwarding layer классифицировал как вероятную PMTU/fragmentation проблему; обычный packet loss сам по себе не является причиной уменьшения MTU.
+- После устойчивых успехов MTU повышается медленно; при смене path предыдущий success streak сбрасывается.
+- Generic controller имеет IPv6-safe floor 1280, но concrete transport/platform обязан передать собственный tunnel-safe initial MTU/ceiling с учётом encapsulation overhead.
+
+**Почему:** мобильная сеть быстро меняется, но агрессивная реакция на любой loss ухудшила бы throughput и могла бы незаметно расходовать тарифицируемый cellular traffic. Поэтому cost/power policy отделена от route scoring, а PMTU adaptation принимает только классифицированные сигналы от будущего forwarding layer.
+
+**Отвергнуто:** автоматическое включение cellular в Speed без отдельного opt-in; снижение MTU по любому packet loss; жёсткий transport-specific MTU внутри общего core; хранение SSID/cell identity в network snapshot.
+
+**Проверка:** GitHub Actions run `34927570349` — после точного rustfmt fix Rust `fmt/test/check` успешно; Android tests + `assembleDebug` успешно. Unit-тесты покрывают metered opt-in, Data/Battery Saver, unvalidated fail-closed, MTU floor, slow recovery, path reset и invalid policy.
+
 ## Постоянный протокол разработки
 
 - Корневой `AGENTS.md` обязует все следующие чаты/аккаунты сначала читать этот журнал и проверять последние commits/PR/branches.
@@ -144,7 +163,7 @@ Bonding/packet duplication должны быть opt-in, metered-data aware и b
 - Windows UI подключён к реальной external-core transport boundary для VLESS/Trojan/Shadowsocks/Hysteria2.
 - Windows secret persistence защищена DPAPI.
 - Android имеет готовый native Android Keystore persistence adapter, но Rust FFI secret bridge ещё не подключён.
-- Mobile acceleration architecture задокументирована, но bonding/MTU/network-binding код ещё не активен.
+- Mobile acceleration имеет общий policy/MTU core; Android `NetworkCapabilities`/socket binding ещё не подключены к нему.
 - Public traffic через полноценный AMRI tunnel на Windows/Android пока не подтверждён end-to-end.
 - Android остаётся control-only до production forwarding.
 
@@ -153,7 +172,7 @@ Bonding/packet duplication должны быть opt-in, metered-data aware и b
 1. Реализовать Android Rust FFI boundary и узкий secret bridge к `AndroidKeystoreSecretStore` без сериализации всего credential store через JNI.
 2. Реализовать public packet forwarding: Windows system forwarding/TUN-WFP + DNS protection и Android production forwarding.
 3. Добавить public-tunnel confirmation gate; только после него UI может показывать реальную защиту.
-4. На Android добавить network observation/per-socket binding и adaptive MTU как первый кодовый этап mobile acceleration.
+4. Подключить Android network observation (`NetworkCapabilities`/callbacks) к `MobileNetworkSnapshot`, затем per-socket network binding и применение `AdaptiveMtuController` в production forwarding.
 5. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
 6. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover, затем отдельно спроектировать AMRI Bond relay.
 7. Добавить end-to-end integration tests, kill-switch, затем per-domain/per-process routing.
@@ -163,6 +182,7 @@ Bonding/packet duplication должны быть opt-in, metered-data aware и b
 - Нет полноценного подтверждённого public packet forwarding end-to-end.
 - Loopback readiness подтверждает local inbound, но не доказывает прохождение Internet traffic через tunnel.
 - Android Keystore adapter пока не связан с Rust `SecretStore`/Route Proof installation key через FFI.
+- Android mobile snapshot пока не получает live `NetworkCapabilities`; новый core policy ещё не управляет реальными sockets/TUN MTU.
 - `ImportedNode.raw_uri` всё ещё живёт как обычный `String` внутри импортированного пула; нужна encrypted persistence и дальнейшее сокращение plaintext lifetime.
 - TUIC/WireGuard/VMess ещё не production-rendered из-за более сложной credential-модели.
 - Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
@@ -183,4 +203,6 @@ Bonding/packet duplication должны быть opt-in, metered-data aware и b
 - UI не показывает protected state до подтверждённых transport + packet forwarding + leak-protection gates.
 - QUIC migration не считать bandwidth bonding; настоящее сложение Wi-Fi + cellular требует multipath/relay дизайна.
 - Mobile acceleration, использующая дополнительную cellular data, должна быть явной пользовательской опцией.
+- MTU adaptation не реагирует на generic loss; только forwarding layer может сообщить suspected PMTU/fragmentation evidence.
+- Mobile network snapshots не должны содержать SSID, cell ID или устойчивый network identity.
 - `AGENTS.md` + этот журнал являются canonical cross-chat/cross-account handoff mechanism проекта.
