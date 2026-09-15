@@ -21,6 +21,8 @@ Public routes are **not** installed during ordinary service startup.
 3. the transport's real network sockets are protected from `VpnService` recursion and bound through the current service-owned network lease;
 4. a transport-safe initial MTU is available.
 
+Both the loopback readiness check and the later public-egress check run on bounded worker threads. This avoids Android main-thread networking failures while keeping activation fail-closed.
+
 If public forwarding cannot start or cannot pass readiness verification, AMRI closes the attempted public TUN and restores the control-only TUN. It must not silently fall back to a direct public route while claiming protection.
 
 ## Native forwarding lifecycle
@@ -71,7 +73,7 @@ These addresses are internal interface plumbing, not user identity, and are not 
 
 ## Protection readiness
 
-A running packet bridge is only one signal. Android now calls the same Rust `amri-core::evaluate_protection` gate used by the shared architecture. `PROTECTED` is possible only when all current-generation signals are true:
+A running packet bridge is only one signal. Android calls the same Rust `amri-core::evaluate_protection` gate used by the shared architecture. `PROTECTED` is possible only when all current-generation signals are true:
 
 - transport ready;
 - packet forwarder running;
@@ -79,7 +81,7 @@ A running packet bridge is only one signal. Android now calls the same Rust `amr
 - both IPv4 and IPv6 default traffic captured by the public TUN;
 - public egress verified through the public TUN.
 
-The public-egress check intentionally uses numeric IP endpoints and performs only a bounded TCP connect. It does not perform DNS lookup and does not send browsing data, URLs, device identifiers or application content. The network operation runs on a dedicated worker so Android main-thread networking rules cannot turn every verification into a false failure.
+The public-egress check intentionally uses numeric IP endpoints and performs only bounded TCP connects. It does not perform DNS lookup and does not send browsing data, URLs, device identifiers or application content.
 
 If readiness is incomplete, the attempted public generation is closed and the service returns to control-only mode. Once `PROTECTED`, a service-owned watchdog checks the native forwarder and readiness state every second; loss of the generation downgrades state, closes the public TUN and restores the control interface.
 

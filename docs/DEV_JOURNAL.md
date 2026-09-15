@@ -1,310 +1,134 @@
 # Журнал разработки AMRI VPN
 
-Этот файл — каноническая компактная техническая память проекта. Любой следующий разработчик/чат/аккаунт обязан сначала прочитать его и корневой `AGENTS.md`, затем проверить актуальный `main`, PR и рабочие ветки.
+Каноническая техническая память проекта для продолжения из любого чата/аккаунта. Перед работой читать этот файл и корневой `AGENTS.md`, затем проверять свежий `main`, открытые PR и рабочие ветки. Здесь хранится только инженерное обоснование, проверки и планы; скрытый chain-of-thought, secrets, raw URI, subscription URL, browsing history и персональные идентификаторы не записываются.
 
-В журнале хранится инженерное обоснование решений, ограничения, проверки и планы. Скрытый chain-of-thought сюда не записывается. Секреты, raw URI, subscription URL, browsing history и персональные идентификаторы сюда не попадают.
+## Архитектурные инварианты
 
-## Базовая архитектура
+- Общая логика AMRI живёт в Rust workspace; Windows — eframe/egui, Android — нативный `VpnService` + Rust JNI.
+- AMRI core выбирает маршрут; transport/core исполняет. Внешний VPN-core не владеет scoring/learning.
+- Make-before-break обязателен; аварийный failover не должен блокироваться hysteresis.
+- Credentials запрещены в process args, Debug, telemetry и plaintext temp files. Multi-secret credentials имеют typed shape, а не generic map.
+- Windows secrets — DPAPI; Android persistence — Android Keystore. Android JNI secret API остаётся exact-operation/exact-slot; whole-store serialization запрещена.
+- UI показывает ON/`Protected` только после общего `amri-core::ProtectionReadiness`: transport + packet forwarding + DNS + leak protection + public egress текущего route generation.
+- Mobile snapshot не содержит SSID/BSSID/cell ID/operator/device ID/stable network identity. Дополнительный cellular path/duplication — только explicit opt-in.
+- MTU adaptation не реагирует на generic packet loss: снижение разрешено только по классифицированному PMTU/fragmentation evidence.
+- Параллельные brand/UI изменения не откатывать core-ветками. Canonical assets защищены `asset-blobs.lock`.
 
-- Общая логика AMRI — Rust workspace: `amri-core`, `amri-storage`, `amri-subscriptions`, `amri-probe`, `amri-federation`, `amri-transport`, `amri-runtime`, `amri-secrets`, `amri-external-core`, `amri-node-config`, `amri-android-ffi` и связанные crates.
-- Windows app — eframe/egui; Android — нативный app с `VpnService`.
-- AMRI core выбирает маршрут; внешний VPN-core только исполняет решение.
-- UI не имеет права показывать реальную защиту до подтверждённых transport + packet forwarding + нужной leak protection/public-tunnel gate.
-- Android остаётся control-only до production forwarding; default public route намеренно не устанавливается раньше времени.
+## Реализовано
 
-## Реализованные этапы и причины решений
+### Route intelligence / runtime
 
-### Multi-subscription, scoring, health и быстрый failover
+- Multi-subscription pool с дедупликацией по fingerprint.
+- RouteScore: latency, jitter, loss, DNS, TCP/TLS, throughput, historical success, stability, traffic class.
+- Confidence + hysteresis, circuit breaker/cooldown/backoff, небольшой quality-bounded hot pool и короткая parallel micro-race.
+- `amri-runtime` связывает probes/race → health/quarantine → hot pool → stable decision.
+- Shadow Race использует quorum/confidence без искусственного countdown.
 
-- Несколько подписок объединяются в единый пул с дедупликацией по fingerprint.
-- RouteScore учитывает latency, jitter, packet loss, DNS, TCP/TLS, throughput, historical success, stability и traffic class.
-- Stable selector использует confidence + настоящий hysteresis.
-- `RouteHealthTracker` реализует circuit breaker, cooldown и bounded exponential backoff.
-- Failover использует небольшой quality-bounded hot pool и короткую параллельную micro-race вместо массовой гонки всех узлов.
-- Незавершившийся probe не считается failure только из-за короткого race deadline.
+Почему: массовые races расходуют трафик/батарею и вызывают flapping; selection должен оставаться независимым от VPN-core.
 
-**Почему:** массовые races расходуют трафик/батарею и провоцируют route flapping. Малый сильный hot pool + hysteresis дают быстрый failover с предсказуемой нагрузкой.
+### Transport lifecycle / node materialization
 
-### Runtime orchestration
+- `TransportManager` имеет route slots, make-before-break replacement и rollback.
+- Session подтверждает `route_id`, adapter и credential-free fingerprint фактически запущенного node; mismatch fail-closed.
+- External-core boundary передаёт credential config через zeroizing memory/stdin, без plaintext temp files/args.
+- Transport-ready = process + loopback inbound readiness; живой process сам по себе недостаточен.
+- Typed materialization реализован для VLESS, Trojan, Shadowsocks, Hysteria2 и TUIC; TUIC имеет отдельные username/password credentials и production sing-box rendering.
+- WireGuard/VMess typed descriptors/renderers остаются незавершёнными.
 
-- `amri-runtime` связывает probe/race → health → dynamic quarantine → hot pool → stable decision.
-- Runtime не владеет credentials и process lifecycle.
-- Application layer выполняет `TransportManager::connect/replace` после решения runtime.
+### Route Proof / secrets
 
-**Почему:** scoring/learning должны оставаться независимыми от VPN-core и ОС.
+- Route Proof создаёт pseudonymous HMAC-linked evidence только после transport-confirmed executed transition.
+- SQLite receipts authenticated и проверяются при restore; raw destination/browsing history не хранится как proof identity.
+- Windows DPAPI secret store и Android AES-256-GCM master key в Android Keystore реализованы.
+- Route Proof Android key создаётся/проверяется через узкий JNI exact slot `route-proof:key`; ключ не возвращается UI/Kotlin.
 
-### Transport lifecycle и executed identity
+### Android native runtime / mobile policy
 
-- `TransportManager` поддерживает независимые route slots.
-- `replace` реализует make-before-break и rollback.
-- Transport session валидирует `route_id`, `adapter_id` и credential-free fingerprint фактически запущенного node.
-- Mismatch executed node → новая session отключается fail-closed.
-- Route Proof принимает только transport-confirmed executed identity.
+- `amri-android-ffi` (`cdylib`/`rlib`, JNI 0.22.4) cross-compiled через `cargo-ndk 4.1.2` для `arm64-v8a` и `x86_64`.
+- CI проверяет реальные `.so` entries внутри APK; generated native output очищается перед build.
+- `AmriVpnService` service-owned bootstrap инициализирует Route Proof runtime до control TUN.
+- `AndroidNetworkObserver` передаёт privacy-safe `NetworkCapabilities` snapshot в общий Rust `MobilePathPolicy`.
+- `MobileRuntimeBudget` реально ограничивает parallel probes/hot-pool.
+- Service хранит current Android `Network` только ephemeral; TCP/UDP transport sockets проходят `VpnService.protect` + bind к current underlying network, иначе fail-closed.
 
-**Почему:** старый рабочий маршрут нельзя рвать до готовности нового, а external core не должен незаметно выполнить другой node.
+### Android public packet forwarding — merged PR #24
 
-### External-core boundary
+- Main commit: `1a6ff284e8817745bffd1ae97f0852000f525b09`.
+- `tun2proxy 0.8.3` (MIT) используется только как userspace TUN → local SOCKS packet bridge.
+- Public TUN: IPv4/IPv6 default routes + DNS inside TUN; JNI принимает только duplicated fd, loopback SOCKS port и bounded MTU.
+- `setup=false`: Android `VpnService.Builder` владеет interface/routes.
+- DNS — `OverTcp`; IPv6 включён; MSS = MTU-40; native cancellation lifecycle и однозначное fd ownership.
+- Public route не включается при обычном старте приложения. Internal transport owner может активировать его только после готового local SOCKS и защищённых underlying sockets.
+- При старте/forwarder failure public TUN закрывается и возвращается control-only interface.
+- Third-party MIT notice записан в `THIRD_PARTY_NOTICES.md`.
 
-- `amri-external-core` запускает supervised process на route slot.
-- Credential-bearing config живёт в zeroizing memory и передаётся через stdin.
-- Plaintext temp config и credentials в process args запрещены.
-- External process становится transport-ready только после process + loopback inbound readiness.
-- Startup exit/timeout очищает новый process; исчезновение inbound даёт `Degraded`.
+Проверка: PR #24 финальный CI `34963347012` — Windows fmt/test/check и Android JVM tests + NDK cross-build + APK ABI verification успешно.
 
-**Почему:** живой процесс ещё не доказывает готовность транспорта. Public tunnel подтверждается отдельным gate.
+### Android verified readiness + Adaptive MTU — PR #25
 
-### Node materialization
+Рабочая ветка `work/android-readiness-adaptive-mtu`; merge разрешён только после полного зелёного CI на последнем head.
 
-- `ImportedNode(raw URI)` fail-closed преобразуется в typed `ConnectRequest`.
-- Поддержаны VLESS, Trojan, Hysteria2 и основные SIP002 Shadowsocks формы.
-- Credentials переносятся в `TransportSecret`; generic options содержат только allowlisted non-secret параметры.
-- Неподдерживаемые transports/security/plugins не теряются молча, а отклоняются.
-- TUIC использует typed username/password credentials; WireGuard/VMess ждут полный typed descriptor.
+- Общий `AdaptiveMtuController` вынесен через узкие JNI операции: reset/current/suspected-PMTU/success.
+- Shared Rust `evaluate_protection` — единственный источник OFF/PREPARING/PROTECTED.
+- После native forwarder RUNNING выполняется bounded public-egress probe через сам public TUN к фиксированным numeric IP: без DNS, URL, browsing data и device IDs.
+- Loopback SOCKS readiness и public-egress TCP probes выполняются на bounded worker threads, поэтому Android main-thread networking не может превращать readiness в ложный failure.
+- Неполный gate закрывает public generation и восстанавливает control TUN.
+- В состоянии `PROTECTED` service watchdog раз в секунду проверяет native worker/readiness; потеря generation снимает protected state, закрывает public TUN и возвращает control interface.
+- State machine разделяет `SERVICE_READY` и `PROTECTED`; ON asset используется только для `PROTECTED`.
+- Android Always-on + lockdown определяется отдельно (`isAlwaysOn && isLockdownEnabled`, API 29+); обычный live-TUN routing не называется системным lockdown.
+- PMTU recommendation не применяется через немедленный teardown/rebuild live default-route TUN, чтобы не создавать direct-route leak window. Новое значение применяется при следующем безопасном establishment/generation swap.
+- Новое состояние PROTECTED локализовано во всех 9 Android языках.
 
-### Secret storage — Windows
-
-- `amri-secrets` задаёт `SecretStore` boundary.
-- Windows использует DPAPI ciphertext; logical keys SHA-256 хэшируются перед filename.
-- `SecretValue` и `TransportSecret` редактируют Debug и очищают контролируемые buffers при drop.
-
-### Secret storage — Android
-
-- `AndroidKeystoreSecretStore` использует AES-256-GCM master key из `AndroidKeyStore`.
-- В private `SharedPreferences` хранится только versioned authenticated ciphertext envelope.
-- Logical secret key валидируется и SHA-256 хэшируется перед preference key.
-- Malformed/truncated/unknown envelope fail-closed.
-- Android ciphertext намеренно не совместим с Windows DPAPI.
-
-**Почему:** platform-native keystore должен владеть persistence key; plaintext SharedPreferences, постоянный AES key в файле и общий самодельный Windows/Android формат отвергнуты.
-
-**Проверка Keystore:** GitHub Actions `34926996900` и `34927162094` — Android unit tests + `assembleDebug`, Rust fmt/test/check успешно.
-
-### Android Rust FFI — narrow secret bridge
-
-- Добавлен `amri-android-ffi` (`cdylib` + `rlib`) на `jni 0.22.4`.
-- Первый JNI capability намеренно узкий: Rust может только инициализировать/проверить exact logical slot `route-proof:key` через `AndroidKeystoreSecretStore`.
-- Весь credential store не перечисляется и не сериализуется через JNI.
-- Missing Route Proof key создаётся как 32 bytes через OS CSPRNG и синхронно сохраняется Keystore adapter.
-- Existing key обязан быть ровно 32 bytes; неправильная длина fail-closed и не перезаписывается.
-- Route Proof key не возвращается Kotlin/UI; наружу идёт только status.
-- Временные Java `byte[]` для JNI handoff зануляются после успешного чтения/записи.
-- Kotlin `AmriNativeBridge` лениво грузит `libamri_android_ffi.so`; native-only operation явно сообщает unavailable runtime, если библиотека отсутствует.
-- JVM tests проверяют fail-closed status decoding; Rust tests — create/reuse/wrong-length/empty cases.
-
-**Почему:** JNI — чувствительная boundary. Exact-operation/exact-slot API уменьшает поверхность утечки и оставляет persistence в Android Keystore.
-
-**Отвергнуто:** generic JNI `getAllSecrets/importStore`, возврат installation key в Kotlin/UI, универсальный credential-store bridge.
-
-**Проверка:** GitHub Actions `34931739598` и финальный `34931972221` — Android tests/assemble и Rust fmt/test/check успешно.
-
-### Android native ABI packaging
-
-- Gradle `buildAmriRustNative` cross-compiles `amri-android-ffi` через pinned `cargo-ndk 4.1.2` при `AMRI_BUILD_NATIVE=1`.
-- Android platform задаётся через `CARGO_NDK_PLATFORM=26`, совпадающий с `minSdk`.
-- Собираются `arm64-v8a` (основной device ABI) и `x86_64` (debug/emulator/CI).
-- `.so` попадают только в generated build directory; бинарники не коммитятся в git.
-- Перед native build generated directory очищается, чтобы stale library не могла замаскировать ошибку.
-- CI выравнивает `ANDROID_NDK`, `ANDROID_NDK_HOME`, `ANDROID_NDK_ROOT` на один preinstalled runner NDK.
-- CI после `assembleDebug` открывает APK и отдельно требует наличие `lib/arm64-v8a/libamri_android_ffi.so` и `lib/x86_64/libamri_android_ffi.so`.
-- Обычная локальная JVM/UI-сборка может не включать `AMRI_BUILD_NATIVE`; CI native packaging включает всегда.
-
-**Почему:** host-компиляция JNI не доказывает работоспособность Android target, а зелёный Gradle без проверки архива не доказывает, что `.so` реально упакована. Native artifacts должны быть воспроизводимыми build outputs, а не непрозрачными бинарниками в репозитории.
-
-**Первая ошибка/исправление:** run `34932215773` дошёл до native task, но `-p 26` был интерпретирован `cargo-ndk` как Cargo package (`unknown package: 26`); API level перенесён в `CARGO_NDK_PLATFORM=26`. Одновременно устранено расхождение runner `ANDROID_NDK_HOME`/`ANDROID_NDK_ROOT`.
-
-**Проверка:** GitHub Actions run `34932422673` — Windows Rust fmt/test/check успешно; Android Rust targets + `cargo-ndk 4.1.2` + native cross-build + JVM tests + `assembleDebug` успешно; отдельная APK-проверка подтвердила обе `.so`.
-
-**Текущий NDK:** CI использует предустановленный runner NDK 29, чтобы не скачивать большой NDK на каждый run. Переход на отдельно pinned/downloaded NDK LTS является инфраструктурным улучшением и не должен менять JNI contract.
-
-### Android service runtime bootstrap + asset verification
-
-- `AmriVpnService` теперь до создания control TUN запускает service-owned `AndroidRuntimeOwner`, который через узкий JNI bridge создаёт/проверяет Route Proof key в Android Keystore.
-- Ошибка native/Keystore bootstrap оставляет сервис в `FAILED`; явный повтор разрешён state machine и может восстановиться после временной ошибки. После успеха bootstrap не повторяется в рамках экземпляра сервиса.
-- UI не получает ключ и не владеет runtime lifecycle; тексты исключений не логируются.
-- Android notification использует каноническую AMRI app icon вместо системной warning icon.
-- Выполнен визуальный просмотр canonical icon/background/button set; устаревшая raster ON-кнопка с квадратным фоном не подключена. Windows и Android используют canonical sources напрямую или через build-time copy.
-- Существующий `asset-blobs.lock` + `scripts/verify_visual_assets.py` остаются единым byte-integrity guard в CI; дублирующая Gradle-проверка не добавлялась.
-- Windows headline снова всегда показывает protection OFF при одной лишь loopback transport readiness; ON допускается только будущим public-tunnel gate.
-
-**Почему:** упакованная `.so` сама по себе не инициализирует runtime security owner, а local proxy/VpnService control interface не доказывают защиту публичного трафика. Единый asset lock предотвращает незаметную подмену утверждённых ресурсов.
-
-**Альтернативы:** UI-owned secret bootstrap, generic JNI secret store, продолжение после native failure, отдельные перерисованные Android icons и второй параллельный asset lock отвергнуты.
-
-**Проверка:** окончательная проверка — полный GitHub Actions CI ветки (Rust fmt/test/check, Android tests/native build/APK и canonical asset lock).
-
-### Live Android network policy bridge
-
-- `AndroidNetworkObserver` живёт в `VpnService`, подписывается на default-network callbacks и передаёт только access kind, validated/metered/roaming, Data Saver, Battery Saver и Android bandwidth estimates.
-- Добавлен `ACCESS_NETWORK_STATE`; SSID/BSSID, cell ID, оператор, device ID и устойчивый `Network` handle не читаются и не сохраняются.
-- Узкий JNI method передаёт snapshot в общий `amri-core::MobilePathPolicy`; Rust возвращает compact policy: probe intensity, warmup, secondary path и latency duplication.
-- Неверные коды/bit fields отклоняются. При native/policy ошибке Android fallback разрешает только minimal probes и запрещает warmup/secondary/duplication.
-- Observer стартует только после успешного Route Proof runtime bootstrap и закрывается при stop/failure/destroy.
-
-**Почему:** Android не должен дублировать алгоритм выбора режима; платформа поставляет факты, а решение остаётся в общем AMRI core. Privacy-safe DTO нельзя заменять сериализацией полного `NetworkCapabilities`.
-
-**Альтернативы:** чтение SSID/operator для профиля, UI-owned callbacks, Kotlin-копия scoring и автоматическое использование metered secondary path отвергнуты.
-
-**Проверка:** Rust unit tests покрывают mapping/fail-closed input; JVM tests — policy decode и conservative fallback; окончательная проверка выполняется CI.
-
-### Route Proof / Shadow Race
-
-- Shadow Race оценивает завершённый параллельный burst без искусственного countdown.
-- Переключение требует quorum/confidence, а не одиночного score spike.
-- Route Proof создаёт pseudonymous HMAC-linked evidence.
-- Installation key генерируется OS CSPRNG и хранится через platform SecretStore.
-- SQLite хранит authenticated receipts per pseudonymous destination token; история проверяется перед restore.
-- Proof формируется только после transport-confirmed executed transition.
-
-**Почему:** решение должно быть локально проверяемым и объяснимым без raw destination/browsing history.
+Проверки PR #25: run `34967324260` — Android JVM/NDK/APK полностью green, Windows остановился только на rustfmt; exact formatting исправлен. Run `34967603414` после rustfmt: Android JVM/NDK/APK green, Windows fmt green и продолжил workspace tests. После последней off-main loopback fix обязателен новый полный CI перед merge.
 
 ### Windows transport bootstrap
 
-- Windows UI импортирует VLESS/Trojan/Shadowsocks/Hysteria2 URI и выполняет real async connect/disconnect через external-core boundary.
-- sing-box задаётся путём/через PATH; credential config идёт через stdin boundary.
-- UI получает readiness-confirmed session и credential-free fingerprint.
-- Защищённое состояние остаётся выключенным до system packet forwarding, DNS protection и public-tunnel gate.
+- Windows UI уже делает real async connect/disconnect к external sing-box transport для VLESS/Trojan/Shadowsocks/Hysteria2/TUIC.
+- UI получает transport-confirmed node fingerprint и local SOCKS readiness, но не показывает полную защиту без system forwarding/readiness.
+- Следующий этап — Windows system TUN/DNS forwarding. Обязательные условия: Administrator, matching official signed `wintun.dll` рядом с EXE и bypass всех resolved IP реального VPN-сервера до установки default-route TUN, иначе возникает routing loop.
+- Wintun binary нельзя подменять случайным DLL. Release packaging должен брать официальный signed prebuilt и сохранять его отдельную permissive binary license; исходники Wintun GPL не копировать в proprietary AMRI без отдельного решения.
 
-### Localization / UI
+### UI / assets / manual customization
 
-- Общий интерфейс локализован на 9 языков; Android поддерживает RTL.
-- Параллельный UI-чат подключает canonical `assets/brand` к Windows/Android и wiring кнопок/информационных действий.
-- Core-ветки обязаны сравнивать свежий `main` перед merge и не откатывать визуальный workstream.
+- PR #23 вынес основные Windows/Android colors/radii/spacing/control sizes в theme tokens и добавил `docs/UI_CUSTOMIZATION.md`.
+- Утверждённые assets остаются единственным источником в `assets/brand`; byte integrity проверяет CI.
+- Логику routing/security не смешивать с ручными визуальными правками.
 
-### Mobile acceleration architecture
+## CURRENT STATE
 
-`docs/MOBILE_ACCELERATION.md` фиксирует реалистичную цель: улучшать effective throughput/latency/stability, а не обещать программное усиление радиосигнала.
+- Rust workspace, Android app и native JNI pipeline имеют полноценный CI.
+- Android Keystore, Route Proof bootstrap, live mobile policy, execution budgets и protected socket/network lease реализованы.
+- Android public TUN→tun2proxy→local SOCKS forwarding реализован и упаковывается в APK.
+- Android shared readiness/Adaptive MTU layer реализован в PR #25; normal startup всё ещё control-only, потому что production Android transport owner пока не создаёт local SOCKS + protected underlying sockets для всех протоколов и не вызывает activation boundary.
+- Windows имеет production-oriented external transport bootstrap, но system TUN/DNS forwarding пока отсутствует.
+- UI не должен показывать Protected только от local proxy/control TUN.
 
-- mobile-aware route quality;
-- make-before-break handover;
-- adaptive tunnel MTU;
-- выбор транспорта по loss/jitter;
-- warm Wi-Fi/cellular failover;
-- будущий optional AMRI Bond через cooperating relay.
+## NEXT PRIORITIES
 
-Настоящее сложение bandwidth Wi-Fi + LTE/5G требует multipath/bonding и cooperating endpoint/relay. QUIC migration сама по себе bandwidth не складывает.
+1. Завершить/слить PR #25 после final green CI.
+2. Windows system forwarding: tun2proxy + official Wintun runtime prerequisite + admin check + all-server-IP bypass + IPv4/IPv6/DNS + public egress/readiness + teardown restore/watchdog.
+3. Подключить Android production transport owner к `prepareTransportSocket` и `activatePublicForwarding`; затем real device E2E tests.
+4. Закончить typed WireGuard/VMess descriptors/renderers.
+5. Сократить plaintext lifetime `ImportedNode.raw_uri` и добавить encrypted persistence import pool.
+6. E2E failover/leak/kill-switch tests; затем per-domain/per-process routing.
+7. После стабильного single-path — optional warm Wi-Fi+cellular failover; настоящий bandwidth bonding только отдельным opt-in AMRI Bond с cooperating relay.
 
-**Отвергнуто:** TLS interception ради «сжатия», скрытое включение тарифицируемого cellular, постоянная bulk duplication.
+## KNOWN ISSUES / RISKS
 
-### Mobile path policy + adaptive MTU core
-
-- `amri-core::mobile` содержит privacy-safe `MobileNetworkSnapshot`: access kind, validated/metered/roaming, Data Saver/Battery Saver, estimated bandwidth; без SSID/cell ID/operator/device identity.
-- `MobileAccelerationMode`: Off / Balanced / Speed.
-- Metered secondary path требует отдельного `allow_metered_secondary`.
-- Latency duplication требует отдельного explicit opt-in и не разрешает bulk duplication.
-- Unvalidated network fail-closed → minimal probes, без secondary path.
-- Data/Battery Saver запрещают aggressive probes/warmup/multipath behavior.
-- Metered/roaming уменьшают parallel probe budget.
-- `AdaptiveMtuController` снижает MTU только по сигналу forwarding layer `suspected PMTU/fragmentation`; generic packet loss не является таким сигналом.
-- MTU восстанавливается медленно; при смене path evidence сбрасывается.
-- Generic floor = 1280; concrete transport/platform задаёт tunnel-safe initial MTU/ceiling.
-
-**Почему:** агрессивная реакция на обычный loss ухудшает throughput и может незаметно расходовать cellular traffic. Cost/power policy отделена от scoring.
-
-**Проверка:** GitHub Actions `34927570349` и `34927732769` — Rust fmt/test/check + Android tests/assemble успешно.
-
-### Mobile execution budgets, socket safety и public-tunnel gate
-
-- `MobileRuntimeBudget` преобразует общий `MobilePathPolicy` в реальные ограничения: parallel probes и hot-pool capacity; `amri-probe` и `amri-runtime` применяют их напрямую.
-- Бюджет не меняет short race deadline/settle window и не добавляет искусственных countdown: ограничивается только объём одновременно запущенной работы.
-- Android хранит текущий `Network` только как ephemeral service-owned lease. TCP/UDP transport socket сначала проходит `VpnService.protect`, затем bind к текущей underlying network; missing/stale lease или любая ошибка дают fail-closed `false`.
-- В `amri-core` добавлен единый `ProtectionReadiness`: public traffic и UI-статус «защищено» разрешаются только при одновременном подтверждении transport, packet forwarding, DNS protection, leak protection и public egress.
-- Windows UI уже использует этот gate; пока TUN/DNS/leak adapters не готовы, local proxy остаётся только transport-ready и не показывается как полная защита.
-
-**Почему:** mobile policy должна управлять исполнением, а не быть неиспользуемым DTO. Socket protection предотвращает VPN loop, а единый gate исключает ложный статус защиты на обеих платформах.
-
-**Альтернативы:** отдельные Kotlin/Windows readiness-правила, сохранение Android `Network` handle, последовательные races и признание local proxy/control TUN полноценным VPN отвергнуты.
-
-**Проверка:** unit-тесты покрывают bounded budgets, отсутствие добавочной задержки, disabled warmup, stale/missing socket lease и все обязательные protection signals; окончательная проверка выполняется CI.
-
-### Typed credentials и первый multi-secret transport
-
-- `ConnectRequest` больше не имеет универсального `secret`: `TransportCredentials` различает single secret, username/password и WireGuard key set; весь Debug redacted, secret buffers zeroize-on-drop.
-- TUIC URI материализуется в отдельную username/password пару, поддерживает строгий allowlist TLS/SNI/insecure/congestion options и рендерится в sing-box JSON через stdin.
-- Неверная форма credentials отклоняется renderer fail-closed. Ни username/UUID, ни password не попадают в `options` или diagnostics.
-- Sing-box adapter объявляет TUIC только после появления полноценной materialization + renderer path.
-
-**Почему:** generic map или одна строка не могут безопасно представить multi-secret protocols и легко приводят к утечкам/перепутанным полям.
-
-**Проверка:** materializer/renderer/Debug tests покрывают TUIC и credential-shape mismatch; полный CI обязателен перед merge.
-
-### Ручная настройка UI без изменения ядра
-
-- Основные Windows/Android colors, radii, spacing и control sizes вынесены в platform theme tokens.
-- Layout остаётся нативным для платформ, а вся утверждённая графика — единственным источником в `assets/brand`.
-- `docs/UI_CUSTOMIZATION.md` фиксирует точные файлы, безопасную замену ресурсов и обновление reviewed asset lock.
-
-**Почему:** владелец должен иметь возможность вручную менять визуал/расположение без риска затронуть routing/security code или случайно вернуть устаревший asset.
+- Android forwarding layer существует, но normal app flow ещё не имеет production transport owner, поэтому не заявлять end-to-end user-ready VPN на Android.
+- Windows system forwarding/DNS/kill-switch ещё не реализованы.
+- Android active-generation leak capture не равно persistent Android system lockdown.
+- PMTU signal classification ещё должен поступать от реального forwarding/transport telemetry; generic loss использовать запрещено.
+- `ImportedNode.raw_uri` пока обычный `String` в imported pool.
+- TUIC production-rendered; WireGuard/VMess incomplete.
+- Mobile bonding требует cooperating relay и может расходовать extra cellular data/battery.
+- JNI APIs должны оставаться capability-style и узкими.
+- Android CI пока использует preinstalled runner NDK 29; отдельный pinned/downloaded LTS NDK — будущий supply-chain hardening.
 
 ## Постоянный протокол разработки
 
-- `AGENTS.md` + этот журнал — canonical cross-chat/cross-account handoff mechanism.
-- Перед работой: читать журнал, проверять fresh main/PR/branches, не повторять полный аудит без причины.
-- После существенного этапа: WHAT / WHY / alternatives / verification / current state / next / known issues / architecture decisions.
-- Устаревшие планы конденсируются.
-- По просьбе владельца аналогичный журнал должен вестись во всех его программных проектах.
-
-# CURRENT STATE
-
-- Rust workspace компилируется и проходит unit-тесты.
-- Android app компилируется, JVM unit-тесты проходят, debug APK собирается.
-- `libamri_android_ffi.so` реально cross-compiled и проверенно упаковывается в APK для `arm64-v8a` и `x86_64`.
-- Android Keystore persistence, narrow exact-slot JNI bridge и service-owned Route Proof bootstrap реализованы.
-- Утверждённые visual assets закреплены byte lock и проверяются CI; Windows/Android используют canonical set.
-- Multi-subscription, scoring, confidence, hysteresis, circuit breaker, hot pool, micro-race и Shadow Race реализованы.
-- Probe/race реально влияют на quarantine и stable route decision.
-- Route Proof persistent/authenticated и привязан к transport-confirmed executed node.
-- Windows UI подключён к real external-core transport bootstrap для VLESS/Trojan/Shadowsocks/Hysteria2/TUIC.
-- Windows secrets защищены DPAPI; Android persistence защищён Keystore.
-- Live Android `NetworkCapabilities` проходят privacy-safe JNI boundary; общий policy реально ограничивает probe/hot-pool budgets.
-- Android TCP/UDP socket protection + ephemeral underlying-network binding boundary готов для transport adapters.
-- Общий public-tunnel readiness gate реализован и подключён к Windows UI; полный набор platform signals ещё не производится.
-- Полноценный public packet forwarding end-to-end на Windows/Android ещё не подтверждён.
-- Android `VpnService` остаётся control-only до production forwarding.
-
-# NEXT PRIORITIES
-
-1. Реализовать public packet forwarding: Android TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
-2. Подключить Android transport adapters к готовому socket gate и применить `AdaptiveMtuController` в forwarding path.
-3. Подать platform readiness signals и public egress verification в готовый public-tunnel gate.
-4. Закончить typed WireGuard/VMess descriptors и richer transport descriptors.
-6. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover; AMRI Bond relay проектировать отдельным opt-in этапом.
-7. Добавить end-to-end failover/leak tests, kill-switch, затем per-domain/per-process routing.
-
-# KNOWN ISSUES / RISKS
-
-- Нет полноценного подтверждённого public packet forwarding end-to-end.
-- Loopback readiness подтверждает local inbound, но не Internet traffic через tunnel.
-- Android mobile policy управляет общими budgets, но реальный Android probe worker/transport ещё не вызывает эти API.
-- Android socket gate реализован, но production transport adapter ещё не создаёт через него свои sockets.
-- `ImportedNode.raw_uri` всё ещё существует как обычный `String` в импортированном пуле; нужна encrypted persistence и сокращение plaintext lifetime.
-- TUIC production-rendered; WireGuard/VMess ещё не имеют полного typed descriptor/renderer.
-- Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
-- Mobile bonding требует cooperating relay/backend и может расходовать дополнительный cellular traffic/батарею.
-- JNI operations должны оставаться узкими; generic secret APIs запрещены архитектурным решением.
-- CI native build пока опирается на preinstalled runner NDK 29; отдельное pin/download NDK LTS можно сделать позднее как supply-chain/infrastructure hardening.
-
-# IMPORTANT ARCHITECTURE DECISIONS
-
-- AMRI core выбирает маршрут; transport core исполняет.
-- Hysteresis удерживает рабочий route, но не мешает аварийному failover.
-- Failover использует малый quality-bounded hot pool.
-- Make-before-break обязателен.
-- Credentials запрещены в process args, Debug, telemetry и plaintext temp files.
-- Multi-secret credentials не помещаются в generic options map.
-- Credential shape является частью transport contract; protocol/credential mismatch всегда fail-closed.
-- OS-backed storage платформенный: DPAPI Windows, Android Keystore Android.
-- Android JNI secret boundary — exact operation/exact slot; whole-store serialization запрещена.
-- Android network JNI boundary принимает только ephemeral privacy-safe scalar snapshot; routing policy остаётся в Rust core.
-- Android native `.so` — воспроизводимый build artifact; непрозрачные committed binaries не являются источником истины.
-- Native packaging CI обязан проверять фактические APK entries, а не только exit code Gradle.
-- Third-party core distribution требует отдельного license review.
-- External core transport-ready только после process + loopback readiness.
-- Transport-confirmed node fingerprint — единственный допустимый executed Route Proof node id.
-- UI не показывает protected state до transport + packet forwarding + leak-protection/public-tunnel gates.
-- Public-tunnel readiness вычисляется только общим `amri-core` gate; public traffic разрешён исключительно при полном наборе сигналов текущего маршрута.
-- Android underlying `Network` handle может жить только ephemeral в памяти сервиса; persistence/logging запрещены, stale lease отклоняется.
-- QUIC migration не считать bandwidth bonding.
-- Дополнительный cellular usage — только explicit opt-in.
-- MTU adaptation не реагирует на generic loss.
-- Mobile snapshots не содержат SSID/cell ID/устойчивый network identity.
-- Параллельные brand/UI изменения из `main` не откатывать core-ветками.
+- Перед каждым крупным этапом: fresh `main` + PR/branch compare; не повторять полный аудит без необходимости.
+- После этапа: записать WHAT / WHY / alternatives/tradeoffs / verification / current state / next / known issues.
+- При параллельной работе сначала сохранить чужие изменения; не force-overwrite branch/main.
+- Журнал можно конденсировать, если факты/решения не теряются.
+- Аналогичный repository-journal подход применять и в других программных проектах владельца.
