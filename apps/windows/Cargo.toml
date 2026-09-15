@@ -1,14 +1,11 @@
 [package]
 name = "amri-windows"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
+version = "0.1.0"
+edition = "2021"
 
 [dependencies]
-eframe = { version = "0.36.2", default-features = true }
-image = { version = "0.25", default-features = false, features = ["png"] }
 amri-core = { path = "../../crates/amri-core" }
 amri-subscriptions = { path = "../../crates/amri-subscriptions" }
-amri-node-config = { path = "../../crates/amri-node-config" }
-amri-transport = { path = "../../crates/amri-transport" }
-amri-external-core = { path = "../../crates/amri-external-core" }
+eframe = "0.32"
+egui_extras = { version = "0.32", features = ["all_loaders"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
