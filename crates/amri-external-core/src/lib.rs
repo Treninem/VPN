@@ -6,8 +6,11 @@ use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::fmt;
 use std::io::Write;
+use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -140,15 +143,86 @@ impl ManagedProcess for ChildManagedProcess {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ReadinessPolicy {
+    pub startup_timeout: Duration,
+    pub poll_interval: Duration,
+    pub connect_timeout: Duration,
+}
+
+impl Default for ReadinessPolicy {
+    fn default() -> Self {
+        Self {
+            startup_timeout: Duration::from_secs(3),
+            poll_interval: Duration::from_millis(10),
+            connect_timeout: Duration::from_millis(50),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LoopbackReadiness {
+    address: SocketAddr,
+    policy: ReadinessPolicy,
+}
+
+impl LoopbackReadiness {
+    fn from_request(
+        request: &ConnectRequest,
+        policy: ReadinessPolicy,
+    ) -> Result<Self, AdapterError> {
+        let port = option_u16(request, "local_port")?
+            .filter(|port| *port != 0)
+            .ok_or_else(|| AdapterError::new("external VPN core requires a non-zero local_port"))?;
+        Ok(Self {
+            address: SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+            policy,
+        })
+    }
+
+    fn is_ready(&self) -> bool {
+        TcpStream::connect_timeout(&self.address, self.policy.connect_timeout).is_ok()
+    }
+
+    fn wait_until_ready(&self, process: &mut dyn ManagedProcess) -> Result<(), AdapterError> {
+        let deadline = Instant::now() + self.policy.startup_timeout;
+        loop {
+            if !process.is_running()? {
+                return Err(AdapterError::new(
+                    "external VPN core exited before its local endpoint became ready",
+                ));
+            }
+            if self.is_ready() {
+                return Ok(());
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(AdapterError::new(
+                    "external VPN core local endpoint readiness timed out",
+                ));
+            }
+            thread::sleep(self.policy.poll_interval.min(deadline - now));
+        }
+    }
+}
+
+struct ManagedRouteProcess {
+    process: Box<dyn ManagedProcess>,
+    readiness: LoopbackReadiness,
+}
+
 /// Transport adapter that supervises one external core process per active AMRI route slot.
 ///
 /// The adapter intentionally does not write credential-bearing configuration to disk. A renderer
 /// creates a zeroizing config in memory and the supervisor passes it to the child through stdin.
+/// Connected is returned only after the configured loopback inbound accepts a TCP connection.
 pub struct SupervisedProcessAdapter {
     spec: ExternalCoreSpec,
     renderer: Box<dyn CoreConfigRenderer>,
     spawner: Box<dyn ProcessSpawner>,
-    processes: HashMap<String, Box<dyn ManagedProcess>>,
+    readiness_policy: ReadinessPolicy,
+    processes: HashMap<String, ManagedRouteProcess>,
 }
 
 impl SupervisedProcessAdapter {
@@ -161,10 +235,20 @@ impl SupervisedProcessAdapter {
         renderer: impl CoreConfigRenderer + 'static,
         spawner: impl ProcessSpawner + 'static,
     ) -> Self {
+        Self::with_spawner_and_policy(spec, renderer, spawner, ReadinessPolicy::default())
+    }
+
+    pub fn with_spawner_and_policy(
+        spec: ExternalCoreSpec,
+        renderer: impl CoreConfigRenderer + 'static,
+        spawner: impl ProcessSpawner + 'static,
+        readiness_policy: ReadinessPolicy,
+    ) -> Self {
         Self {
             spec,
             renderer: Box::new(renderer),
             spawner: Box::new(spawner),
+            readiness_policy,
             processes: HashMap::new(),
         }
     }
@@ -180,17 +264,19 @@ impl TransportAdapter for SupervisedProcessAdapter {
     }
 
     fn connect(&mut self, request: &ConnectRequest) -> Result<TransportSession, AdapterError> {
+        let readiness = LoopbackReadiness::from_request(request, self.readiness_policy)?;
         let config = self.renderer.render(request)?;
         let mut process = self.spawner.spawn(&self.spec, &config)?;
-        if !process.is_running()? {
+        if let Err(error) = readiness.wait_until_ready(process.as_mut()) {
             let _ = process.stop();
-            return Err(AdapterError::new(
-                "external VPN core exited before the route became active",
-            ));
+            return Err(error);
         }
 
         let adapter_session_id = Uuid::new_v4().to_string();
-        self.processes.insert(adapter_session_id.clone(), process);
+        self.processes.insert(
+            adapter_session_id.clone(),
+            ManagedRouteProcess { process, readiness },
+        );
 
         Ok(TransportSession {
             route_id: request.route_id.clone(),
@@ -201,34 +287,37 @@ impl TransportAdapter for SupervisedProcessAdapter {
     }
 
     fn disconnect(&mut self, session: &TransportSession) -> Result<(), AdapterError> {
-        let process = self
+        let managed = self
             .processes
             .get_mut(&session.adapter_session_id)
             .ok_or_else(|| AdapterError::new("external VPN core session is not tracked"))?;
-        process.stop()?;
+        managed.process.stop()?;
         self.processes.remove(&session.adapter_session_id);
         Ok(())
     }
 
     fn health(&mut self, session: &TransportSession) -> Result<TransportHealth, AdapterError> {
-        let process = self
+        let managed = self
             .processes
             .get_mut(&session.adapter_session_id)
             .ok_or_else(|| AdapterError::new("external VPN core session is not tracked"))?;
-        let running = process.is_running()?;
+        let running = managed.process.is_running()?;
+        let ready = running && managed.readiness.is_ready();
 
         Ok(TransportHealth {
-            state: if running {
+            state: if ready {
                 SessionState::Connected
             } else {
                 SessionState::Degraded
             },
             latency_ms: None,
             packet_loss_ratio: None,
-            message: if running {
-                None
-            } else {
+            message: if !running {
                 Some("external VPN core process exited".into())
+            } else if !ready {
+                Some("external VPN core local endpoint is unavailable".into())
+            } else {
+                None
             },
         })
     }
