@@ -3,10 +3,12 @@ use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use std::collections::HashMap;
 use thiserror::Error;
 
 type HmacSha256 = Hmac<Sha256>;
 const PROOF_VERSION: &str = "amri-route-proof-v1";
+const KEY_LENGTH: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CandidateEvidence {
@@ -39,26 +41,34 @@ impl CandidateEvidence {
 pub struct RouteProof {
     pub version: String,
     pub created_at: DateTime<Utc>,
-    /// Stable only for this local secret; never contains a host or process name.
+    /// Stable only for this installation secret; never contains host/process plaintext.
     pub destination_token: String,
     pub selected_node_id: String,
     pub reason: String,
     pub evidence: Vec<CandidateEvidence>,
+    /// Per-destination predecessor, allowing explicit deletion of one destination history.
     pub previous_proof_hash: Option<String>,
     pub proof_hash: String,
 }
 
 pub struct RouteProofChain {
-    secret: [u8; 32],
-    previous_hash: Option<String>,
+    secret: [u8; KEY_LENGTH],
+    tails: HashMap<String, String>,
 }
 
 impl RouteProofChain {
-    pub fn new(secret: [u8; 32]) -> Self {
+    pub fn new(secret: [u8; KEY_LENGTH]) -> Self {
         Self {
             secret,
-            previous_hash: None,
+            tails: HashMap::new(),
         }
+    }
+
+    pub fn try_from_secret(secret: &[u8]) -> Result<Self, RouteProofError> {
+        let secret: [u8; KEY_LENGTH] = secret
+            .try_into()
+            .map_err(|_| RouteProofError::InvalidKeyLength)?;
+        Ok(Self::new(secret))
     }
 
     pub fn append(
@@ -69,19 +79,36 @@ impl RouteProofChain {
         evidence: Vec<CandidateEvidence>,
         created_at: DateTime<Utc>,
     ) -> RouteProof {
+        let destination_token = self.token_for(destination);
         let mut proof = RouteProof {
             version: PROOF_VERSION.into(),
             created_at,
-            destination_token: self.destination_token(destination),
+            previous_proof_hash: self.tails.get(&destination_token).cloned(),
+            destination_token,
             selected_node_id: selected_node_id.into(),
             reason: reason.into(),
             evidence,
-            previous_proof_hash: self.previous_hash.clone(),
             proof_hash: String::new(),
         };
         proof.proof_hash = self.sign_proof(&proof);
-        self.previous_hash = Some(proof.proof_hash.clone());
+        self.tails
+            .insert(proof.destination_token.clone(), proof.proof_hash.clone());
         proof
+    }
+
+    pub fn token_for(&self, destination: &DestinationKey) -> String {
+        let mut mac = self.mac();
+        write_field(&mut mac, b"destination-v1");
+        write_field(&mut mac, destination.host.as_bytes());
+        write_field(
+            &mut mac,
+            destination
+                .process
+                .as_deref()
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        hex(&mac.finalize().into_bytes())
     }
 
     pub fn verify(&self, proof: &RouteProof) -> Result<(), RouteProofError> {
@@ -96,40 +123,45 @@ impl RouteProofChain {
         }
     }
 
+    /// Verifies interleaved per-destination chains without linking destinations together.
     pub fn verify_chain(&self, proofs: &[RouteProof]) -> Result<(), RouteProofError> {
-        let mut previous: Option<&str> = None;
+        let mut tails: HashMap<&str, &str> = HashMap::new();
         for proof in proofs {
-            if proof.previous_proof_hash.as_deref() != previous {
+            let expected_previous = tails.get(proof.destination_token.as_str()).copied();
+            if proof.previous_proof_hash.as_deref() != expected_previous {
                 return Err(RouteProofError::BrokenChain);
             }
             self.verify(proof)?;
-            previous = Some(proof.proof_hash.as_str());
+            tails.insert(&proof.destination_token, &proof.proof_hash);
         }
         Ok(())
     }
 
-    /// Starts a new local chain, for example after the user clears learning history.
-    pub fn reset(&mut self) {
-        self.previous_hash = None;
+    /// Verifies persisted receipts before adopting their per-destination tails.
+    pub fn restore_verified(&mut self, proofs: &[RouteProof]) -> Result<(), RouteProofError> {
+        self.verify_chain(proofs)?;
+        self.tails.clear();
+        for proof in proofs {
+            self.tails
+                .insert(proof.destination_token.clone(), proof.proof_hash.clone());
+        }
+        Ok(())
     }
 
-    fn destination_token(&self, destination: &DestinationKey) -> String {
-        let mut mac = HmacSha256::new_from_slice(&self.secret).expect("HMAC accepts a 32-byte key");
-        write_field(&mut mac, b"destination-v1");
-        write_field(&mut mac, destination.host.as_bytes());
-        write_field(
-            &mut mac,
-            destination
-                .process
-                .as_deref()
-                .unwrap_or_default()
-                .as_bytes(),
-        );
-        hex(&mac.finalize().into_bytes())
+    pub fn reset_destination(&mut self, destination: &DestinationKey) {
+        self.tails.remove(&self.token_for(destination));
+    }
+
+    pub fn reset_all(&mut self) {
+        self.tails.clear();
+    }
+
+    fn mac(&self) -> HmacSha256 {
+        HmacSha256::new_from_slice(&self.secret).expect("HMAC accepts a 32-byte key")
     }
 
     fn sign_proof(&self, proof: &RouteProof) -> String {
-        let mut mac = HmacSha256::new_from_slice(&self.secret).expect("HMAC accepts a 32-byte key");
+        let mut mac = self.mac();
         write_field(&mut mac, PROOF_VERSION.as_bytes());
         write_field(&mut mac, proof.created_at.to_rfc3339().as_bytes());
         write_field(&mut mac, proof.destination_token.as_bytes());
@@ -169,6 +201,8 @@ impl Drop for RouteProofChain {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RouteProofError {
+    #[error("route proof key must contain exactly 32 bytes")]
+    InvalidKeyLength,
     #[error("unsupported AMRI Route Proof version")]
     UnsupportedVersion,
     #[error("route proof signature is invalid")]
@@ -207,9 +241,9 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
-    fn destination() -> DestinationKey {
+    fn destination(host: &str) -> DestinationKey {
         DestinationKey {
-            host: "private.example".into(),
+            host: host.into(),
             process: Some("private-app".into()),
         }
     }
@@ -228,10 +262,18 @@ mod tests {
     }
 
     #[test]
+    fn rejects_wrong_key_length() {
+        assert!(matches!(
+            RouteProofChain::try_from_secret(&[1; 16]),
+            Err(RouteProofError::InvalidKeyLength)
+        ));
+    }
+
+    #[test]
     fn proof_contains_no_raw_destination_identity() {
         let mut chain = RouteProofChain::new([7; 32]);
         let proof = chain.append(
-            &destination(),
+            &destination("private.example"),
             "node-a",
             "best score",
             vec![evidence("node-a", 91.0)],
@@ -248,7 +290,7 @@ mod tests {
     fn detects_any_changed_decision_evidence() {
         let mut chain = RouteProofChain::new([9; 32]);
         let mut proof = chain.append(
-            &destination(),
+            &destination("private.example"),
             "node-a",
             "best score",
             vec![evidence("node-a", 91.0)],
@@ -260,37 +302,57 @@ mod tests {
     }
 
     #[test]
-    fn verifies_ordered_chain_and_rejects_removed_middle_record() {
+    fn verifies_interleaved_destination_chains() {
         let mut chain = RouteProofChain::new([11; 32]);
-        let first = chain.append(
-            &destination(),
+        let first_a = chain.append(
+            &destination("a.example"),
             "node-a",
-            "first",
-            vec![evidence("node-a", 90.0)],
+            "a1",
+            vec![],
             Utc::now(),
         );
-        let second = chain.append(
-            &destination(),
+        let first_b = chain.append(
+            &destination("b.example"),
             "node-b",
-            "second",
-            vec![evidence("node-b", 92.0)],
+            "b1",
+            vec![],
             Utc::now(),
         );
-        let third = chain.append(
-            &destination(),
+        let second_a = chain.append(
+            &destination("a.example"),
             "node-c",
-            "third",
-            vec![evidence("node-c", 94.0)],
+            "a2",
+            vec![],
             Utc::now(),
         );
 
         assert!(chain
-            .verify_chain(&[first.clone(), second, third.clone()])
+            .verify_chain(&[first_a.clone(), first_b, second_a.clone()])
             .is_ok());
         assert_eq!(
-            chain.verify_chain(&[first, third]),
+            chain.verify_chain(&[second_a]),
             Err(RouteProofError::BrokenChain)
         );
+    }
+
+    #[test]
+    fn clearing_one_destination_does_not_break_another() {
+        let mut chain = RouteProofChain::new([13; 32]);
+        let a = destination("a.example");
+        let b = destination("b.example");
+        let first_a = chain.append(&a, "node-a", "a1", vec![], Utc::now());
+        let first_b = chain.append(&b, "node-b", "b1", vec![], Utc::now());
+
+        chain.reset_destination(&a);
+        let new_a = chain.append(&a, "node-c", "a-new", vec![], Utc::now());
+        let second_b = chain.append(&b, "node-d", "b2", vec![], Utc::now());
+
+        assert!(new_a.previous_proof_hash.is_none());
+        assert_eq!(
+            second_b.previous_proof_hash.as_deref(),
+            Some(first_b.proof_hash.as_str())
+        );
+        assert!(chain.verify_chain(&[first_a, first_b, second_b]).is_ok());
     }
 
     #[test]
@@ -299,8 +361,8 @@ mod tests {
         let mut second = RouteProofChain::new([2; 32]);
         let at = Utc::now();
 
-        let a = first.append(&destination(), "node", "reason", vec![], at);
-        let b = second.append(&destination(), "node", "reason", vec![], at);
+        let a = first.append(&destination("same.example"), "node", "reason", vec![], at);
+        let b = second.append(&destination("same.example"), "node", "reason", vec![], at);
 
         assert_ne!(a.destination_token, b.destination_token);
     }

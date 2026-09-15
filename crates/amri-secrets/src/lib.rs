@@ -47,6 +47,10 @@ pub enum SecretStoreError {
     SecretTooLarge,
     #[error("secure secret storage is not available on this platform")]
     UnsupportedPlatform,
+    #[error("secret has an unexpected length")]
+    InvalidLength,
+    #[error("operating-system random generator failed")]
+    Entropy,
     #[error("secure secret storage operation failed")]
     Backend,
 }
@@ -56,6 +60,29 @@ pub trait SecretStore: Send + Sync {
     fn put(&self, key: &str, value: &SecretValue) -> Result<(), SecretStoreError>;
     fn get(&self, key: &str) -> Result<Option<SecretValue>, SecretStoreError>;
     fn delete(&self, key: &str) -> Result<bool, SecretStoreError>;
+}
+
+
+/// Loads an installation-local 256-bit key or creates it with the operating-system CSPRNG.
+///
+/// The returned value remains zeroizing and Debug-redacted. Callers should copy it only into
+/// another zeroizing/secret-owning type such as RouteProofChain.
+pub fn load_or_create_key_32(
+    store: &dyn SecretStore,
+    key: &str,
+) -> Result<SecretValue, SecretStoreError> {
+    if let Some(existing) = store.get(key)? {
+        if existing.expose_secret().len() != 32 {
+            return Err(SecretStoreError::InvalidLength);
+        }
+        return Ok(existing);
+    }
+
+    let mut bytes = vec![0_u8; 32];
+    getrandom::fill(&mut bytes).map_err(|_| SecretStoreError::Entropy)?;
+    let generated = SecretValue::from_bytes(bytes)?;
+    store.put(key, &generated)?;
+    Ok(generated)
 }
 
 /// Windows secret store backed by DPAPI-protected files.
@@ -277,6 +304,61 @@ mod tests {
         assert_eq!(
             store.put("../escape", &value).unwrap_err(),
             SecretStoreError::InvalidKey
+        );
+    }
+
+
+    struct MemorySecretStore(std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>);
+
+    impl SecretStore for MemorySecretStore {
+        fn put(&self, key: &str, value: &SecretValue) -> Result<(), SecretStoreError> {
+            validate_key(key)?;
+            self.0
+                .lock()
+                .unwrap()
+                .insert(key.to_owned(), value.expose_secret().to_vec());
+            Ok(())
+        }
+
+        fn get(&self, key: &str) -> Result<Option<SecretValue>, SecretStoreError> {
+            validate_key(key)?;
+            self.0
+                .lock()
+                .unwrap()
+                .get(key)
+                .cloned()
+                .map(SecretValue::from_bytes)
+                .transpose()
+        }
+
+        fn delete(&self, key: &str) -> Result<bool, SecretStoreError> {
+            validate_key(key)?;
+            Ok(self.0.lock().unwrap().remove(key).is_some())
+        }
+    }
+
+    #[test]
+    fn generated_key_is_32_bytes_and_reused() {
+        let store = MemorySecretStore(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        let first = load_or_create_key_32(&store, "route-proof:key").unwrap();
+        let second = load_or_create_key_32(&store, "route-proof:key").unwrap();
+
+        assert_eq!(first.expose_secret().len(), 32);
+        assert_eq!(first.expose_secret(), second.expose_secret());
+        assert!(format!("{first:?}").contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn wrong_existing_key_length_fails_closed() {
+        let store = MemorySecretStore(std::sync::Mutex::new(std::collections::HashMap::from([(
+            "route-proof:key".to_owned(),
+            vec![1_u8; 16],
+        )])));
+
+        assert_eq!(
+            load_or_create_key_32(&store, "route-proof:key").unwrap_err(),
+            SecretStoreError::InvalidLength
         );
     }
 
