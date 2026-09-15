@@ -7,7 +7,7 @@ SetCompressor /SOLID lzma
 !define PRODUCT_PUBLISHER "AMRI"
 
 Name "${PRODUCT_NAME}"
-OutFile "dist\AMRI-VPN-Windows-Setup.exe"
+OutFile "..\..\dist\AMRI-VPN-Windows-Setup.exe"
 InstallDir "$PROGRAMFILES64\AMRI VPN"
 InstallDirRegKey HKLM "Software\AMRI VPN" "InstallDir"
 
@@ -18,10 +18,10 @@ UninstPage instfiles
 
 Section "AMRI VPN" SecMain
   SetOutPath "$INSTDIR"
-  File "dist\windows\AMRI-VPN.exe"
-  File "dist\windows\sing-box.exe"
-  File "THIRD_PARTY_NOTICES.md"
-  File /nonfatal "dist\windows\sing-box-LICENSE"
+  File "..\..\dist\windows\AMRI-VPN.exe"
+  File "..\..\dist\windows\sing-box.exe"
+  File "..\..\THIRD_PARTY_NOTICES.md"
+  File /nonfatal "..\..\dist\windows\sing-box-LICENSE"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\AMRI VPN" "InstallDir" "$INSTDIR"
