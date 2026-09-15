@@ -137,15 +137,71 @@ impl RoutingMode {
 }
 
 pub fn routing_mode_text(language: Language, mode: RoutingMode) -> &'static str {
-    const EN: [&str; 7] = ["Smart", "Speed", "Ping", "Privacy", "Streaming", "Gaming", "Manual"];
-    const RU: [&str; 7] = ["Smart", "Скорость", "Ping", "Приватность", "Стриминг", "Игры", "Ручной"];
-    const ES: [&str; 7] = ["Smart", "Velocidad", "Ping", "Privacidad", "Streaming", "Juegos", "Manual"];
-    const PT: [&str; 7] = ["Smart", "Velocidade", "Ping", "Privacidade", "Streaming", "Jogos", "Manual"];
-    const FR: [&str; 7] = ["Smart", "Vitesse", "Ping", "Confidentialité", "Streaming", "Jeux", "Manuel"];
-    const DE: [&str; 7] = ["Smart", "Tempo", "Ping", "Privatsphäre", "Streaming", "Gaming", "Manuell"];
+    const EN: [&str; 7] = [
+        "Smart",
+        "Speed",
+        "Ping",
+        "Privacy",
+        "Streaming",
+        "Gaming",
+        "Manual",
+    ];
+    const RU: [&str; 7] = [
+        "Smart",
+        "Скорость",
+        "Ping",
+        "Приватность",
+        "Стриминг",
+        "Игры",
+        "Ручной",
+    ];
+    const ES: [&str; 7] = [
+        "Smart",
+        "Velocidad",
+        "Ping",
+        "Privacidad",
+        "Streaming",
+        "Juegos",
+        "Manual",
+    ];
+    const PT: [&str; 7] = [
+        "Smart",
+        "Velocidade",
+        "Ping",
+        "Privacidade",
+        "Streaming",
+        "Jogos",
+        "Manual",
+    ];
+    const FR: [&str; 7] = [
+        "Smart",
+        "Vitesse",
+        "Ping",
+        "Confidentialité",
+        "Streaming",
+        "Jeux",
+        "Manuel",
+    ];
+    const DE: [&str; 7] = [
+        "Smart",
+        "Tempo",
+        "Ping",
+        "Privatsphäre",
+        "Streaming",
+        "Gaming",
+        "Manuell",
+    ];
     const ZH: [&str; 7] = ["智能", "速度", "延迟", "隐私", "流媒体", "游戏", "手动"];
     const HI: [&str; 7] = ["स्मार्ट", "गति", "पिंग", "गोपनीयता", "स्ट्रीमिंग", "गेमिंग", "मैनुअल"];
-    const AR: [&str; 7] = ["ذكي", "السرعة", "الاستجابة", "الخصوصية", "البث", "الألعاب", "يدوي"];
+    const AR: [&str; 7] = [
+        "ذكي",
+        "السرعة",
+        "الاستجابة",
+        "الخصوصية",
+        "البث",
+        "الألعاب",
+        "يدوي",
+    ];
 
     let labels = match language {
         Language::English => EN,

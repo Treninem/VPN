@@ -599,7 +599,8 @@ impl AmriApp {
                                 egui::ComboBox::from_id_salt("home-route-selection")
                                     .selected_text(selected_text)
                                     .show_ui(ui, |ui| {
-                                        for (index, node) in self.imported_nodes.iter().enumerate() {
+                                        for (index, node) in self.imported_nodes.iter().enumerate()
+                                        {
                                             ui.selectable_value(
                                                 &mut self.selected_node,
                                                 index,
