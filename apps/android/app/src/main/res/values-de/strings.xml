@@ -17,6 +17,8 @@
     <string name="federated_learning_description">Standardmäßig deaktiviert</string>
     <string name="status_service_ready">VPN-Dienst ist bereit</string>
     <string name="detail_service_ready">Öffentlicher Verkehr wartet auf einen geschützten Transport</string>
+    <string name="status_protected">Schutz ist aktiv</string>
+    <string name="detail_protected">Öffentlicher Datenverkehr läuft durch den verifizierten AMRI-Tunnel</string>
     <string name="stop">Stoppen</string>
     <string name="status_preparing">Vorbereitung…</string>
     <string name="detail_preparing">Android erstellt eine geschützte Schnittstelle</string>

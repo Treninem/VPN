@@ -1,4 +1,5 @@
 mod forwarder;
+mod runtime_gate;
 
 use amri_core::mobile::{
     AccessNetworkKind, MobileAccelerationMode, MobileAccelerationPreferences,
@@ -93,7 +94,6 @@ impl SecretSlotBackend for JniSecretSlot<'_, '_> {
 
         let array = self.env.cast_local::<JByteArray>(value)?;
         let bytes = self.env.convert_byte_array(&array)?;
-
         let zeros = vec![0_i8; bytes.len()];
         array.set_region(self.env, 0, &zeros)?;
 
@@ -242,9 +242,6 @@ pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEval
     )
 }
 
-/// Starts the Android TUN -> local SOCKS packet bridge. The fd is a duplicate owned by the native
-/// forwarder on successful start. The local transport must already be ready and its real network
-/// sockets must be protected from VpnService recursion before this operation is called.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeStartPacketForwarder<
     'caller,
@@ -276,6 +273,70 @@ pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativePack
     _class: JClass<'caller>,
 ) -> jint {
     forwarder::status()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeResetAdaptiveMtu<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    safe_initial_mtu: jint,
+) -> jint {
+    runtime_gate::reset_mtu(safe_initial_mtu)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeCurrentAdaptiveMtu<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+) -> jint {
+    runtime_gate::current_mtu()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeRecordSuspectedPmtuFailure<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+) -> jint {
+    runtime_gate::record_suspected_pmtu_failure()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeRecordAdaptiveMtuSuccess<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+) -> jint {
+    runtime_gate::record_mtu_success()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEvaluateProtection<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    requested: jboolean,
+    transport_ready: jboolean,
+    packet_forwarding_active: jboolean,
+    dns_protection_ready: jboolean,
+    leak_protection_ready: jboolean,
+    public_egress_verified: jboolean,
+) -> jint {
+    runtime_gate::protection_state(
+        requested,
+        transport_ready,
+        packet_forwarding_active,
+        dns_protection_ready,
+        leak_protection_ready,
+        public_egress_verified,
+    )
 }
 
 #[cfg(test)]
@@ -312,14 +373,12 @@ mod tests {
     #[test]
     fn creates_exactly_one_route_proof_key() {
         let mut slot = MemorySlot::default();
-
         assert_eq!(
             ensure_route_proof_key(&mut slot).unwrap(),
             RouteProofKeyStatus::Created
         );
         assert_eq!(slot.value.as_ref().unwrap().len(), ROUTE_PROOF_KEY_BYTES);
         assert_eq!(slot.put_count, 1);
-
         assert_eq!(
             ensure_route_proof_key(&mut slot).unwrap(),
             RouteProofKeyStatus::Existing
@@ -334,7 +393,6 @@ mod tests {
             value: Some(original.clone()),
             put_count: 0,
         };
-
         assert_eq!(
             ensure_route_proof_key(&mut slot).unwrap(),
             RouteProofKeyStatus::InvalidStoredKey
@@ -349,7 +407,6 @@ mod tests {
             value: Some(Vec::new()),
             put_count: 0,
         };
-
         assert_eq!(
             ensure_route_proof_key(&mut slot).unwrap(),
             RouteProofKeyStatus::InvalidStoredKey
@@ -362,7 +419,6 @@ mod tests {
         let packed = evaluate_mobile_policy(
             1, true, true, false, false, false, 80_000, 20_000, 1, false, false,
         );
-
         assert_eq!(packed & 0b11, 1);
         assert_ne!(packed & (1 << 2), 0);
         assert_eq!(packed & (1 << 3), 0);

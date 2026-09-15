@@ -17,6 +17,8 @@
     <string name="federated_learning_description">Desactivado por defecto</string>
     <string name="status_service_ready">El servicio VPN está listo</string>
     <string name="detail_service_ready">El tráfico público no se captura hasta conectar un transporte protegido</string>
+    <string name="status_protected">Protección activada</string>
+    <string name="detail_protected">El tráfico público pasa por el túnel AMRI verificado</string>
     <string name="stop">Detener</string>
     <string name="status_preparing">Preparando…</string>
     <string name="detail_preparing">Android está creando una interfaz protegida</string>

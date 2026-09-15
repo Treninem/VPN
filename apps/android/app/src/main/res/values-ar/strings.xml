@@ -17,6 +17,8 @@
     <string name="federated_learning_description">متوقف افتراضيًا</string>
     <string name="status_service_ready">خدمة VPN جاهزة</string>
     <string name="detail_service_ready">لن يتم التقاط البيانات العامة حتى يتصل النقل المحمي</string>
+    <string name="status_protected">الحماية مفعّلة</string>
+    <string name="detail_protected">تمر حركة المرور العامة عبر نفق AMRI الذي تم التحقق منه</string>
     <string name="stop">إيقاف</string>
     <string name="status_preparing">جارٍ التحضير…</string>
     <string name="detail_preparing">ينشئ Android واجهة نظام محمية</string>

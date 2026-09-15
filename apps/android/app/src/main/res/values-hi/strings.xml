@@ -17,6 +17,8 @@
     <string name="federated_learning_description">डिफ़ॉल्ट रूप से बंद</string>
     <string name="status_service_ready">VPN सेवा तैयार है</string>
     <string name="detail_service_ready">सुरक्षित ट्रांसपोर्ट जुड़ने तक सार्वजनिक ट्रैफ़िक कैप्चर नहीं होगा</string>
+    <string name="status_protected">सुरक्षा चालू है</string>
+    <string name="detail_protected">सार्वजनिक ट्रैफ़िक सत्यापित AMRI टनल से होकर गुजरता है</string>
     <string name="stop">रोकें</string>
     <string name="status_preparing">तैयारी…</string>
     <string name="detail_preparing">Android सुरक्षित सिस्टम इंटरफ़ेस बना रहा है</string>

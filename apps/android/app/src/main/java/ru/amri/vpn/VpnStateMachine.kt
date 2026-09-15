@@ -5,6 +5,7 @@ enum class VpnControllerState {
     PERMISSION_REQUIRED,
     PREPARING,
     SERVICE_READY,
+    PROTECTED,
     STOPPING,
     FAILED,
 }
@@ -16,9 +17,7 @@ class VpnStateMachine {
 
     @Synchronized
     fun permissionRequired() {
-        if (state == VpnControllerState.IDLE) {
-            state = VpnControllerState.PERMISSION_REQUIRED
-        }
+        if (state == VpnControllerState.IDLE) state = VpnControllerState.PERMISSION_REQUIRED
     }
 
     @Synchronized
@@ -38,6 +37,17 @@ class VpnStateMachine {
     fun serviceReady() {
         check(state == VpnControllerState.PREPARING)
         state = VpnControllerState.SERVICE_READY
+    }
+
+    @Synchronized
+    fun protectionReady() {
+        check(state == VpnControllerState.SERVICE_READY)
+        state = VpnControllerState.PROTECTED
+    }
+
+    @Synchronized
+    fun protectionLost() {
+        if (state == VpnControllerState.PROTECTED) state = VpnControllerState.SERVICE_READY
     }
 
     @Synchronized
