@@ -1,208 +1,221 @@
 # Журнал разработки AMRI VPN
 
-Этот файл — компактная техническая память проекта. Его обязан прочитать любой следующий разработчик/чат до изменения кода. Корневой `AGENTS.md` задаёт обязательный протокол ведения этого журнала.
+Этот файл — каноническая компактная техническая память проекта. Любой следующий разработчик/чат/аккаунт обязан сначала прочитать его и корневой `AGENTS.md`, затем проверить актуальный `main`, PR и рабочие ветки.
 
-Записывать нужно не скрытый ход рассуждений, а полезную инженерную память: что сделано, почему, какие варианты отвергнуты, что проверено, что ещё не работает и что делать дальше.
+В журнале хранится инженерное обоснование решений, ограничения, проверки и планы. Скрытый chain-of-thought сюда не записывается. Секреты, raw URI, subscription URL, browsing history и персональные идентификаторы сюда не попадают.
 
 ## Базовая архитектура
 
-- Общая логика AMRI — Rust workspace: `amri-core`, `amri-subscriptions`, `amri-storage`, `amri-probe`, `amri-federation`, `amri-transport`, `amri-runtime`, `amri-secrets`, `amri-external-core`, `amri-node-config` и связанные crates.
-- Windows app — eframe/egui; Android — нативный app module с `VpnService`.
-- UI не выбирает маршруты и не имеет права показывать «VPN включён», пока не подтверждены transport + packet forwarding + необходимая leak protection.
-- AMRI сама выбирает маршрут; внешний VPN-core только исполняет выбранный маршрут.
-- Секреты, raw URI, subscription URL, история сайтов и персональные идентификаторы не должны попадать в Debug, telemetry, process args или журнал.
+- Общая логика AMRI — Rust workspace: `amri-core`, `amri-storage`, `amri-subscriptions`, `amri-probe`, `amri-federation`, `amri-transport`, `amri-runtime`, `amri-secrets`, `amri-external-core`, `amri-node-config`, `amri-android-ffi` и связанные crates.
+- Windows app — eframe/egui; Android — нативный app с `VpnService`.
+- AMRI core выбирает маршрут; внешний VPN-core только исполняет решение.
+- UI не имеет права показывать реальную защиту до подтверждённых transport + packet forwarding + нужной leak protection.
+- Android остаётся control-only до production forwarding; default public route намеренно не устанавливается раньше времени.
 
 ## Реализованные этапы и причины решений
 
-### Multi-subscription, scoring и resilience
+### Multi-subscription, scoring, health и быстрый failover
 
 - Несколько подписок объединяются в единый пул с дедупликацией по fingerprint.
-- RouteScore учитывает latency, jitter, packet loss, DNS, TCP/TLS, throughput, историю успешности, стабильность и класс трафика.
-- Stable selector использует confidence + реальный hysteresis.
-- `RouteHealthTracker` реализует circuit breaker, cooldown и bounded backoff.
-- Hot pool ограничен небольшим набором сильных резервов; micro-race работает параллельно только по этому набору.
-- Незавершившийся probe не считается неисправным только потому, что закончился race budget.
+- RouteScore учитывает latency, jitter, packet loss, DNS, TCP/TLS, throughput, historical success, stability и traffic class.
+- Stable selector использует confidence + настоящий hysteresis.
+- `RouteHealthTracker` реализует circuit breaker, cooldown и bounded exponential backoff.
+- Failover использует небольшой quality-bounded hot pool и короткую параллельную micro-race вместо массовой гонки всех узлов.
+- Незавершившийся probe не считается failure только из-за короткого race deadline.
 
-**Почему:** массовая гонка всех узлов создаёт лишний трафик, батарейный расход и нестабильные переключения. Малый quality-bounded hot pool + hysteresis дают быстрый failover без постоянного «дёрганья» между почти равными маршрутами.
+**Почему:** массовые races расходуют трафик/батарею и провоцируют route flapping. Малый сильный hot pool + hysteresis дают быстрый failover с предсказуемой нагрузкой.
 
 ### Runtime orchestration
 
 - `amri-runtime` связывает probe/race → health → dynamic quarantine → hot pool → stable decision.
-- Runtime не владеет VPN credentials и не запускает процессы.
-- Application layer выполняет `TransportManager::connect/replace` только после решения AMRI.
+- Runtime не владеет credentials и process lifecycle.
+- Application layer выполняет `TransportManager::connect/replace` после решения runtime.
 
-**Почему:** scoring/learning должны оставаться независимыми от конкретного VPN-core и платформы.
+**Почему:** scoring/learning должны оставаться независимыми от VPN-core и ОС.
 
-### Transport lifecycle
+### Transport lifecycle и executed identity
 
-- `TransportManager` поддерживает несколько независимых route slots.
+- `TransportManager` поддерживает независимые route slots.
 - `replace` реализует make-before-break и rollback.
-- Transport session валидирует `route_id`, `adapter_id` и fingerprint фактически запущенного узла.
-- Mismatch executed node → fail-closed disconnect новой session.
+- Transport session валидирует `route_id`, `adapter_id` и credential-free fingerprint фактически запущенного node.
+- Mismatch executed node → новая session отключается fail-closed.
+- Route Proof принимает только transport-confirmed executed identity.
 
-**Почему:** быстрый failover не должен отключать старый маршрут до подтверждения нового и не должен позволять external-core незаметно выполнить другой node.
+**Почему:** старый рабочий маршрут нельзя рвать до готовности нового, а external core не должен незаметно выполнить другой node.
 
 ### External-core boundary
 
 - `amri-external-core` запускает supervised process на route slot.
-- Credential-bearing config формируется в zeroizing memory и передаётся через stdin.
-- Plaintext temp JSON и credentials в process args запрещены.
-- stdout/stderr core отключены на этой boundary.
-- Session становится `Connected` только после process + loopback inbound readiness.
-- Startup timeout/exit очищает новый process до handoff; исчезновение inbound даёт `Degraded`.
+- Credential-bearing config живёт в zeroizing memory и передаётся через stdin.
+- Plaintext temp config и credentials в process args запрещены.
+- External process становится transport-ready только после process + loopback inbound readiness.
+- Startup exit/timeout очищает новый process; исчезновение inbound даёт `Degraded`.
 
-**Почему:** «процесс запущен» не означает «transport готов». Loopback readiness — минимальный технический gate до настоящей проверки public tunnel.
+**Почему:** живой процесс ещё не доказывает готовность транспорта. Public tunnel подтверждается отдельным будущим gate.
 
 ### Node materialization
 
-- `ImportedNode(raw URI)` преобразуется в typed `ConnectRequest`.
+- `ImportedNode(raw URI)` fail-closed преобразуется в typed `ConnectRequest`.
 - Поддержаны VLESS, Trojan, Hysteria2 и основные SIP002 Shadowsocks формы.
-- Credential material переносится только в `TransportSecret`; обычный options map содержит только allowlisted non-secret параметры.
-- Неподдерживаемые WS/Reality/plugins/multi-secret варианты fail-closed вместо тихой потери параметров.
+- Credentials переносятся в `TransportSecret`; generic options содержат только allowlisted non-secret параметры.
+- Неподдерживаемые transports/security/plugins не теряются молча, а отклоняются.
+- TUIC/WireGuard/VMess и другие multi-secret схемы ждут typed credential model.
 
 ### Secret storage — Windows
 
 - `amri-secrets` задаёт `SecretStore` boundary.
 - Windows использует DPAPI ciphertext; logical keys SHA-256 хэшируются перед filename.
-- `SecretValue`/`TransportSecret` редактируют Debug и очищают контролируемые buffers при drop.
+- `SecretValue` и `TransportSecret` редактируют Debug и очищают контролируемые buffers при drop.
 
 ### Secret storage — Android
 
-- Добавлен `AndroidKeystoreSecretStore`.
-- AES-256 master key генерируется провайдером `AndroidKeyStore`.
-- Секреты шифруются AES-GCM; в private `SharedPreferences` записывается только versioned authenticated ciphertext envelope.
+- `AndroidKeystoreSecretStore` использует AES-256-GCM master key из `AndroidKeyStore`.
+- В private `SharedPreferences` хранится только versioned authenticated ciphertext envelope.
 - Logical secret key валидируется и SHA-256 хэшируется перед использованием как preference key.
-- Malformed/truncated/unknown-version envelope fail-closed.
+- Malformed/truncated/unknown envelope fail-closed.
 - Android ciphertext намеренно не совместим с Windows DPAPI.
 
-**Почему:** секреты должны быть привязаны к защищённому platform-native key store, а не храниться plaintext или переноситься между ОС в самодельном общем формате.
+**Почему:** platform-native keystore должен владеть persistence key; plaintext SharedPreferences, постоянный AES key в файле и общий самодельный Windows/Android формат отвергнуты.
 
-**Отвергнуто:** plaintext SharedPreferences, собственный постоянный AES key в файле приложения, повторное использование Windows DPAPI формата.
+**Проверка Keystore:** GitHub Actions `34926996900` и `34927162094` — Android unit tests + `assembleDebug`, Rust fmt/test/check успешно.
 
-**Проверка:** GitHub Actions run `34926996900` и финальный run `34927162094` — Android unit tests + `assembleDebug` успешно; Rust `fmt/test/check` успешно.
+### Android Rust FFI — narrow secret bridge
 
-### First production-core renderer
+- Добавлен `amri-android-ffi` (`cdylib` + `rlib`) на `jni 0.22.4`.
+- Первый JNI capability намеренно узкий: Rust может только инициализировать/проверить exact logical slot `route-proof:key` через уже существующий `AndroidKeystoreSecretStore`.
+- Весь credential store не перечисляется и не сериализуется через JNI.
+- Missing Route Proof key создаётся как 32 bytes через OS CSPRNG и синхронно сохраняется Keystore adapter.
+- Existing key обязан быть ровно 32 bytes; неправильная длина fail-closed и не перезаписывается.
+- Route Proof key не возвращается Kotlin/UI как результат; наружу идёт только status.
+- Временные Java `byte[]` для JNI handoff зануляются после успешного чтения/записи.
+- Kotlin `AmriNativeBridge` загружает `libamri_android_ffi.so` лениво: отсутствие `.so` не ломает запуск текущего APK, native-only операция явно сообщает unavailable runtime.
+- JVM tests проверяют fail-closed status decoding; Rust tests проверяют create/reuse/wrong-length/empty cases.
 
-Текущий sing-box renderer умеет VLESS, Trojan, Shadowsocks и Hysteria2 с single-secret моделью.
+**Почему:** JNI — чувствительная boundary. Exact-operation/exact-slot API уменьшает поверхность ошибок и утечки, оставляет platform persistence в Android Keystore и не даёт UI универсальный доступ к credential store.
 
-TUIC/WireGuard/VMess и другие сложные credential/transport схемы пока не проталкиваются через generic options. Для них нужна typed multi-secret model.
+**Отвергнуто:** generic JNI `getAllSecrets/importStore`, возврат installation key в Kotlin/UI, автоматический вызов bridge до реальной упаковки `.so`.
 
-**Важно:** sing-box binary не бандлится. Техническая integration boundary отделена от license/distribution review.
+**Проверка:** GitHub Actions run `34931739598` — Android tests + `assembleDebug` успешно; Rust `fmt`, `cargo test --workspace` и `cargo check --workspace` успешно после rustfmt-only исправления.
+
+**Важно:** ABI `.so` ещё не собирается и не пакуется в APK. FFI API проверен host-компиляцией/tests, но production Android native runtime ещё не активирован.
 
 ### Route Proof / Shadow Race
 
-- Shadow Race оценивает уже завершённый параллельный burst без искусственного countdown.
+- Shadow Race оценивает завершённый параллельный burst без искусственного countdown.
 - Переключение требует quorum/confidence, а не одиночного score spike.
 - Route Proof создаёт pseudonymous HMAC-linked evidence.
-- Installation key генерируется OS CSPRNG и хранится через `SecretStore`.
-- SQLite хранит authenticated proof receipts per destination; история проверяется перед restore.
+- Installation key генерируется OS CSPRNG и хранится через platform SecretStore.
+- SQLite хранит authenticated receipts per pseudonymous destination token; история проверяется перед restore.
 - Proof формируется только после transport-confirmed executed transition.
 
-**Почему:** AMRI должна уметь объяснить и проверить своё решение локально, не записывая browsing history или raw destination.
+**Почему:** решение должно быть локально проверяемым и объяснимым без записи raw destination/browsing history.
 
-### Localization / clients
+### Windows transport bootstrap
 
-- Общий UI локализован на 9 языков; Android поддерживает RTL.
-- Windows UI импортирует VLESS/Trojan/Shadowsocks/Hysteria2 URI и выполняет async connect/disconnect через готовую external-core boundary.
+- Windows UI импортирует VLESS/Trojan/Shadowsocks/Hysteria2 URI и выполняет real async connect/disconnect через external-core boundary.
+- sing-box задаётся путём/через PATH; credential config идёт через stdin boundary.
 - UI получает readiness-confirmed session и credential-free fingerprint.
-- Android `VpnService` пока control-only и намеренно не ставит default public route до рабочего forwarding.
+- Защищённое состояние остаётся выключенным до system packet forwarding, DNS protection и public-tunnel gate.
+
+### Localization / UI
+
+- Общий интерфейс локализован на 9 языков; Android поддерживает RTL.
+- Параллельный UI-чат активно подключает canonical `assets/brand` к Windows/Android и wiring кнопок.
+- Эти изменения считаются независимым параллельным workstream; core-ветки обязаны сравнивать свежий `main` перед merge и не откатывать визуал.
 
 ### Mobile acceleration architecture
 
-Добавлен `docs/MOBILE_ACCELERATION.md`.
-
-Реалистичная цель — не «усилить радиосигнал программой», а улучшать effective throughput/latency/stability за счёт:
+`docs/MOBILE_ACCELERATION.md` фиксирует реалистичную цель: улучшать effective throughput/latency/stability, а не обещать программное усиление радиосигнала.
 
 - mobile-aware route quality;
-- fast make-before-break handover;
+- make-before-break handover;
 - adaptive tunnel MTU;
-- выбора транспорта по реальным loss/jitter measurements;
+- выбор транспорта по loss/jitter;
 - warm Wi-Fi/cellular failover;
-- будущего optional AMRI Bond режима через cooperating relay.
+- будущий optional AMRI Bond через cooperating relay.
 
-Для настоящего сложения пропускной способности Wi-Fi + LTE/5G нужен multipath/bonding слой и сервер/relay, который умеет собирать потоки обратно. Обычная QUIC connection migration улучшает continuity, но сама по себе не складывает bandwidth двух сетей.
+Настоящее сложение bandwidth Wi-Fi + LTE/5G требует multipath/bonding и cooperating endpoint/relay. QUIC migration сама по себе bandwidth не складывает.
 
-**Отвергнуто:** HTTPS/TLS interception ради «сжатия», скрытое включение cellular при Wi-Fi-only ожидании пользователя, постоянное дублирование bulk traffic.
-
-Bonding/packet duplication должны быть opt-in, metered-data aware и battery aware.
+**Отвергнуто:** TLS interception ради «сжатия», скрытое включение тарифицируемого cellular, постоянная bulk duplication.
 
 ### Mobile path policy + adaptive MTU core
 
-- В `amri-core::mobile` добавлен privacy-safe `MobileNetworkSnapshot`: только тип доступа, validated/metered/roaming, Data Saver/Battery Saver и оценочная пропускная способность; SSID, cell ID, operator identity и device identifiers отсутствуют.
-- `MobileAccelerationMode` разделяет Off / Balanced / Speed.
-- Metered secondary path не разрешается автоматически: для Speed требуется отдельный `allow_metered_secondary`.
-- Latency duplication также требует отдельного явного разрешения и никогда не авторизует bulk duplication.
-- Unvalidated network fail-closed переводится в минимальную probe activity без secondary path.
-- Data Saver/Battery Saver запрещают aggressive probes, background warmup и secondary-path behavior.
-- Metered/roaming снижают parallel probe budget; unmetered validated path может использовать normal hot-pool parallelism.
-- Добавлен `AdaptiveMtuController`: MTU уменьшается только по событию, которое forwarding layer классифицировал как вероятную PMTU/fragmentation проблему; обычный packet loss сам по себе не является причиной уменьшения MTU.
-- После устойчивых успехов MTU повышается медленно; при смене path предыдущий success streak сбрасывается.
-- Generic controller имеет IPv6-safe floor 1280, но concrete transport/platform обязан передать собственный tunnel-safe initial MTU/ceiling с учётом encapsulation overhead.
+- `amri-core::mobile` содержит privacy-safe `MobileNetworkSnapshot`: access kind, validated/metered/roaming, Data Saver/Battery Saver, estimated bandwidth; без SSID/cell ID/operator/device identity.
+- `MobileAccelerationMode`: Off / Balanced / Speed.
+- Metered secondary path требует отдельного `allow_metered_secondary`.
+- Latency duplication требует отдельного explicit opt-in и не разрешает bulk duplication.
+- Unvalidated network fail-closed → minimal probes, без secondary path.
+- Data/Battery Saver запрещают aggressive probes/warmup/multipath behavior.
+- Metered/roaming уменьшают parallel probe budget.
+- `AdaptiveMtuController` снижает MTU только по сигналу, классифицированному forwarding layer как suspected PMTU/fragmentation; generic packet loss не является таким сигналом.
+- MTU восстанавливается медленно; при смене path evidence сбрасывается.
+- Generic floor = 1280; concrete transport/platform задаёт tunnel-safe initial MTU/ceiling.
 
-**Почему:** мобильная сеть быстро меняется, но агрессивная реакция на любой loss ухудшила бы throughput и могла бы незаметно расходовать тарифицируемый cellular traffic. Поэтому cost/power policy отделена от route scoring, а PMTU adaptation принимает только классифицированные сигналы от будущего forwarding layer.
+**Почему:** агрессивная реакция на обычный loss ухудшает throughput и может незаметно расходовать cellular traffic. Cost/power policy отделена от scoring.
 
-**Отвергнуто:** автоматическое включение cellular в Speed без отдельного opt-in; снижение MTU по любому packet loss; жёсткий transport-specific MTU внутри общего core; хранение SSID/cell identity в network snapshot.
-
-**Проверка:** GitHub Actions run `34927570349` — после точного rustfmt fix Rust `fmt/test/check` успешно; Android tests + `assembleDebug` успешно. Unit-тесты покрывают metered opt-in, Data/Battery Saver, unvalidated fail-closed, MTU floor, slow recovery, path reset и invalid policy.
+**Проверка:** GitHub Actions `34927570349` и финальный `34927732769` — Rust fmt/test/check + Android tests/assemble успешно.
 
 ## Постоянный протокол разработки
 
-- Корневой `AGENTS.md` обязует все следующие чаты/аккаунты сначала читать этот журнал и проверять последние commits/PR/branches.
-- После каждого крупного этапа журнал обновляется: WHAT / WHY / alternatives / verification / current state / next / known issues / architecture decisions.
-- Устаревшие priorities конденсируются, чтобы не тратить контекст на уже выполненные задачи.
-- Это правило пользователь просит применять и в других его программных проектах: в каждом репозитории должен быть аналогичный persistent handoff journal.
+- `AGENTS.md` + этот журнал — canonical cross-chat/cross-account handoff mechanism.
+- Перед работой: читать журнал, проверять fresh main/PR/branches, не повторять полный аудит без причины.
+- После существенного этапа: WHAT / WHY / alternatives / verification / current state / next / known issues / architecture decisions.
+- Устаревшие планы конденсируются.
+- По просьбе владельца аналогичный журнал должен вестись во всех его программных проектах.
 
 # CURRENT STATE
 
 - Rust workspace компилируется и проходит unit-тесты.
-- Android app компилируется, unit-тесты проходят, debug APK собирается.
-- Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool, micro-race и Shadow Race реализованы.
-- Probe/race реально влияют на dynamic quarantine и stable route decision.
-- Route Proof persistent, authenticated и привязан к transport-confirmed executed node.
-- `TransportManager` имеет multi-session lifecycle, make-before-break и fail-closed identity validation.
-- Windows UI подключён к реальной external-core transport boundary для VLESS/Trojan/Shadowsocks/Hysteria2.
-- Windows secret persistence защищена DPAPI.
-- Android имеет готовый native Android Keystore persistence adapter, но Rust FFI secret bridge ещё не подключён.
-- Mobile acceleration имеет общий policy/MTU core; Android `NetworkCapabilities`/socket binding ещё не подключены к нему.
-- Public traffic через полноценный AMRI tunnel на Windows/Android пока не подтверждён end-to-end.
-- Android остаётся control-only до production forwarding.
+- Android JVM app компилируется, unit-тесты проходят, debug APK собирается.
+- Multi-subscription, scoring, confidence, hysteresis, circuit breaker, hot pool, micro-race и Shadow Race реализованы.
+- Probe/race реально влияют на quarantine и stable route decision.
+- Route Proof persistent/authenticated и привязан к transport-confirmed executed node.
+- Windows UI подключён к real external-core transport bootstrap для VLESS/Trojan/Shadowsocks/Hysteria2.
+- Windows secrets защищены DPAPI; Android persistence защищён Keystore.
+- Android Rust/JNI exact-slot secret bridge реализован и host-compile/unit-tested, но native `.so` ещё не упакован в APK.
+- Mobile acceleration имеет общий policy/MTU core; live Android `NetworkCapabilities`/socket binding ещё не подключены.
+- Полноценный public packet forwarding end-to-end на Windows/Android ещё не подтверждён.
+- Android `VpnService` остаётся control-only до production forwarding.
 
 # NEXT PRIORITIES
 
-1. Реализовать Android Rust FFI boundary и узкий secret bridge к `AndroidKeystoreSecretStore` без сериализации всего credential store через JNI.
-2. Реализовать public packet forwarding: Windows system forwarding/TUN-WFP + DNS protection и Android production forwarding.
-3. Добавить public-tunnel confirmation gate; только после него UI может показывать реальную защиту.
-4. Подключить Android network observation (`NetworkCapabilities`/callbacks) к `MobileNetworkSnapshot`, затем per-socket network binding и применение `AdaptiveMtuController` в production forwarding.
-5. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
-6. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover, затем отдельно спроектировать AMRI Bond relay.
-7. Добавить end-to-end integration tests, kill-switch, затем per-domain/per-process routing.
+1. Собрать и упаковать `libamri_android_ffi.so` для Android ABI: arm64-v8a как основной target, x86_64 для debug/emulator; добавить CI, который реально cross-compiles native crate и проверяет наличие `.so` в APK.
+2. После упаковки инициализировать Android Route Proof/runtime owner через `AmriNativeBridge`, не расширяя JNI до generic credential-store API.
+3. Подключить Android `NetworkCapabilities`/callbacks к `MobileNetworkSnapshot`, затем per-socket network binding и применение `AdaptiveMtuController` в production forwarding.
+4. Реализовать public packet forwarding: Android production TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
+5. Добавить public-tunnel confirmation gate; только после него UI показывает реальную защиту.
+6. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
+7. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover; AMRI Bond relay проектировать отдельным opt-in этапом.
+8. Добавить end-to-end failover/leak tests, kill-switch, затем per-domain/per-process routing.
 
-# KNOWN ISSUES
+# KNOWN ISSUES / RISKS
 
 - Нет полноценного подтверждённого public packet forwarding end-to-end.
-- Loopback readiness подтверждает local inbound, но не доказывает прохождение Internet traffic через tunnel.
-- Android Keystore adapter пока не связан с Rust `SecretStore`/Route Proof installation key через FFI.
-- Android mobile snapshot пока не получает live `NetworkCapabilities`; новый core policy ещё не управляет реальными sockets/TUN MTU.
-- `ImportedNode.raw_uri` всё ещё живёт как обычный `String` внутри импортированного пула; нужна encrypted persistence и дальнейшее сокращение plaintext lifetime.
-- TUIC/WireGuard/VMess ещё не production-rendered из-за более сложной credential-модели.
+- Loopback readiness подтверждает local inbound, но не Internet traffic через tunnel.
+- `amri-android-ffi` пока не cross-compiled/packaged для Android ABI; Kotlin bridge поэтому не должен считаться production-active.
+- Android mobile snapshot пока не получает live `NetworkCapabilities`; core policy ещё не управляет реальными sockets/TUN MTU.
+- `ImportedNode.raw_uri` всё ещё существует как обычный `String` в импортированном пуле; нужна encrypted persistence и сокращение plaintext lifetime.
+- TUIC/WireGuard/VMess ещё не production-rendered.
 - Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
-- Mobile bonding требует отдельного cooperating relay/backend и может расходовать дополнительный мобильный трафик/батарею.
+- Mobile bonding требует cooperating relay/backend и может расходовать дополнительный cellular traffic/батарею.
+- JNI operations должны оставаться узкими; generic secret APIs запрещены архитектурным решением.
 
 # IMPORTANT ARCHITECTURE DECISIONS
 
-- AMRI core выбирает маршрут; transport core только исполняет его.
+- AMRI core выбирает маршрут; transport core исполняет.
 - Hysteresis удерживает рабочий route, но не мешает аварийному failover.
-- Failover использует малый quality-bounded hot pool, а не массовую гонку всех узлов.
-- Make-before-break обязателен для замены активного route slot.
+- Failover использует малый quality-bounded hot pool.
+- Make-before-break обязателен.
 - Credentials запрещены в process args, Debug, telemetry и plaintext temp files.
 - Multi-secret credentials не помещаются в generic options map.
-- OS-backed secret storage платформенный: DPAPI на Windows, Android Keystore на Android.
+- OS-backed storage платформенный: DPAPI Windows, Android Keystore Android.
+- Android JNI secret boundary — exact operation/exact slot; whole-store serialization запрещена.
 - Third-party core distribution требует отдельного license review.
-- External core считается transport-ready только после process + loopback readiness.
-- Transport-confirmed node fingerprint — единственный допустимый node id для executed Route Proof.
-- UI не показывает protected state до подтверждённых transport + packet forwarding + leak-protection gates.
-- QUIC migration не считать bandwidth bonding; настоящее сложение Wi-Fi + cellular требует multipath/relay дизайна.
-- Mobile acceleration, использующая дополнительную cellular data, должна быть явной пользовательской опцией.
-- MTU adaptation не реагирует на generic loss; только forwarding layer может сообщить suspected PMTU/fragmentation evidence.
-- Mobile network snapshots не должны содержать SSID, cell ID или устойчивый network identity.
-- `AGENTS.md` + этот журнал являются canonical cross-chat/cross-account handoff mechanism проекта.
+- External core transport-ready только после process + loopback readiness.
+- Transport-confirmed node fingerprint — единственный допустимый executed Route Proof node id.
+- UI не показывает protected state до transport + packet forwarding + leak-protection/public-tunnel gates.
+- QUIC migration не считать bandwidth bonding.
+- Дополнительный cellular usage — только explicit opt-in.
+- MTU adaptation не реагирует на generic loss.
+- Mobile snapshots не содержат SSID/cell ID/устойчивый network identity.
+- Параллельные brand/UI изменения из `main` не откатывать core-ветками.
