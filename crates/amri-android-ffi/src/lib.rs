@@ -1,3 +1,5 @@
+mod forwarder;
+
 use amri_core::mobile::{
     AccessNetworkKind, MobileAccelerationMode, MobileAccelerationPreferences,
     MobileNetworkSnapshot, MobilePathPolicy, ProbeIntensity,
@@ -92,8 +94,6 @@ impl SecretSlotBackend for JniSecretSlot<'_, '_> {
         let array = self.env.cast_local::<JByteArray>(value)?;
         let bytes = self.env.convert_byte_array(&array)?;
 
-        // AndroidKeystoreSecretStore#get returns a fresh plaintext ByteArray. Clear that Java-side
-        // copy as soon as Rust has moved the bytes into SecretValue's zeroizing allocation.
         let zeros = vec![0_i8; bytes.len()];
         array.set_region(self.env, 0, &zeros)?;
 
@@ -120,18 +120,12 @@ impl SecretSlotBackend for JniSecretSlot<'_, '_> {
             )?
             .into_void()?;
 
-        // Kotlin encrypts synchronously inside put(); wipe the temporary JNI byte[] afterwards.
         let zeros = vec![0_i8; value.expose_secret().len()];
         bytes.set_region(self.env, 0, &zeros)?;
         Ok(())
     }
 }
 
-/// Initializes the installation-local Route Proof key through the Android Keystore adapter.
-///
-/// This JNI boundary deliberately accepts only the already-constructed
-/// `AndroidKeystoreSecretStore`. It neither enumerates nor serializes the credential store and it
-/// never returns the Route Proof key to Kotlin.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEnsureRouteProofKey<
     'caller,
@@ -215,10 +209,6 @@ fn evaluate_mobile_policy(
         | ((policy.allow_latency_duplication as jint) << 4)
 }
 
-/// Evaluates privacy-safe Android network state with the shared Rust mobile policy.
-///
-/// No Network handle, SSID, cell/operator identifier or stable device/network identifier crosses
-/// this boundary. The return value is a small bit field containing only runtime policy decisions.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEvaluateMobilePolicy<
     'caller,
@@ -250,6 +240,42 @@ pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEval
         allow_metered_secondary,
         allow_latency_duplication,
     )
+}
+
+/// Starts the Android TUN -> local SOCKS packet bridge. The fd is a duplicate owned by the native
+/// forwarder on successful start. The local transport must already be ready and its real network
+/// sockets must be protected from VpnService recursion before this operation is called.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeStartPacketForwarder<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    tun_fd: jint,
+    local_socks_port: jint,
+    mtu: jint,
+) -> jint {
+    forwarder::start(tun_fd, local_socks_port, mtu)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeStopPacketForwarder<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+) {
+    forwarder::stop();
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativePacketForwarderState<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+) -> jint {
+    forwarder::status()
 }
 
 #[cfg(test)]
@@ -337,9 +363,9 @@ mod tests {
             1, true, true, false, false, false, 80_000, 20_000, 1, false, false,
         );
 
-        assert_eq!(packed & 0b11, 1); // conservative probes on metered cellular
-        assert_ne!(packed & (1 << 2), 0); // background warmup
-        assert_eq!(packed & (1 << 3), 0); // no unapproved secondary path
+        assert_eq!(packed & 0b11, 1);
+        assert_ne!(packed & (1 << 2), 0);
+        assert_eq!(packed & (1 << 3), 0);
     }
 
     #[test]
