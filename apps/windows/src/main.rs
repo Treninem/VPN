@@ -92,6 +92,7 @@ struct AmriApp {
     selected_node: usize,
     editing_node: Option<usize>,
     delete_confirmation: Option<usize>,
+    info_node: Option<usize>,
     core_path: String,
     local_port: String,
     smart_routing: bool,
@@ -137,6 +138,7 @@ impl AmriApp {
             selected_node: 0,
             editing_node: None,
             delete_confirmation: None,
+            info_node: None,
             core_path: std::env::var("AMRI_SING_BOX_PATH")
                 .unwrap_or_else(|_| "sing-box.exe".into()),
             local_port: "20800".into(),
@@ -185,6 +187,7 @@ impl AmriApp {
         }
 
         self.delete_confirmation = None;
+        self.info_node = None;
         self.subscription_input.clear();
         if matches!(&self.transport_state, TransportUiState::Failed(_)) {
             self.transport_state = TransportUiState::Idle;
@@ -198,6 +201,7 @@ impl AmriApp {
         self.subscription_input = node.raw_uri.clone();
         self.editing_node = Some(self.selected_node);
         self.delete_confirmation = None;
+        self.info_node = None;
     }
 
     fn delete_confirmed_node(&mut self) {
@@ -209,6 +213,7 @@ impl AmriApp {
         }
 
         self.imported_nodes.remove(index);
+        self.info_node = None;
         match self.editing_node {
             Some(editing) if editing == index => {
                 self.editing_node = None;
@@ -645,9 +650,10 @@ impl AmriApp {
                 });
             if self.selected_node != previous_selected {
                 self.delete_confirmation = None;
+                self.info_node = None;
             }
 
-            let (edit_clicked, delete_clicked, copy_clicked) = ui
+            let (edit_clicked, delete_clicked, copy_clicked, info_clicked) = ui
                 .horizontal(|ui| {
                     let edit = brand_button(
                         ui,
@@ -670,7 +676,14 @@ impl AmriApp {
                         "Copy node fingerprint",
                     )
                     .clicked();
-                    (edit, delete, copy)
+                    let info = brand_button(
+                        ui,
+                        egui::include_image!("../../../assets/brand/info-button.svg"),
+                        42.0,
+                        "Show safe node information",
+                    )
+                    .clicked();
+                    (edit, delete, copy, info)
                 })
                 .inner;
 
@@ -679,10 +692,52 @@ impl AmriApp {
             }
             if delete_clicked {
                 self.delete_confirmation = Some(self.selected_node);
+                self.info_node = None;
             }
             if copy_clicked {
                 if let Some(node) = self.imported_nodes.get(self.selected_node) {
                     ui.ctx().copy_text(node.fingerprint.clone());
+                }
+            }
+            if info_clicked {
+                self.delete_confirmation = None;
+                self.info_node = if self.info_node == Some(self.selected_node) {
+                    None
+                } else {
+                    Some(self.selected_node)
+                };
+            }
+
+            if self.info_node == Some(self.selected_node) {
+                if let Some(node) = self.imported_nodes.get(self.selected_node) {
+                    let host = node.host.as_deref().unwrap_or("—");
+                    let port = node
+                        .port
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "—".into());
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(18, 35, 51))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(46, 132, 177)))
+                        .corner_radius(14)
+                        .inner_margin(14)
+                        .show(ui, |ui| {
+                            ui.label(RichText::new(&node.display_name).size(15.0).strong());
+                            ui.label(format!("Protocol: {:?}", node.protocol));
+                            ui.label(format!("Host: {host}"));
+                            ui.label(format!("Port: {port}"));
+                            ui.label(
+                                RichText::new(format!("Fingerprint: {}", node.fingerprint))
+                                    .monospace()
+                                    .size(10.0)
+                                    .color(Color32::from_rgb(145, 218, 240)),
+                            );
+                            ui.add_space(4.0);
+                            ui.label(
+                                RichText::new("Secret URI and credentials are intentionally hidden.")
+                                    .size(11.0)
+                                    .color(Color32::from_gray(155)),
+                            );
+                        });
                 }
             }
 
