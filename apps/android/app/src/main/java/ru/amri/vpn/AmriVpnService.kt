@@ -126,8 +126,7 @@ class AmriVpnService : VpnService() {
         return true
     }
 
-    internal fun isPublicForwardingActive(): Boolean =
-        publicTunnelOwner.isRunning()
+    internal fun isPublicForwardingActive(): Boolean = publicTunnelOwner.isRunning()
 
     private fun establishControlInterface(): ParcelFileDescriptor? =
         try {
@@ -145,12 +144,8 @@ class AmriVpnService : VpnService() {
         }
 
     private fun stopPublicForwarding() {
-        if (publicTunnelOwner.isRunning()) {
-            publicTunnelOwner.stop()
-        } else {
-            // stop() is idempotent and also closes a TUN left behind by a failed native worker.
-            publicTunnelOwner.stop()
-        }
+        // Idempotent: also closes a TUN left behind by a failed native worker.
+        publicTunnelOwner.stop()
     }
 
     private fun closeInterface() {
