@@ -647,7 +647,7 @@ impl AmriApp {
                 self.delete_confirmation = None;
             }
 
-            let (edit_clicked, delete_clicked) = ui
+            let (edit_clicked, delete_clicked, copy_clicked) = ui
                 .horizontal(|ui| {
                     let edit = brand_button(
                         ui,
@@ -663,7 +663,14 @@ impl AmriApp {
                         "Delete selected node",
                     )
                     .clicked();
-                    (edit, delete)
+                    let copy = brand_button(
+                        ui,
+                        egui::include_image!("../../../assets/brand/copy-button.svg"),
+                        42.0,
+                        "Copy node fingerprint",
+                    )
+                    .clicked();
+                    (edit, delete, copy)
                 })
                 .inner;
 
@@ -672,6 +679,11 @@ impl AmriApp {
             }
             if delete_clicked {
                 self.delete_confirmation = Some(self.selected_node);
+            }
+            if copy_clicked {
+                if let Some(node) = self.imported_nodes.get(self.selected_node) {
+                    ui.ctx().copy_text(node.fingerprint.clone());
+                }
             }
 
             if self.delete_confirmation == Some(self.selected_node) {
