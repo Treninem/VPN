@@ -1,3 +1,6 @@
+#[path = "system_forwarding.rs"]
+mod system_forwarding;
+
 use amri_external_core::{sing_box_process_spec, SingBoxRenderer, SupervisedProcessAdapter};
 use amri_node_config::{materialize_connect_request, MaterializeOptions};
 use amri_subscriptions::ImportedNode;

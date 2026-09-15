@@ -13,3 +13,8 @@ amri-subscriptions = { path = "../../crates/amri-subscriptions" }
 amri-node-config = { path = "../../crates/amri-node-config" }
 amri-transport = { path = "../../crates/amri-transport" }
 amri-external-core = { path = "../../crates/amri-external-core" }
+tun2proxy = { version = "=0.8.3", default-features = false }
+tun = { version = "=0.8.14", features = ["async"] }
+tproxy-config = { version = "=7.0.7", default-features = false }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "net", "time", "sync"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
