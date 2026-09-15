@@ -2,11 +2,11 @@
 
 AMRI VPN is proprietary software. The components listed below remain subject to their own licenses.
 
-## sing-box 1.14.1
+## sing-box 1.14.0
 
 Project: `sing-box`
 
-Source: https://github.com/SagerNet/sing-box/tree/v1.14.1
+Source: https://github.com/SagerNet/sing-box/tree/v1.14.0
 
 Use in AMRI: separately executed Windows transport component. AMRI sends a runtime configuration
 through stdin; sing-box does not own AMRI route selection, learning or UI.
