@@ -343,19 +343,14 @@ impl TransportAdapter for SupervisedProcessAdapter {
 
 /// Renderer for the first production core candidate: sing-box.
 ///
-/// This milestone supports protocols that need a single credential in `TransportSecret`:
-/// VLESS (UUID), Trojan (password), Shadowsocks (password), and Hysteria2 (password). Multi-secret
-/// protocols such as TUIC and WireGuard remain disabled until a typed credential model is added.
+/// Credentials are protocol-shaped and never copied into generic options. Single-secret protocols
+/// and TUIC's username/password pair are supported; WireGuard rendering remains fail-closed until
+/// its complete address/peer model is materialized.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SingBoxRenderer;
 
 impl CoreConfigRenderer for SingBoxRenderer {
     fn render(&self, request: &ConnectRequest) -> Result<RenderedConfig, AdapterError> {
-        let secret = request.secret.expose_secret();
-        if secret.is_empty() {
-            return Err(AdapterError::new("VPN credential is empty"));
-        }
-
         let mut outbound = Map::new();
         outbound.insert("tag".into(), json!("proxy"));
         outbound.insert("server".into(), json!(request.endpoint.host));
@@ -363,6 +358,7 @@ impl CoreConfigRenderer for SingBoxRenderer {
 
         match request.protocol {
             NodeProtocol::Vless => {
+                let secret = single_secret(request)?;
                 outbound.insert("type".into(), json!("vless"));
                 outbound.insert("uuid".into(), json!(secret));
                 if let Some(flow) = request
@@ -377,6 +373,7 @@ impl CoreConfigRenderer for SingBoxRenderer {
                 }
             }
             NodeProtocol::Trojan => {
+                let secret = single_secret(request)?;
                 outbound.insert("type".into(), json!("trojan"));
                 outbound.insert("password".into(), json!(secret));
                 if option_bool(request, "tls", true)? {
@@ -384,6 +381,7 @@ impl CoreConfigRenderer for SingBoxRenderer {
                 }
             }
             NodeProtocol::Shadowsocks => {
+                let secret = single_secret(request)?;
                 let method = request
                     .options
                     .get("method")
@@ -394,6 +392,7 @@ impl CoreConfigRenderer for SingBoxRenderer {
                 outbound.insert("password".into(), json!(secret));
             }
             NodeProtocol::Hysteria2 => {
+                let secret = single_secret(request)?;
                 outbound.insert("type".into(), json!("hysteria2"));
                 outbound.insert("password".into(), json!(secret));
                 outbound.insert("tls".into(), tls_config(request)?);
@@ -402,6 +401,22 @@ impl CoreConfigRenderer for SingBoxRenderer {
                 }
                 if let Some(down_mbps) = option_u64(request, "down_mbps")? {
                     outbound.insert("down_mbps".into(), json!(down_mbps));
+                }
+            }
+            NodeProtocol::Tuic => {
+                let (uuid, password) =
+                    request.credentials.as_username_password().ok_or_else(|| {
+                        AdapterError::new("TUIC requires username/password credentials")
+                    })?;
+                if uuid.is_empty() || password.is_empty() {
+                    return Err(AdapterError::new("TUIC credentials are empty"));
+                }
+                outbound.insert("type".into(), json!("tuic"));
+                outbound.insert("uuid".into(), json!(uuid));
+                outbound.insert("password".into(), json!(password));
+                outbound.insert("tls".into(), tls_config(request)?);
+                if let Some(congestion) = request.options.get("congestion_control") {
+                    outbound.insert("congestion_control".into(), json!(congestion));
                 }
             }
             protocol => {
@@ -442,7 +457,20 @@ pub fn sing_box_process_spec(executable: impl Into<PathBuf>) -> ExternalCoreSpec
             NodeProtocol::Trojan,
             NodeProtocol::Shadowsocks,
             NodeProtocol::Hysteria2,
+            NodeProtocol::Tuic,
         ],
+    }
+}
+
+fn single_secret(request: &ConnectRequest) -> Result<&str, AdapterError> {
+    let secret = request
+        .credentials
+        .as_single()
+        .ok_or_else(|| AdapterError::new("protocol requires a single credential"))?;
+    if secret.is_empty() {
+        Err(AdapterError::new("VPN credential is empty"))
+    } else {
+        Ok(secret)
     }
 }
 
@@ -498,7 +526,7 @@ fn option_u64(request: &ConnectRequest, key: &str) -> Result<Option<u64>, Adapte
 #[cfg(test)]
 mod tests {
     use super::*;
-    use amri_transport::{TransportEndpoint, TransportSecret};
+    use amri_transport::{TransportCredentials, TransportEndpoint};
     use std::collections::BTreeMap;
     use std::net::TcpListener;
     use std::sync::{
@@ -515,7 +543,7 @@ mod tests {
                 host: "vpn.example".into(),
                 port: 443,
             },
-            secret: TransportSecret::new("secret-value"),
+            credentials: TransportCredentials::single("secret-value"),
             options: BTreeMap::new(),
         }
     }
@@ -571,6 +599,28 @@ mod tests {
         let value: Value = serde_json::from_str(config.expose_secret()).unwrap();
         assert_eq!(value["outbounds"][0]["method"], "aes-256-gcm");
         assert_eq!(value["outbounds"][0]["password"], "secret-value");
+    }
+
+    #[test]
+    fn renders_tuic_only_from_typed_username_password_credentials() {
+        let mut request = request(NodeProtocol::Tuic);
+        request.credentials = TransportCredentials::UsernamePassword {
+            username: amri_transport::TransportSecret::new("client-uuid"),
+            password: amri_transport::TransportSecret::new("tuic-password"),
+        };
+        request
+            .options
+            .insert("congestion_control".into(), "bbr".into());
+
+        let config = SingBoxRenderer.render(&request).unwrap();
+        let value: Value = serde_json::from_str(config.expose_secret()).unwrap();
+        assert_eq!(value["outbounds"][0]["type"], "tuic");
+        assert_eq!(value["outbounds"][0]["uuid"], "client-uuid");
+        assert_eq!(value["outbounds"][0]["password"], "tuic-password");
+        assert_eq!(value["outbounds"][0]["congestion_control"], "bbr");
+
+        request.credentials = TransportCredentials::single("wrong-shape");
+        assert!(SingBoxRenderer.render(&request).is_err());
     }
 
     struct FakeProcess {

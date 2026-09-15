@@ -59,7 +59,7 @@
 - Поддержаны VLESS, Trojan, Hysteria2 и основные SIP002 Shadowsocks формы.
 - Credentials переносятся в `TransportSecret`; generic options содержат только allowlisted non-secret параметры.
 - Неподдерживаемые transports/security/plugins не теряются молча, а отклоняются.
-- TUIC/WireGuard/VMess и другие multi-secret схемы ждут typed credential model.
+- TUIC использует typed username/password credentials; WireGuard/VMess ждут полный typed descriptor.
 
 ### Secret storage — Windows
 
@@ -216,6 +216,17 @@
 
 **Проверка:** unit-тесты покрывают bounded budgets, отсутствие добавочной задержки, disabled warmup, stale/missing socket lease и все обязательные protection signals; окончательная проверка выполняется CI.
 
+### Typed credentials и первый multi-secret transport
+
+- `ConnectRequest` больше не имеет универсального `secret`: `TransportCredentials` различает single secret, username/password и WireGuard key set; весь Debug redacted, secret buffers zeroize-on-drop.
+- TUIC URI материализуется в отдельную username/password пару, поддерживает строгий allowlist TLS/SNI/insecure/congestion options и рендерится в sing-box JSON через stdin.
+- Неверная форма credentials отклоняется renderer fail-closed. Ни username/UUID, ни password не попадают в `options` или diagnostics.
+- Sing-box adapter объявляет TUIC только после появления полноценной materialization + renderer path.
+
+**Почему:** generic map или одна строка не могут безопасно представить multi-secret protocols и легко приводят к утечкам/перепутанным полям.
+
+**Проверка:** materializer/renderer/Debug tests покрывают TUIC и credential-shape mismatch; полный CI обязателен перед merge.
+
 ## Постоянный протокол разработки
 
 - `AGENTS.md` + этот журнал — canonical cross-chat/cross-account handoff mechanism.
@@ -234,7 +245,7 @@
 - Multi-subscription, scoring, confidence, hysteresis, circuit breaker, hot pool, micro-race и Shadow Race реализованы.
 - Probe/race реально влияют на quarantine и stable route decision.
 - Route Proof persistent/authenticated и привязан к transport-confirmed executed node.
-- Windows UI подключён к real external-core transport bootstrap для VLESS/Trojan/Shadowsocks/Hysteria2.
+- Windows UI подключён к real external-core transport bootstrap для VLESS/Trojan/Shadowsocks/Hysteria2/TUIC.
 - Windows secrets защищены DPAPI; Android persistence защищён Keystore.
 - Live Android `NetworkCapabilities` проходят privacy-safe JNI boundary; общий policy реально ограничивает probe/hot-pool budgets.
 - Android TCP/UDP socket protection + ephemeral underlying-network binding boundary готов для transport adapters.
@@ -247,7 +258,7 @@
 1. Реализовать public packet forwarding: Android TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
 2. Подключить Android transport adapters к готовому socket gate и применить `AdaptiveMtuController` в forwarding path.
 3. Подать platform readiness signals и public egress verification в готовый public-tunnel gate.
-5. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
+4. Закончить typed WireGuard/VMess descriptors и richer transport descriptors.
 6. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover; AMRI Bond relay проектировать отдельным opt-in этапом.
 7. Добавить end-to-end failover/leak tests, kill-switch, затем per-domain/per-process routing.
 
@@ -258,7 +269,7 @@
 - Android mobile policy управляет общими budgets, но реальный Android probe worker/transport ещё не вызывает эти API.
 - Android socket gate реализован, но production transport adapter ещё не создаёт через него свои sockets.
 - `ImportedNode.raw_uri` всё ещё существует как обычный `String` в импортированном пуле; нужна encrypted persistence и сокращение plaintext lifetime.
-- TUIC/WireGuard/VMess ещё не production-rendered.
+- TUIC production-rendered; WireGuard/VMess ещё не имеют полного typed descriptor/renderer.
 - Windows TUN/WFP, DNS leak protection и kill-switch ещё не подключены.
 - Mobile bonding требует cooperating relay/backend и может расходовать дополнительный cellular traffic/батарею.
 - JNI operations должны оставаться узкими; generic secret APIs запрещены архитектурным решением.
@@ -272,6 +283,7 @@
 - Make-before-break обязателен.
 - Credentials запрещены в process args, Debug, telemetry и plaintext temp files.
 - Multi-secret credentials не помещаются в generic options map.
+- Credential shape является частью transport contract; protocol/credential mismatch всегда fail-closed.
 - OS-backed storage платформенный: DPAPI Windows, Android Keystore Android.
 - Android JNI secret boundary — exact operation/exact slot; whole-store serialization запрещена.
 - Android network JNI boundary принимает только ephemeral privacy-safe scalar snapshot; routing policy остаётся в Rust core.
