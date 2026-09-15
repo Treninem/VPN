@@ -168,6 +168,17 @@ mod android {
 pub use android::{start, status, stop};
 
 #[cfg(not(target_os = "android"))]
+pub fn start(tun_fd: i32, local_socks_port: i32, mtu: i32) -> i32 {
+    match validate_config(tun_fd, local_socks_port, mtu) {
+        Ok(_) => START_RUNTIME_FAILURE,
+        Err(code) => code,
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub fn stop() {}
+
+#[cfg(not(target_os = "android"))]
 pub fn status() -> i32 {
     FORWARDER_STOPPED
 }
@@ -191,5 +202,14 @@ mod tests {
         assert_eq!(config.tun_fd, 7);
         assert_eq!(config.local_socks_port, 20800);
         assert_eq!(config.mtu, 1420);
+    }
+
+    #[test]
+    fn host_stub_keeps_forwarder_disabled_but_preserves_validation() {
+        #[cfg(not(target_os = "android"))]
+        {
+            assert_eq!(start(7, 20800, 1420), START_RUNTIME_FAILURE);
+            assert_eq!(status(), FORWARDER_STOPPED);
+        }
     }
 }
