@@ -70,7 +70,7 @@
 - Credentials запрещено помещать в process arguments.
 - stdout/stderr внешнего core отключены на этой boundary, чтобы credential-bearing config не попал в AMRI logs.
 - Один активный route slot может владеть отдельным supervised core process.
-- Process liveness отображается как `Connected/Degraded`; полноценный readiness handshake ещё нужен.
+- Process liveness и доступность локального inbound отображаются как `Connected/Degraded`; public tunnel проверяется отдельно.
 
 ### Первый sing-box renderer
 
@@ -139,6 +139,14 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Явная сверка executed node с решением AMRI блокирует запись несостоявшегося переключения.
 - Тесты покрывают valid proof, отсутствие raw destination, mismatch transport и quarantine evidence.
 
+## 2026-09-15 — External-core readiness gate
+
+- Supervised adapter больше не объявляет маршрут подключённым только по живому process.
+- `Connected` возвращается после доступности выделенного loopback inbound; `local_port` обязателен и проверяется fail-closed.
+- Startup использует короткий bounded polling; при exit/timeout дочерний process останавливается и не регистрируется как session.
+- Health повторно проверяет process и loopback endpoint, поэтому исчезнувший inbound переводит route в `Degraded`.
+- Тесты покрывают ready endpoint, exit, timeout cleanup, missing port и invalid timing policy.
+
 # CURRENT STATE
 
 - Rust workspace компилируется и проходит unit-тесты.
@@ -149,7 +157,7 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool и micro-race реализованы.
 - Probe/race результаты реально влияют на dynamic quarantine и stable route decision через `amri-runtime`.
 - `TransportManager` имеет multi-session lifecycle и make-before-break replacement.
-- Есть безопасная external-core process boundary и первый sing-box renderer для VLESS/Trojan/Shadowsocks/Hysteria2.
+- Есть безопасная external-core process boundary, loopback readiness gate и первый sing-box renderer для VLESS/Trojan/Shadowsocks/Hysteria2.
 - Windows secret persistence защищена DPAPI.
 - Public traffic через Windows/Android пока НЕ проходит через полноценный AMRI VPN tunnel.
 - Android намеренно остаётся control-only до рабочего packet forwarding.
@@ -157,7 +165,7 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 # NEXT PRIORITIES
 
 1. Добавить Android Keystore adapter для того же installation key.
-2. Усилить external-core readiness и первый Windows end-to-end connect. `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
+2. Собрать первый Windows end-to-end connect поверх readiness-gated transport. `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
 3. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess.
 4. Реализовать Windows packet forwarding/TUN/WFP + DNS protection.
 5. Реализовать Android Rust FFI + production packet forwarding.
@@ -167,7 +175,7 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 
 - Нет полноценного public packet forwarding, поэтому текущий проект ещё не является готовым пользовательским VPN end-to-end.
 - sing-box binary намеренно не поставляется вместе с проектом.
-- Process liveness пока не равен проверке готовности реального туннеля.
+- Loopback readiness подтверждает работающий local inbound, но ещё не доказывает прохождение public traffic через туннель.
 - `ImportedNode.raw_uri` всё ещё существует как обычный `String` после импорта: Debug уже безопасен, но нужен typed conversion + минимизация plaintext lifetime.
 - Android secure persistence через Keystore ещё не реализован.
 - TUIC/WireGuard/VMess ещё не подключены к production renderer из-за более сложной credential-модели.
@@ -185,3 +193,4 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - OS-backed secret storage разделяется по платформам: DPAPI на Windows, Android Keystore на Android.
 - Third-party VPN-core distribution отделена от технической integration boundary и требует отдельного license review.
 - UI может показывать защищённое состояние только после подтверждённых transport + packet forwarding.
+- Внешний core считается `Connected` только после process + loopback readiness; любой startup failure очищает новый process до handoff.

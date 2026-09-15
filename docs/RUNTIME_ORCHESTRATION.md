@@ -15,7 +15,8 @@
 5. `RouteSelector::select_stable` получает эффективный набор кандидатов и применяет hysteresis;
 6. runtime возвращает `RouteTransitionDecision` (`Keep` или `Switch`);
 7. application orchestration при `Switch` вызывает `TransportManager::connect` или `TransportManager::replace`;
-8. packet-routing/TUN/WFP переключается только после успешного transport handoff.
+8. supervised external core подтверждает process + loopback inbound readiness в bounded timeout;
+9. packet-routing/TUN/WFP переключается только после успешного transport handoff.
 
 Таким образом, временная ошибка узла действительно влияет на реальный выбор маршрута, а не остаётся отдельной статистикой.
 
@@ -68,6 +69,8 @@ Runtime хранит только техническое состояние ма
 После этого этапа AMRI умеет последовательно преобразовывать результаты быстрых проверок в quarantine/hot-pool/hysteresis decision. Следующий большой блок — production transport adapter и безопасное получение его конфигурации/секретов.
 
 Public packet forwarding всё ещё намеренно не включается до появления проверенного transport path. Android control-only TUN остаётся защитой от blackhole, а Windows packet-routing layer ещё предстоит подключить.
+
+External-core readiness теперь означает, что дочерний process жив и его выделенный loopback inbound принимает TCP. Это защищает make-before-break от переключения на process, который запустился, но не применил конфигурацию. Проверка не считается доказательством public tunnel: такое подтверждение появится на packet-forwarding boundary.
 
 
 ## Route Proof handoff contract
