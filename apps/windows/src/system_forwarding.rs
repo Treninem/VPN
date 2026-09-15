@@ -81,7 +81,11 @@ impl WindowsSystemForwardingConfig {
         if !(MIN_MTU..=MAX_MTU).contains(&mtu) {
             return Err("Windows TUN MTU must be between 1280 and 1500".into());
         }
-        let bypass_ips = bypass_ips.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
+        let bypass_ips = bypass_ips
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         if bypass_ips.is_empty() {
             return Err("VPN server bypass IP set must not be empty".into());
         }
@@ -144,8 +148,10 @@ impl WindowsSystemForwarder {
                 {
                     Ok(runtime) => runtime,
                     Err(error) => {
-                        let _ = setup_tx.send(Err(format!("failed to create forwarding runtime: {error}")));
-                        thread_state.store(WindowsForwardingState::Failed.code(), Ordering::Release);
+                        let _ = setup_tx
+                            .send(Err(format!("failed to create forwarding runtime: {error}")));
+                        thread_state
+                            .store(WindowsForwardingState::Failed.code(), Ordering::Release);
                         return;
                     }
                 };
@@ -206,7 +212,10 @@ impl WindowsSystemForwarder {
 
     pub(crate) fn stop(&mut self) {
         let state = self.state();
-        if matches!(state, WindowsForwardingState::Starting | WindowsForwardingState::Running) {
+        if matches!(
+            state,
+            WindowsForwardingState::Starting | WindowsForwardingState::Running
+        ) {
             self.state
                 .store(WindowsForwardingState::Stopping.code(), Ordering::Release);
         }
@@ -237,7 +246,11 @@ async fn run_forwarder(
     let proxy = match ArgProxy::try_from(proxy_url.as_str()) {
         Ok(proxy) => proxy,
         Err(error) => {
-            fail_setup(&state, &setup_tx, format!("invalid local SOCKS endpoint: {error}"));
+            fail_setup(
+                &state,
+                &setup_tx,
+                format!("invalid local SOCKS endpoint: {error}"),
+            );
             return;
         }
     };
@@ -438,7 +451,9 @@ pub(crate) fn resolve_server_ips(host: &str, port: u16) -> Result<Vec<IpAddr>, S
     let addresses = (host, port)
         .to_socket_addrs()
         .map_err(|_| "failed to resolve VPN server before Windows TUN setup".to_string())?;
-    let ips = addresses.map(|address| address.ip()).collect::<BTreeSet<_>>();
+    let ips = addresses
+        .map(|address| address.ip())
+        .collect::<BTreeSet<_>>();
     if ips.is_empty() {
         return Err("VPN server resolved to no addresses".into());
     }
@@ -467,8 +482,8 @@ fn preflight_runtime() -> Result<(), String> {
 }
 
 fn expected_wintun_path() -> Result<PathBuf, String> {
-    let executable = std::env::current_exe()
-        .map_err(|_| "failed to locate the AMRI executable".to_string())?;
+    let executable =
+        std::env::current_exe().map_err(|_| "failed to locate the AMRI executable".to_string())?;
     wintun_path_for_executable(&executable)
         .ok_or_else(|| "failed to locate the AMRI executable directory".to_string())
 }
@@ -516,10 +531,18 @@ mod tests {
 
     #[test]
     fn config_requires_remote_bypass_and_safe_mtu() {
-        assert!(WindowsSystemForwardingConfig::new(0, vec!["1.2.3.4".parse().unwrap()], 1420).is_err());
+        assert!(
+            WindowsSystemForwardingConfig::new(0, vec!["1.2.3.4".parse().unwrap()], 1420).is_err()
+        );
         assert!(WindowsSystemForwardingConfig::new(20800, Vec::new(), 1420).is_err());
-        assert!(WindowsSystemForwardingConfig::new(20800, vec!["1.2.3.4".parse().unwrap()], 1279).is_err());
-        assert!(WindowsSystemForwardingConfig::new(20800, vec!["1.2.3.4".parse().unwrap()], 1501).is_err());
+        assert!(
+            WindowsSystemForwardingConfig::new(20800, vec!["1.2.3.4".parse().unwrap()], 1279)
+                .is_err()
+        );
+        assert!(
+            WindowsSystemForwardingConfig::new(20800, vec!["1.2.3.4".parse().unwrap()], 1501)
+                .is_err()
+        );
     }
 
     #[test]
