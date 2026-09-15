@@ -38,14 +38,15 @@ data class MobilePathPolicy(
     val allowLatencyDuplication: Boolean,
 )
 
+enum class ExternalTransportState { STOPPED, STARTING, RUNNING, FAILED, STOPPING }
 enum class PacketForwarderState { STOPPED, STARTING, RUNNING, FAILED, STOPPING }
-
 enum class NativeProtectionState { OFF, PREPARING, PROTECTED }
 
 class NativeBridgeUnavailableException : IllegalStateException(
     "AMRI native runtime is not packaged for this Android build",
 )
 class NativeBridgeSecurityException(message: String) : IllegalStateException(message)
+class ExternalTransportStartException(message: String) : IllegalStateException(message)
 class PacketForwarderStartException(message: String) : IllegalStateException(message)
 
 object AmriNativeBridge {
@@ -88,6 +89,24 @@ object AmriNativeBridge {
                 preferences.allowLatencyDuplication,
             ),
         )
+    }
+
+    fun startExternalTransport(rawUri: String, executable: String, localSocksPort: Int) {
+        requireLibrary()
+        decodeExternalTransportStart(
+            nativeStartExternalTransport(rawUri, executable, localSocksPort),
+        )
+    }
+
+    fun stopExternalTransport() {
+        ensureLoadAttempted()
+        if (libraryLoaded) nativeStopExternalTransport()
+    }
+
+    fun externalTransportState(): ExternalTransportState {
+        ensureLoadAttempted()
+        if (!libraryLoaded) return ExternalTransportState.STOPPED
+        return decodeExternalTransportState(nativeExternalTransportState())
     }
 
     /** Native takes ownership of [tunFd] only when this method returns normally. */
@@ -177,6 +196,27 @@ object AmriNativeBridge {
         )
     }
 
+    internal fun decodeExternalTransportStart(status: Int) {
+        when (status) {
+            0 -> return
+            -1 -> throw ExternalTransportStartException("selected VPN node is invalid or unsupported")
+            -2 -> throw ExternalTransportStartException("bundled VPN transport is unavailable")
+            -3 -> throw ExternalTransportStartException("invalid local transport port")
+            -4 -> throw ExternalTransportStartException("VPN transport is already active")
+            -5 -> throw ExternalTransportStartException("VPN transport could not start")
+            else -> throw NativeBridgeSecurityException("unknown native transport status")
+        }
+    }
+
+    internal fun decodeExternalTransportState(status: Int): ExternalTransportState = when (status) {
+        0 -> ExternalTransportState.STOPPED
+        1 -> ExternalTransportState.STARTING
+        2 -> ExternalTransportState.RUNNING
+        3 -> ExternalTransportState.FAILED
+        4 -> ExternalTransportState.STOPPING
+        else -> throw NativeBridgeSecurityException("unknown native transport state")
+    }
+
     internal fun decodePacketForwarderStart(status: Int) {
         when (status) {
             0 -> return
@@ -247,6 +287,13 @@ object AmriNativeBridge {
         allowMeteredSecondary: Boolean,
         allowLatencyDuplication: Boolean,
     ): Int
+    @JvmStatic private external fun nativeStartExternalTransport(
+        rawUri: String,
+        executable: String,
+        localSocksPort: Int,
+    ): Int
+    @JvmStatic private external fun nativeStopExternalTransport()
+    @JvmStatic private external fun nativeExternalTransportState(): Int
     @JvmStatic private external fun nativeStartPacketForwarder(
         tunFd: Int,
         localSocksPort: Int,
