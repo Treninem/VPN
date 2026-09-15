@@ -22,6 +22,39 @@ fn amri_window_icon() -> egui::IconData {
     }
 }
 
+fn brand_button(
+    ui: &mut egui::Ui,
+    source: egui::ImageSource<'static>,
+    size: f32,
+    alt: &str,
+) -> egui::Response {
+    ui.add(
+        egui::Image::new(source)
+            .fit_to_exact_size(Vec2::splat(size))
+            .alt_text(alt)
+            .sense(egui::Sense::click()),
+    )
+    .on_hover_cursor(egui::CursorIcon::PointingHand)
+    .on_hover_text(alt)
+}
+
+fn desktop_background(ui: &mut egui::Ui) {
+    let viewport = ui.max_rect();
+    let source_ratio = 1920.0 / 1080.0;
+    let viewport_ratio = viewport.width() / viewport.height().max(1.0);
+    let size = if viewport_ratio > source_ratio {
+        Vec2::new(viewport.width(), viewport.width() / source_ratio)
+    } else {
+        Vec2::new(viewport.height() * source_ratio, viewport.height())
+    };
+    let rect = egui::Rect::from_center_size(viewport.center(), size);
+    egui::Image::new(egui::include_image!(
+        "../../../assets/brand/background-desktop.svg"
+    ))
+    .fit_to_exact_size(size)
+    .paint_at(ui, rect);
+}
+
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -51,6 +84,7 @@ enum Page {
 struct AmriApp {
     page: Page,
     language: Language,
+    language_menu_open: bool,
     transport: TransportWorker,
     transport_state: TransportUiState,
     subscription_input: String,
@@ -67,6 +101,8 @@ struct AmriApp {
 
 impl AmriApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+
         let mut visuals = egui::Visuals::dark();
         visuals.panel_fill = Color32::from_rgb(13, 16, 22);
         visuals.window_fill = Color32::from_rgb(19, 23, 31);
@@ -91,6 +127,7 @@ impl AmriApp {
         Self {
             page: Page::Home,
             language,
+            language_menu_open: false,
             transport: TransportWorker::new(),
             transport_state: TransportUiState::Idle,
             subscription_input: String::new(),
@@ -170,20 +207,59 @@ impl AmriApp {
             RichText::new(ui_text(self.language, UiMessage::AdaptiveVpn))
                 .color(Color32::from_gray(145)),
         );
-        ui.label(
-            RichText::new(ui_text(self.language, UiMessage::LanguageLabel))
-                .size(11.0)
-                .color(Color32::from_gray(125)),
-        );
-        egui::ComboBox::from_id_salt("ui-language")
-            .selected_text(self.language.native_name())
-            .show_ui(ui, |ui| {
-                for language in Language::ALL {
-                    ui.selectable_value(&mut self.language, language, language.native_name());
+        ui.add_space(12.0);
+
+        ui.horizontal(|ui| {
+            if brand_button(
+                ui,
+                egui::include_image!("../../../assets/brand/language-button.svg"),
+                38.0,
+                ui_text(self.language, UiMessage::LanguageLabel),
+            )
+            .clicked()
+            {
+                self.language_menu_open = !self.language_menu_open;
+            }
+            ui.label(RichText::new(self.language.native_name()).size(13.0));
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if brand_button(
+                    ui,
+                    egui::include_image!("../../../assets/brand/settings-button.svg"),
+                    38.0,
+                    ui_text(self.language, UiMessage::Settings),
+                )
+                .clicked()
+                {
+                    self.page = Page::Settings;
+                    self.language_menu_open = false;
                 }
             });
-        ui.add_space(26.0);
+        });
 
+        if self.language_menu_open {
+            egui::Frame::new()
+                .fill(Color32::from_rgb(22, 29, 42))
+                .corner_radius(14)
+                .inner_margin(10)
+                .show(ui, |ui| {
+                    for language in Language::ALL {
+                        let selected = self.language == language;
+                        if ui
+                            .add(
+                                egui::Button::selectable(selected, language.native_name())
+                                    .min_size(Vec2::new(178.0, 30.0)),
+                            )
+                            .clicked()
+                        {
+                            self.language = language;
+                            self.language_menu_open = false;
+                        }
+                    }
+                });
+        }
+
+        ui.add_space(20.0);
         let language = self.language;
         self.nav_button(ui, Page::Home, ui_text(language, UiMessage::Home));
         self.nav_button(ui, Page::Routes, ui_text(language, UiMessage::Routes));
@@ -193,7 +269,6 @@ impl AmriApp {
             ui_text(language, UiMessage::Subscriptions),
         );
         self.nav_button(ui, Page::Rules, ui_text(language, UiMessage::Rules));
-        self.nav_button(ui, Page::Settings, ui_text(language, UiMessage::Settings));
 
         ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
             ui.add_space(8.0);
@@ -227,6 +302,7 @@ impl AmriApp {
         );
         if response.clicked() {
             self.page = page;
+            self.language_menu_open = false;
         }
     }
 
@@ -291,8 +367,13 @@ impl AmriApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
+                        let protection_message = if self.transport_ready() {
+                            UiMessage::ProtectionOn
+                        } else {
+                            UiMessage::ProtectionOff
+                        };
                         ui.label(
-                            RichText::new(ui_text(self.language, UiMessage::ProtectionOff))
+                            RichText::new(ui_text(self.language, protection_message))
                                 .size(24.0)
                                 .strong(),
                         );
@@ -327,22 +408,22 @@ impl AmriApp {
                         } else {
                             ui_text(self.language, UiMessage::Connect)
                         };
-                        let fill = if self.transport_ready() {
-                            Color32::from_rgb(58, 72, 98)
-                        } else {
-                            Color32::from_rgb(67, 104, 255)
-                        };
-                        let button = egui::Button::new(RichText::new(label).size(16.0).strong())
-                            .fill(fill)
-                            .stroke(Stroke::NONE)
-                            .corner_radius(18);
                         let enabled =
                             !matches!(&self.transport_state, TransportUiState::Connecting);
-                        if ui
-                            .add_enabled_ui(enabled, |ui| ui.add_sized([150.0, 54.0], button))
-                            .inner
-                            .clicked()
-                        {
+                        let source = if self.transport_ready() {
+                            egui::include_image!("../../../assets/brand/vpn-power-on.svg")
+                        } else {
+                            egui::include_image!("../../../assets/brand/vpn-power-off.svg")
+                        };
+                        let button = egui::Image::new(source)
+                            .fit_to_exact_size(Vec2::splat(104.0))
+                            .alt_text(label)
+                            .sense(egui::Sense::click());
+                        let response = ui
+                            .add_enabled(enabled, button)
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text(label);
+                        if response.clicked() {
                             if self.transport_ready() {
                                 self.stop_transport();
                             } else if self.imported_nodes.is_empty() {
@@ -459,12 +540,20 @@ impl AmriApp {
                 .hint_text("vless://…\ntrojan://…\nss://…\nhysteria2://…"),
         );
 
-        if ui
-            .add(egui::Button::new(ui_text(self.language, UiMessage::Import)).corner_radius(12))
+        ui.horizontal(|ui| {
+            let import_label = ui_text(self.language, UiMessage::Import);
+            if brand_button(
+                ui,
+                egui::include_image!("../../../assets/brand/add-button.svg"),
+                44.0,
+                import_label,
+            )
             .clicked()
-        {
-            self.import_subscription_text();
-        }
+            {
+                self.import_subscription_text();
+            }
+            ui.label(RichText::new(import_label).strong());
+        });
 
         ui.add_space(12.0);
         ui.label(format!(
@@ -504,6 +593,46 @@ impl AmriApp {
         );
     }
 
+    fn settings(&mut self, ui: &mut egui::Ui) {
+        ui.heading(RichText::new(ui_text(self.language, UiMessage::Settings)).size(30.0));
+        ui.add_space(12.0);
+        Self::toggle_row(
+            ui,
+            ui_text(self.language, UiMessage::SmartRouting),
+            ui_text(self.language, UiMessage::SmartRoutingDescription),
+            &mut self.smart_routing,
+        );
+        Self::toggle_row(
+            ui,
+            ui_text(self.language, UiMessage::KillSwitch),
+            ui_text(self.language, UiMessage::KillSwitchDescription),
+            &mut self.kill_switch,
+        );
+        Self::toggle_row(
+            ui,
+            ui_text(self.language, UiMessage::LocalLearning),
+            ui_text(self.language, UiMessage::LocalLearningDescription),
+            &mut self.learning,
+        );
+        Self::toggle_row(
+            ui,
+            ui_text(self.language, UiMessage::FederatedLearning),
+            ui_text(self.language, UiMessage::FederatedDescription),
+            &mut self.federated_learning,
+        );
+        Self::toggle_row(
+            ui,
+            ui_text(self.language, UiMessage::BackgroundTesting),
+            ui_text(self.language, UiMessage::BackgroundDescription),
+            &mut self.background_probing,
+        );
+        ui.add_space(16.0);
+        ui.label(ui_text(self.language, UiMessage::CoreExecutable));
+        ui.text_edit_singleline(&mut self.core_path);
+        ui.label(ui_text(self.language, UiMessage::LocalPort));
+        ui.text_edit_singleline(&mut self.local_port);
+    }
+
     fn placeholder(&self, ui: &mut egui::Ui, title: &str) {
         ui.heading(RichText::new(title).size(30.0));
         ui.label(
@@ -517,11 +646,13 @@ impl eframe::App for AmriApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh_transport_state(ui.ctx());
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::from_rgb(13, 16, 22)))
+            .frame(egui::Frame::new().fill(Color32::from_rgb(3, 8, 18)))
             .show(ui, |ui| {
+                desktop_background(ui);
                 ui.horizontal(|ui| {
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(16, 20, 27))
+                        .fill(Color32::from_rgba_premultiplied(16, 20, 27, 238))
+                        .corner_radius(22)
                         .inner_margin(16)
                         .show(ui, |ui| {
                             ui.set_min_height(ui.available_height());
@@ -531,7 +662,8 @@ impl eframe::App for AmriApp {
                     ui.add_space(10.0);
 
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(13, 16, 22))
+                        .fill(Color32::from_rgba_premultiplied(13, 16, 22, 224))
+                        .corner_radius(22)
                         .inner_margin(24)
                         .show(ui, |ui| {
                             ui.set_min_height(ui.available_height());
@@ -543,8 +675,7 @@ impl eframe::App for AmriApp {
                                 Page::Rules => {
                                     self.placeholder(ui, ui_text(self.language, UiMessage::Rules))
                                 }
-                                Page::Settings => self
-                                    .placeholder(ui, ui_text(self.language, UiMessage::Settings)),
+                                Page::Settings => self.settings(ui),
                             }
                         });
                 });
