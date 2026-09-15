@@ -17,6 +17,8 @@
     <string name="federated_learning_description">默认关闭</string>
     <string name="status_service_ready">VPN 服务已就绪</string>
     <string name="detail_service_ready">连接安全传输前不会接管公共流量</string>
+    <string name="status_protected">保护已开启</string>
+    <string name="detail_protected">公网流量正通过已验证的 AMRI 隧道</string>
     <string name="stop">停止</string>
     <string name="status_preparing">正在准备…</string>
     <string name="detail_preparing">Android 正在创建安全系统接口</string>
