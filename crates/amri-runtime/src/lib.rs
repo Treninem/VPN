@@ -4,9 +4,9 @@ use amri_core::{
     RouteProof, RouteProofChain, RouteSelector, RouteTransitionDecision, ScoringProfile,
     SelectionPolicy, TrafficClass,
 };
+use amri_probe::{ProbeAttemptOutcome, ProbeRaceOutcome};
 use chrono::{DateTime, Utc};
 use thiserror::Error;
-use amri_probe::{ProbeAttemptOutcome, ProbeRaceOutcome};
 
 #[derive(Debug, Clone, Copy)]
 pub struct RouteRuntimePolicy {
@@ -31,7 +31,6 @@ pub struct RouteHealthUpdate {
     pub state: RouteHealthState,
     pub success: bool,
 }
-
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RouteProofRecordingError {
@@ -148,7 +147,6 @@ impl RouteRuntime {
         self.record_probe_race(outcome, now_ms);
         self.select_stable(candidates, traffic, current_node_id, now_ms)
     }
-
 
     /// Creates a proof only after the application confirms the transport handoff.
     ///
@@ -384,7 +382,6 @@ mod tests {
         assert_eq!(decision.action, RouteTransitionAction::Switch);
         assert_eq!(decision.decision.selected_node_id, "reserve");
     }
-
 
     #[test]
     fn executed_transition_creates_verifiable_proof_with_all_candidates() {
