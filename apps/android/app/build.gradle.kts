@@ -31,6 +31,39 @@ val generateAmriUiResources by tasks.registering(org.gradle.api.tasks.Copy::clas
     }
 }
 
+val amriRustWorkspace = rootProject.layout.projectDirectory.dir("../..")
+val generatedAmriNativeLibs = layout.buildDirectory.dir("generated/amri-native-jni")
+val buildAmriRustNative by tasks.registering(org.gradle.api.tasks.Exec::class) {
+    val enabled = providers.environmentVariable("AMRI_BUILD_NATIVE")
+        .map { value -> value == "1" || value.equals("true", ignoreCase = true) }
+        .orElse(false)
+
+    onlyIf { enabled.get() }
+    workingDir(amriRustWorkspace.asFile)
+
+    doFirst {
+        val outputDir = generatedAmriNativeLibs.get().asFile
+        project.delete(outputDir)
+        outputDir.mkdirs()
+        commandLine(
+            "cargo",
+            "ndk",
+            "-p",
+            "26",
+            "-t",
+            "arm64-v8a",
+            "-t",
+            "x86_64",
+            "-o",
+            outputDir.absolutePath,
+            "build",
+            "-p",
+            "amri-android-ffi",
+            "--release",
+        )
+    }
+}
+
 android {
     namespace = "ru.amri.vpn"
     compileSdk = 37
@@ -51,10 +84,12 @@ android {
 
 android.sourceSets["main"].res.srcDir(generatedAmriIconRes.get().asFile)
 android.sourceSets["main"].res.srcDir(generatedAmriUiRes.get().asFile)
+android.sourceSets["main"].jniLibs.srcDir(generatedAmriNativeLibs.get().asFile)
 
 tasks.named("preBuild").configure {
     dependsOn(generateAmriIconResource)
     dependsOn(generateAmriUiResources)
+    dependsOn(buildAmriRustNative)
 }
 
 dependencies {
