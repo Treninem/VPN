@@ -135,8 +135,8 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
             }
             WorkerCommand::Disconnect => {
                 let result = active
-                    .take()
-                    .map(|mut transport| {
+                    .as_mut()
+                    .map(|transport| {
                         transport
                             .manager
                             .disconnect(&transport.session.route_id)
@@ -145,7 +145,10 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
                     .unwrap_or(Ok(()));
 
                 match result {
-                    Ok(()) => send_state(&events, TransportUiState::Idle),
+                    Ok(()) => {
+                        active = None;
+                        send_state(&events, TransportUiState::Idle);
+                    }
                     Err(error) => send_state(&events, TransportUiState::Failed(error)),
                 }
             }
