@@ -6,6 +6,10 @@ edition = "2021"
 [dependencies]
 amri-core = { path = "../../crates/amri-core" }
 amri-subscriptions = { path = "../../crates/amri-subscriptions" }
+amri-node-config = { path = "../../crates/amri-node-config" }
+amri-transport = { path = "../../crates/amri-transport" }
 eframe = "0.32"
 egui_extras = { version = "0.32", features = ["all_loaders"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json = "1.0"
+tempfile = "3.22"
