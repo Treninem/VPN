@@ -191,14 +191,12 @@ internal class AndroidPublicTunnelOwner(
         return false
     }
 
-    private fun loopbackSocksReady(port: Int): Boolean = try {
-        Socket().use { socket ->
-            socket.connect(InetSocketAddress("127.0.0.1", port), LOOPBACK_TIMEOUT_MS)
-        }
-        true
-    } catch (_: Exception) {
-        false
-    }
+    private fun loopbackSocksReady(port: Int): Boolean = boundedTcpProbe(
+        targets = arrayOf(InetSocketAddress("127.0.0.1", port)),
+        connectTimeoutMs = LOOPBACK_CONNECT_TIMEOUT_MS,
+        totalTimeoutMs = LOOPBACK_VERIFY_TIMEOUT_MS,
+        threadName = "amri-loopback-ready",
+    )
 
     private fun closeDetachedFd(fd: Int) {
         try {
@@ -264,27 +262,12 @@ internal class AndroidPublicTunnelOwner(
     }
 
     private object NumericTcpEgressVerifier : PublicEgressVerifier {
-        override fun verify(): Boolean {
-            val task = FutureTask {
-                EGRESS_TARGETS.any { target ->
-                    try {
-                        Socket().use { socket ->
-                            socket.connect(InetSocketAddress(target, 443), EGRESS_CONNECT_TIMEOUT_MS)
-                        }
-                        true
-                    } catch (_: Exception) {
-                        false
-                    }
-                }
-            }
-            Thread(task, "amri-egress-verify").apply { isDaemon = true }.start()
-            return try {
-                task.get(EGRESS_VERIFY_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            } catch (_: Exception) {
-                task.cancel(true)
-                false
-            }
-        }
+        override fun verify(): Boolean = boundedTcpProbe(
+            targets = EGRESS_TARGETS.map { InetSocketAddress(it, 443) }.toTypedArray(),
+            connectTimeoutMs = EGRESS_CONNECT_TIMEOUT_MS,
+            totalTimeoutMs = EGRESS_VERIFY_TIMEOUT_MS,
+            threadName = "amri-egress-verify",
+        )
     }
 
     companion object {
@@ -293,10 +276,36 @@ internal class AndroidPublicTunnelOwner(
         private const val IPV4_DNS = "1.1.1.1"
         private const val IPV6_DNS = "2606:4700:4700::1111"
         private val EGRESS_TARGETS = arrayOf("1.1.1.1", "8.8.8.8")
-        private const val LOOPBACK_TIMEOUT_MS = 250
+        private const val LOOPBACK_CONNECT_TIMEOUT_MS = 250
+        private const val LOOPBACK_VERIFY_TIMEOUT_MS = 600L
         private const val EGRESS_CONNECT_TIMEOUT_MS = 800
         private const val EGRESS_VERIFY_TIMEOUT_MS = 1800L
         private const val STARTUP_POLLS = 20
         private const val STARTUP_POLL_MS = 25L
+    }
+}
+
+private fun boundedTcpProbe(
+    targets: Array<InetSocketAddress>,
+    connectTimeoutMs: Int,
+    totalTimeoutMs: Long,
+    threadName: String,
+): Boolean {
+    val task = FutureTask {
+        targets.any { target ->
+            try {
+                Socket().use { socket -> socket.connect(target, connectTimeoutMs) }
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+    Thread(task, threadName).apply { isDaemon = true }.start()
+    return try {
+        task.get(totalTimeoutMs, TimeUnit.MILLISECONDS)
+    } catch (_: Exception) {
+        task.cancel(true)
+        false
     }
 }
