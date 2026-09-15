@@ -83,6 +83,7 @@ enum Page {
 
 struct AmriApp {
     page: Page,
+    navigation_history: Vec<Page>,
     language: Language,
     language_menu_open: bool,
     transport: TransportWorker,
@@ -130,6 +131,7 @@ impl AmriApp {
 
         Self {
             page: Page::Home,
+            navigation_history: Vec::new(),
             language,
             language_menu_open: false,
             transport: TransportWorker::new(),
@@ -154,6 +156,22 @@ impl AmriApp {
 
     fn transport_ready(&self) -> bool {
         matches!(&self.transport_state, TransportUiState::Ready { .. })
+    }
+
+    fn navigate_to(&mut self, page: Page) {
+        if self.page != page {
+            self.navigation_history.push(self.page);
+            if self.navigation_history.len() > 16 {
+                self.navigation_history.remove(0);
+            }
+            self.page = page;
+        }
+        self.language_menu_open = false;
+    }
+
+    fn navigate_back(&mut self) {
+        self.page = self.navigation_history.pop().unwrap_or(Page::Home);
+        self.language_menu_open = false;
     }
 
     fn refresh_transport_state(&mut self, ctx: &egui::Context) {
@@ -245,7 +263,7 @@ impl AmriApp {
 
     fn start_transport(&mut self) {
         let Some(node) = self.imported_nodes.get(self.selected_node).cloned() else {
-            self.page = Page::Subscriptions;
+            self.navigate_to(Page::Subscriptions);
             return;
         };
         let port = match self.local_port.trim().parse::<u16>() {
@@ -305,8 +323,7 @@ impl AmriApp {
                 )
                 .clicked()
                 {
-                    self.page = Page::Settings;
-                    self.language_menu_open = false;
+                    self.navigate_to(Page::Settings);
                 }
             });
         });
@@ -375,8 +392,7 @@ impl AmriApp {
                 .corner_radius(14),
         );
         if response.clicked() {
-            self.page = page;
-            self.language_menu_open = false;
+            self.navigate_to(page);
         }
     }
 
@@ -501,7 +517,7 @@ impl AmriApp {
                             if self.transport_ready() {
                                 self.stop_transport();
                             } else if self.imported_nodes.is_empty() {
-                                self.page = Page::Subscriptions;
+                                self.navigate_to(Page::Subscriptions);
                             } else {
                                 self.start_transport();
                             }
@@ -916,6 +932,19 @@ impl eframe::App for AmriApp {
                         .show(ui, |ui| {
                             ui.set_min_height(ui.available_height());
                             ui.set_min_width((ui.available_width() - 8.0).max(600.0));
+                            if self.page != Page::Home {
+                                if brand_button(
+                                    ui,
+                                    egui::include_image!("../../../assets/brand/back-button.svg"),
+                                    36.0,
+                                    "Back",
+                                )
+                                .clicked()
+                                {
+                                    self.navigate_back();
+                                }
+                                ui.add_space(8.0);
+                            }
                             match self.page {
                                 Page::Home => self.home(ui),
                                 Page::Routes => self.routes(ui),
