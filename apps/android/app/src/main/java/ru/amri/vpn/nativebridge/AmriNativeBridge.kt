@@ -50,17 +50,27 @@ data class MobilePathPolicy(
     val allowLatencyDuplication: Boolean,
 )
 
+enum class PacketForwarderState {
+    STOPPED,
+    STARTING,
+    RUNNING,
+    FAILED,
+    STOPPING,
+}
+
 class NativeBridgeUnavailableException : IllegalStateException(
     "AMRI native runtime is not packaged for this Android build",
 )
 
 class NativeBridgeSecurityException(message: String) : IllegalStateException(message)
 
+class PacketForwarderStartException(message: String) : IllegalStateException(message)
+
 /**
  * Narrow Kotlin -> Rust entry point.
  *
- * The bridge never serializes the credential database. Rust receives the platform secret-store
- * object and asks it only for the exact logical slot needed by the operation.
+ * The bridge never serializes the credential database. Packet forwarding accepts only an owned TUN
+ * fd, the already-confirmed loopback SOCKS port and a bounded MTU; it never receives node secrets.
  */
 object AmriNativeBridge {
     private const val LIBRARY_NAME = "amri_android_ffi"
@@ -111,6 +121,25 @@ object AmriNativeBridge {
         )
     }
 
+    /** Native takes ownership of [tunFd] only when this method returns normally. */
+    fun startPacketForwarder(tunFd: Int, localSocksPort: Int, mtu: Int) {
+        ensureLoadAttempted()
+        if (!libraryLoaded) throw NativeBridgeUnavailableException()
+        decodePacketForwarderStart(nativeStartPacketForwarder(tunFd, localSocksPort, mtu))
+    }
+
+    fun stopPacketForwarder() {
+        ensureLoadAttempted()
+        if (!libraryLoaded) return
+        nativeStopPacketForwarder()
+    }
+
+    fun packetForwarderState(): PacketForwarderState {
+        ensureLoadAttempted()
+        if (!libraryLoaded) return PacketForwarderState.STOPPED
+        return decodePacketForwarderState(nativePacketForwarderState())
+    }
+
     internal fun decodeRouteProofKeyStatus(status: Int): RouteProofKeyState = when (status) {
         STATUS_EXISTING -> RouteProofKeyState.EXISTING
         STATUS_CREATED -> RouteProofKeyState.CREATED
@@ -139,6 +168,27 @@ object AmriNativeBridge {
             allowSecondaryPath = packed and POLICY_SECONDARY != 0,
             allowLatencyDuplication = packed and POLICY_DUPLICATION != 0,
         )
+    }
+
+    internal fun decodePacketForwarderStart(status: Int) {
+        when (status) {
+            FORWARDER_START_OK -> return
+            FORWARDER_INVALID_FD -> throw PacketForwarderStartException("invalid TUN descriptor")
+            FORWARDER_INVALID_PORT -> throw PacketForwarderStartException("invalid local transport port")
+            FORWARDER_INVALID_MTU -> throw PacketForwarderStartException("invalid tunnel MTU")
+            FORWARDER_BUSY -> throw PacketForwarderStartException("packet forwarder is already active")
+            FORWARDER_RUNTIME_FAILURE -> throw PacketForwarderStartException("packet forwarder could not start")
+            else -> throw NativeBridgeSecurityException("unknown native packet-forwarder status")
+        }
+    }
+
+    internal fun decodePacketForwarderState(status: Int): PacketForwarderState = when (status) {
+        0 -> PacketForwarderState.STOPPED
+        1 -> PacketForwarderState.STARTING
+        2 -> PacketForwarderState.RUNNING
+        3 -> PacketForwarderState.FAILED
+        4 -> PacketForwarderState.STOPPING
+        else -> throw NativeBridgeSecurityException("unknown native packet-forwarder state")
     }
 
     private fun ensureLoadAttempted() {
@@ -179,10 +229,30 @@ object AmriNativeBridge {
         allowLatencyDuplication: Boolean,
     ): Int
 
+    @JvmStatic
+    private external fun nativeStartPacketForwarder(
+        tunFd: Int,
+        localSocksPort: Int,
+        mtu: Int,
+    ): Int
+
+    @JvmStatic
+    private external fun nativeStopPacketForwarder()
+
+    @JvmStatic
+    private external fun nativePacketForwarderState(): Int
+
     private const val UNKNOWN_BANDWIDTH = -1
     private const val POLICY_PROBE_MASK = 0b11
     private const val POLICY_WARMUP = 1 shl 2
     private const val POLICY_SECONDARY = 1 shl 3
     private const val POLICY_DUPLICATION = 1 shl 4
     private const val POLICY_RESERVED_BITS = ((1 shl 5) - 1).inv()
+
+    private const val FORWARDER_START_OK = 0
+    private const val FORWARDER_INVALID_FD = -1
+    private const val FORWARDER_INVALID_PORT = -2
+    private const val FORWARDER_INVALID_MTU = -3
+    private const val FORWARDER_BUSY = -4
+    private const val FORWARDER_RUNTIME_FAILURE = -5
 }

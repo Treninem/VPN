@@ -62,4 +62,29 @@ class AmriNativeBridgeTest {
             AmriNativeBridge.decodeMobilePolicy(3)
         }
     }
+
+    @Test
+    fun packetForwarderStatesAreStrictlyDecoded() {
+        assertEquals(PacketForwarderState.STOPPED, AmriNativeBridge.decodePacketForwarderState(0))
+        assertEquals(PacketForwarderState.STARTING, AmriNativeBridge.decodePacketForwarderState(1))
+        assertEquals(PacketForwarderState.RUNNING, AmriNativeBridge.decodePacketForwarderState(2))
+        assertEquals(PacketForwarderState.FAILED, AmriNativeBridge.decodePacketForwarderState(3))
+        assertEquals(PacketForwarderState.STOPPING, AmriNativeBridge.decodePacketForwarderState(4))
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodePacketForwarderState(5)
+        }
+    }
+
+    @Test
+    fun packetForwarderStartErrorsFailClosed() {
+        AmriNativeBridge.decodePacketForwarderStart(0)
+        for (status in -1 downTo -5) {
+            assertThrows(PacketForwarderStartException::class.java) {
+                AmriNativeBridge.decodePacketForwarderStart(status)
+            }
+        }
+        assertThrows(NativeBridgeSecurityException::class.java) {
+            AmriNativeBridge.decodePacketForwarderStart(-99)
+        }
+    }
 }
