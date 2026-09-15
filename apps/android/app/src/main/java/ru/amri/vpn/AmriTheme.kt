@@ -19,4 +19,6 @@ internal object AmriTheme {
     const val powerButtonSize = 124
     const val cardPadding = 22
     const val cardRadius = 22
+    const val modeCornerRadius = 16
+    const val stateRefreshMs = 350L
 }

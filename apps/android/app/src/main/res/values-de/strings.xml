@@ -15,6 +15,10 @@
     <string name="local_learning_description">Verlauf bleibt nur auf diesem Gerät</string>
     <string name="federated_learning">Anonymes gemeinsames Lernen</string>
     <string name="federated_learning_description">Standardmäßig deaktiviert</string>
+    <string name="route_selection">Routenauswahl</string>
+    <string name="automatic_route">AMRI automatisch</string>
+    <string name="no_imported_servers">Noch keine Server importiert; AMRI nutzt den gemeinsamen Pool, sobald er verfügbar ist</string>
+    <string name="choose_server">Server auswählen</string>
     <string name="status_service_ready">VPN-Dienst ist bereit</string>
     <string name="detail_service_ready">Öffentlicher Verkehr wartet auf einen geschützten Transport</string>
     <string name="status_protected">Schutz ist aktiv</string>

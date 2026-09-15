@@ -59,6 +59,7 @@ ANDROID_CANONICAL_INPUTS = {
     "vpn-power-off.svg",
     "settings-button.svg",
     "language-button.svg",
+    "more-button.svg",
 }
 
 
@@ -186,6 +187,7 @@ def main() -> None:
         "R.raw.amri_vpn_power_off",
         "R.raw.amri_settings_button",
         "R.raw.amri_language_button",
+        "R.raw.amri_more_button",
     }
     for reference in sorted(android_runtime_refs):
         if reference not in activity:

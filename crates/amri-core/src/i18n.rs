@@ -112,6 +112,55 @@ pub enum UiMessage {
     Mode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+pub enum RoutingMode {
+    Smart,
+    Speed,
+    Ping,
+    Privacy,
+    Streaming,
+    Gaming,
+    Manual,
+}
+
+impl RoutingMode {
+    pub const ALL: [Self; 7] = [
+        Self::Smart,
+        Self::Speed,
+        Self::Ping,
+        Self::Privacy,
+        Self::Streaming,
+        Self::Gaming,
+        Self::Manual,
+    ];
+}
+
+pub fn routing_mode_text(language: Language, mode: RoutingMode) -> &'static str {
+    const EN: [&str; 7] = ["Smart", "Speed", "Ping", "Privacy", "Streaming", "Gaming", "Manual"];
+    const RU: [&str; 7] = ["Smart", "Скорость", "Ping", "Приватность", "Стриминг", "Игры", "Ручной"];
+    const ES: [&str; 7] = ["Smart", "Velocidad", "Ping", "Privacidad", "Streaming", "Juegos", "Manual"];
+    const PT: [&str; 7] = ["Smart", "Velocidade", "Ping", "Privacidade", "Streaming", "Jogos", "Manual"];
+    const FR: [&str; 7] = ["Smart", "Vitesse", "Ping", "Confidentialité", "Streaming", "Jeux", "Manuel"];
+    const DE: [&str; 7] = ["Smart", "Tempo", "Ping", "Privatsphäre", "Streaming", "Gaming", "Manuell"];
+    const ZH: [&str; 7] = ["智能", "速度", "延迟", "隐私", "流媒体", "游戏", "手动"];
+    const HI: [&str; 7] = ["स्मार्ट", "गति", "पिंग", "गोपनीयता", "स्ट्रीमिंग", "गेमिंग", "मैनुअल"];
+    const AR: [&str; 7] = ["ذكي", "السرعة", "الاستجابة", "الخصوصية", "البث", "الألعاب", "يدوي"];
+
+    let labels = match language {
+        Language::English => EN,
+        Language::Russian => RU,
+        Language::Spanish => ES,
+        Language::Portuguese => PT,
+        Language::French => FR,
+        Language::German => DE,
+        Language::SimplifiedChinese => ZH,
+        Language::Hindi => HI,
+        Language::Arabic => AR,
+    };
+    labels[mode as usize]
+}
+
 pub fn text(language: Language, message: UiMessage) -> &'static str {
     use Language::*;
     use UiMessage::*;
@@ -538,6 +587,15 @@ mod tests {
         for language in Language::ALL {
             for message in messages {
                 assert!(!text(language, message).trim().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn every_routing_mode_is_present_for_every_language() {
+        for language in Language::ALL {
+            for mode in RoutingMode::ALL {
+                assert!(!routing_mode_text(language, mode).trim().is_empty());
             }
         }
     }

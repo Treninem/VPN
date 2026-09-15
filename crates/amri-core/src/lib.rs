@@ -11,7 +11,7 @@ pub mod shadow_race;
 
 pub use health::{CircuitBreakerPolicy, RouteHealthState, RouteHealthTracker};
 pub use hot_pool::{build_hot_pool, HotPoolEntry, HotPoolPolicy};
-pub use i18n::{text as ui_text, Language, UiMessage};
+pub use i18n::{routing_mode_text, text as ui_text, Language, RoutingMode, UiMessage};
 pub use mobile::{
     AccessNetworkKind, AdaptiveMtuController, AdaptiveMtuError, AdaptiveMtuPolicy,
     MobileAccelerationMode, MobileAccelerationPreferences, MobileNetworkSnapshot, MobilePathPolicy,

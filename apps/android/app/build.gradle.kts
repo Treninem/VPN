@@ -29,6 +29,9 @@ val generateAmriUiResources by tasks.registering(org.gradle.api.tasks.Copy::clas
     from(amriBrandDir.file("language-button.svg")) {
         rename { "amri_language_button.svg" }
     }
+    from(amriBrandDir.file("more-button.svg")) {
+        rename { "amri_more_button.svg" }
+    }
 }
 
 val amriRustWorkspace = rootProject.layout.projectDirectory.dir("../..")
