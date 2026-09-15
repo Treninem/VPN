@@ -514,7 +514,9 @@ mod tests {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
         let mut request = request(protocol);
-        request.options.insert("local_port".into(), port.to_string());
+        request
+            .options
+            .insert("local_port".into(), port.to_string());
         (request, listener)
     }
 
@@ -664,7 +666,9 @@ mod tests {
             },
         );
         let mut request = request(NodeProtocol::Vless);
-        request.options.insert("local_port".into(), port.to_string());
+        request
+            .options
+            .insert("local_port".into(), port.to_string());
 
         let error = adapter.connect(&request).unwrap_err();
 
