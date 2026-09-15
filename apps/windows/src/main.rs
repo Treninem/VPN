@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod transport_worker;
 mod theme;
+mod transport_worker;
 
 use amri_core::{
     evaluate_protection, ui_text, Language, ProtectionSignals, ProtectionState, UiMessage,
@@ -117,10 +117,8 @@ impl AmriApp {
         visuals.extreme_bg_color = theme::BACKDROP;
         visuals.faint_bg_color = theme::SURFACE_MUTED;
         visuals.selection.bg_fill = theme::ACCENT;
-        visuals.widgets.inactive.corner_radius =
-            egui::CornerRadius::same(theme::CONTROL_RADIUS);
-        visuals.widgets.hovered.corner_radius =
-            egui::CornerRadius::same(theme::CONTROL_RADIUS);
+        visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(theme::CONTROL_RADIUS);
+        visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(theme::CONTROL_RADIUS);
         visuals.widgets.active.corner_radius = egui::CornerRadius::same(theme::CONTROL_RADIUS);
         visuals.widgets.noninteractive.corner_radius =
             egui::CornerRadius::same(theme::CONTROL_RADIUS);
