@@ -23,6 +23,12 @@ val generateAmriUiResources by tasks.registering(org.gradle.api.tasks.Copy::clas
     from(amriBrandDir.file("vpn-power-off.svg")) {
         rename { "amri_vpn_power_off.svg" }
     }
+    from(amriBrandDir.file("settings-button.svg")) {
+        rename { "amri_settings_button.svg" }
+    }
+    from(amriBrandDir.file("language-button.svg")) {
+        rename { "amri_language_button.svg" }
+    }
 }
 
 android {
