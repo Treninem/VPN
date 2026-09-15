@@ -108,14 +108,14 @@ impl AmriApp {
     }
 
     fn transport_ready(&self) -> bool {
-        matches!(self.transport_state, TransportUiState::Ready { .. })
+        matches!(&self.transport_state, TransportUiState::Ready { .. })
     }
 
     fn refresh_transport_state(&mut self, ctx: &egui::Context) {
         if let Some(state) = self.transport.latest_state() {
             self.transport_state = state;
         }
-        if matches!(self.transport_state, TransportUiState::Connecting) {
+        if matches!(&self.transport_state, TransportUiState::Connecting) {
             ctx.request_repaint_after(Duration::from_millis(40));
         }
     }
@@ -126,7 +126,7 @@ impl AmriApp {
         if self.imported_nodes.is_empty() {
             self.transport_state =
                 TransportUiState::Failed("no supported VPN nodes were found".into());
-        } else if matches!(self.transport_state, TransportUiState::Failed(_)) {
+        } else if matches!(&self.transport_state, TransportUiState::Failed(_)) {
             self.transport_state = TransportUiState::Idle;
         }
     }
@@ -336,7 +336,7 @@ impl AmriApp {
                             .stroke(Stroke::NONE)
                             .corner_radius(18);
                         let enabled =
-                            !matches!(self.transport_state, TransportUiState::Connecting);
+                            !matches!(&self.transport_state, TransportUiState::Connecting);
                         if ui.add_enabled_ui(enabled, |ui| {
                             ui.add_sized([150.0, 54.0], button)
                         }).inner.clicked()
@@ -358,7 +358,7 @@ impl AmriApp {
             Self::metric_card(
                 ui,
                 ui_text(self.language, UiMessage::ActiveRoutes),
-                if self.transport_ready() { "4" } else { "0" },
+                if self.transport_ready() { "1" } else { "0" },
                 "",
             );
             Self::metric_card(
