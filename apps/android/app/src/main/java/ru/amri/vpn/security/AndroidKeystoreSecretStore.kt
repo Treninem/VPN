@@ -120,14 +120,19 @@ internal object SecureKeyCodec {
     fun storageKeyFor(logicalKey: String): String {
         validateLogicalKey(logicalKey)
         val digest = MessageDigest.getInstance("SHA-256").digest(logicalKey.toByteArray(Charsets.UTF_8))
-        return PREFIX + digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
+        return PREFIX + digest.joinToString(separator = "") { byte ->
+            "%02x".format(byte.toInt() and 0xff)
+        }
     }
 
     private fun validateLogicalKey(logicalKey: String) {
         require(logicalKey.isNotEmpty() && logicalKey.length <= 256) { "secret key is invalid" }
         require(
             logicalKey.all { character ->
-                character.isLetterOrDigit() || character in charArrayOf('-', '_', '.', ':')
+                character in 'a'..'z' ||
+                    character in 'A'..'Z' ||
+                    character in '0'..'9' ||
+                    character in charArrayOf('-', '_', '.', ':')
             },
         ) { "secret key is invalid" }
     }
