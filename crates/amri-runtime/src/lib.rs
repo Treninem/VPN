@@ -148,13 +148,7 @@ impl RouteRuntime {
         let mut policy = self.hot_pool_policy;
         policy.max_candidates = policy.max_candidates.min(budget.hot_pool_capacity);
         policy.diversity_slots = policy.diversity_slots.min(policy.max_candidates);
-        build_hot_pool(
-            candidates,
-            traffic,
-            policy,
-            Some(&self.health),
-            now_ms,
-        )
+        build_hot_pool(candidates, traffic, policy, Some(&self.health), now_ms)
     }
 
     pub fn reassess_after_probe_race(

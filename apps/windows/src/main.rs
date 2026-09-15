@@ -459,10 +459,8 @@ impl AmriApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        let transport_ready = matches!(
-                            &self.transport_state,
-                            TransportUiState::Ready { .. }
-                        );
+                        let transport_ready =
+                            matches!(&self.transport_state, TransportUiState::Ready { .. });
                         let protection = evaluate_protection(ProtectionSignals {
                             requested: !matches!(&self.transport_state, TransportUiState::Idle),
                             transport_ready,

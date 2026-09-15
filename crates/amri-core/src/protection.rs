@@ -112,7 +112,9 @@ mod tests {
         });
         assert_eq!(readiness.state, ProtectionState::Preparing);
         assert!(!readiness.allow_public_traffic);
-        assert!(!readiness.missing.contains(&ProtectionRequirement::Transport));
+        assert!(!readiness
+            .missing
+            .contains(&ProtectionRequirement::Transport));
         assert!(readiness
             .missing
             .contains(&ProtectionRequirement::PacketForwarding));
