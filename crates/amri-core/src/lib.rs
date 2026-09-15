@@ -14,7 +14,7 @@ pub use model::{
     DestinationKey, NetworkProfile, NodeId, ProbeSample, RouteCandidate, TrafficClass,
 };
 pub use route_proof::{CandidateEvidence, RouteProof, RouteProofChain, RouteProofError};
-pub use scoring::{ScoreBreakdown, ScoringProfile};
+pub use scoring::{score_candidate, ScoreBreakdown, ScoringProfile};
 pub use selector::{
     RouteDecision, RouteSelector, RouteTransitionAction, RouteTransitionDecision, SelectionPolicy,
 };
