@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Android must not reuse the Windows DPAPI ciphertext format. The Android client now has a platform-native secret persistence boundary backed by Android Keystore.
+Android must not reuse the Windows DPAPI ciphertext format. The Android client has a platform-native secret persistence boundary backed by Android Keystore plus a deliberately narrow Rust/JNI bridge.
 
 ## Storage model
 
@@ -30,16 +30,36 @@ Version 1 binary format:
 
 Malformed, truncated or unknown-version envelopes fail closed.
 
+## Rust/JNI bridge
+
+`amri-android-ffi` is a `cdylib`/`rlib` boundary using the current JNI API. `AmriNativeBridge` is the Kotlin wrapper.
+
+The first exposed operation is intentionally specific: initialize or validate the installation-local `route-proof:key` slot.
+
+- Rust requests only that exact logical slot from `AndroidKeystoreSecretStore`.
+- The whole credential store is never enumerated or serialized over JNI.
+- A missing key is generated as 32 bytes with the OS CSPRNG and synchronously persisted through Android Keystore.
+- An existing key must be exactly 32 bytes. Wrong length fails closed and is not silently replaced.
+- The Route Proof key is never returned to Kotlin/UI as the operation result; Kotlin receives only a status code.
+- Temporary Java `byte[]` copies used for the JNI transfer are overwritten after a successful read/write handoff.
+- `AmriNativeBridge` loads `libamri_android_ffi.so` lazily. Builds that do not package the native library remain usable as the existing control-only Android client, and a native-only operation reports an unavailable runtime instead of crashing app startup.
+
 ## Security boundaries
 
 - Plaintext credentials are never written to SharedPreferences.
 - Preference names do not reveal logical subscription/secret names.
-- Crypto/Keystore errors returned to the caller use generic messages and do not include the secret value.
-- The caller still owns any plaintext `ByteArray` passed to `put` and should clear long-lived copies when practical.
+- Crypto/Keystore/JNI errors use generic messages and do not include the secret value.
+- Android Keystore remains the owner of platform persistence; Rust does not create a second plaintext/key file.
 - Android Keystore is platform-local. Secrets are not designed to be copied between Windows and Android.
+- New JNI operations must remain capability-like and exact-slot/exact-operation based. Do not add a generic "dump/import all secrets" JNI API.
 
 ## Current integration status
 
-This stage provides the native Android persistence adapter and unit-tested deterministic envelope/key-name logic. Rust FFI is not yet connected, so the shared Rust `SecretStore` trait cannot call this Kotlin adapter yet.
+The Android Keystore adapter and the narrow Rust/JNI secret bridge compile and are unit-tested. The native `.so` is not yet built for Android ABIs or packaged into the APK, so the bridge is not invoked by production Android runtime ownership yet.
 
-The next integration step is to expose a narrow Android/Rust secret bridge together with the production Android packet-forwarding boundary. That bridge should exchange only the exact secret requested by logical slot and must not serialize a whole credential store across JNI.
+Next steps:
+
+1. build/package `libamri_android_ffi.so` for Android ABIs (arm64-v8a first; x86_64 useful for debug/emulator);
+2. initialize the Route Proof/runtime owner through the packaged bridge;
+3. keep the same narrow-boundary rule for any additional secret operation;
+4. proceed to `NetworkCapabilities` observation, per-socket network binding and production packet forwarding.

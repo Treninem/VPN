@@ -1,0 +1,13 @@
+[package]
+name = "amri-android-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+amri-secrets = { path = "../amri-secrets" }
+getrandom.workspace = true
+jni.workspace = true
