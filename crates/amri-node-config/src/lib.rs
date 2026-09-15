@@ -1,5 +1,7 @@
 use amri_subscriptions::{ImportedNode, NodeProtocol};
-use amri_transport::{ConnectRequest, TransportEndpoint, TransportSecret};
+use amri_transport::{
+    ConnectRequest, TransportCredentials, TransportEndpoint, TransportSecret,
+};
 use base64::{engine::general_purpose, Engine as _};
 use percent_encoding::percent_decode_str;
 use std::collections::{BTreeMap, HashMap};
@@ -41,8 +43,8 @@ pub enum NodeConfigError {
 
 /// Consumes an imported node and converts its credential-bearing raw URI into the typed transport
 /// boundary. The raw URI is immediately wrapped in `Zeroizing<String>` and is cleared when this
-/// function returns. Credential material is moved into `TransportSecret`; only explicitly allowed
-/// non-secret values are copied into `ConnectRequest::options`.
+/// function returns. Credential material is moved into protocol-shaped `TransportCredentials`;
+/// only explicitly allowed non-secret values are copied into `ConnectRequest::options`.
 pub fn materialize_connect_request(
     node: ImportedNode,
     route_id: impl Into<String>,
@@ -69,6 +71,7 @@ pub fn materialize_connect_request(
         NodeProtocol::Trojan => parse_trojan(&raw_uri, materialize)?,
         NodeProtocol::Hysteria2 => parse_hysteria2(&raw_uri, materialize)?,
         NodeProtocol::Shadowsocks => parse_shadowsocks(&raw_uri, materialize)?,
+        NodeProtocol::Tuic => parse_tuic(&raw_uri, materialize)?,
         other => return Err(NodeConfigError::UnsupportedProtocol(other)),
     };
 
@@ -77,14 +80,14 @@ pub fn materialize_connect_request(
         node_fingerprint: fingerprint,
         protocol,
         endpoint: material.endpoint,
-        secret: TransportSecret::new(material.secret),
+        credentials: material.credentials,
         options: material.options,
     })
 }
 
 struct MaterializedNode {
     endpoint: TransportEndpoint,
-    secret: String,
+    credentials: TransportCredentials,
     options: BTreeMap<String, String>,
 }
 
@@ -116,7 +119,7 @@ fn parse_vless(
 
     Ok(MaterializedNode {
         endpoint: endpoint_from_url(&url)?,
-        secret: decode_component(url.username())?,
+        credentials: TransportCredentials::single(decode_component(url.username())?),
         options,
     })
 }
@@ -142,7 +145,7 @@ fn parse_trojan(
 
     Ok(MaterializedNode {
         endpoint: endpoint_from_url(&url)?,
-        secret: decode_component(url.username())?,
+        credentials: TransportCredentials::single(decode_component(url.username())?),
         options,
     })
 }
@@ -169,7 +172,41 @@ fn parse_hysteria2(
 
     Ok(MaterializedNode {
         endpoint: endpoint_from_url(&url)?,
-        secret: decode_component(url.username())?,
+        credentials: TransportCredentials::single(decode_component(url.username())?),
+        options,
+    })
+}
+
+fn parse_tuic(
+    raw_uri: &str,
+    materialize: MaterializeOptions,
+) -> Result<MaterializedNode, NodeConfigError> {
+    let url = Url::parse(raw_uri).map_err(|_| NodeConfigError::InvalidUri)?;
+    let username = decode_component(url.username())?;
+    let password = url
+        .password()
+        .ok_or(NodeConfigError::MissingCredential)
+        .and_then(decode_component)?;
+    let query = query_map(&url);
+    let mut options = base_options(materialize);
+    options.insert("tls".into(), "true".into());
+    copy_server_name(&query, &mut options);
+    copy_insecure(&query, &mut options)?;
+
+    if let Some(congestion) = query_value(&query, &["congestion_control", "congestion"]) {
+        let normalized = congestion.to_ascii_lowercase();
+        if !matches!(normalized.as_str(), "cubic" | "new_reno" | "bbr") {
+            return Err(NodeConfigError::InvalidOption("congestion_control"));
+        }
+        options.insert("congestion_control".into(), normalized);
+    }
+
+    Ok(MaterializedNode {
+        endpoint: endpoint_from_url(&url)?,
+        credentials: TransportCredentials::UsernamePassword {
+            username: TransportSecret::new(username),
+            password: TransportSecret::new(password),
+        },
         options,
     })
 }
@@ -226,7 +263,7 @@ fn parse_shadowsocks_modern(
 
     Ok(MaterializedNode {
         endpoint: endpoint_from_url(&url)?,
-        secret: password,
+        credentials: TransportCredentials::single(password),
         options,
     })
 }
@@ -251,7 +288,7 @@ fn parse_shadowsocks_legacy(
 
     Ok(MaterializedNode {
         endpoint: endpoint_from_url(&endpoint_url)?,
-        secret: password.to_string(),
+        credentials: TransportCredentials::single(password.to_string()),
         options,
     })
 }
@@ -404,7 +441,7 @@ mod tests {
         assert_eq!(request.endpoint.host, "vpn.example");
         assert_eq!(request.endpoint.port, 443);
         assert_eq!(
-            request.secret.expose_secret(),
+            request.credentials.as_single().unwrap(),
             "123e4567-e89b-12d3-a456-426614174000"
         );
         assert_eq!(request.options.get("server_name").unwrap(), "edge.example");
@@ -427,7 +464,7 @@ mod tests {
         let request =
             materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
 
-        assert_eq!(request.secret.expose_secret(), "p@ss:word");
+        assert_eq!(request.credentials.as_single(), Some("p@ss:word"));
         assert_eq!(request.options.get("tls").unwrap(), "true");
         assert_eq!(request.options.get("tls_insecure").unwrap(), "true");
     }
@@ -442,7 +479,7 @@ mod tests {
         let request =
             materialize_connect_request(node, "video", MaterializeOptions::default()).unwrap();
 
-        assert_eq!(request.secret.expose_secret(), "hy-secret");
+        assert_eq!(request.credentials.as_single(), Some("hy-secret"));
         assert_eq!(request.options.get("up_mbps").unwrap(), "40");
         assert_eq!(request.options.get("down_mbps").unwrap(), "120");
         assert!(!request.options.contains_key("tls_insecure"));
@@ -458,7 +495,7 @@ mod tests {
 
         assert_eq!(request.endpoint.host, "ss.example");
         assert_eq!(request.endpoint.port, 8388);
-        assert_eq!(request.secret.expose_secret(), "ss-password");
+        assert_eq!(request.credentials.as_single(), Some("ss-password"));
         assert_eq!(request.options.get("method").unwrap(), "aes-256-gcm");
     }
 
@@ -472,7 +509,7 @@ mod tests {
             materialize_connect_request(node, "download", MaterializeOptions::default()).unwrap();
 
         assert_eq!(request.endpoint.host, "legacy.example");
-        assert_eq!(request.secret.expose_secret(), "pw");
+        assert_eq!(request.credentials.as_single(), Some("pw"));
         assert_eq!(
             request.options.get("method").unwrap(),
             "chacha20-ietf-poly1305"
@@ -504,14 +541,15 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_multi_secret_protocol_is_explicit() {
+    fn tuic_materializes_typed_credentials_without_option_leak() {
         let node = parse_node_uri("a", "tuic://user:password@tuic.example:443#TUIC").unwrap();
-        let error =
-            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err();
+        let request =
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
 
-        assert_eq!(
-            error,
-            NodeConfigError::UnsupportedProtocol(NodeProtocol::Tuic)
-        );
+        assert_eq!(request.credentials.as_username_password(), Some(("user", "password")));
+        assert!(!request.options.values().any(|value| value == "user" || value == "password"));
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("password"));
+        assert!(!debug.contains("user"));
     }
 }

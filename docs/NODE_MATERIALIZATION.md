@@ -31,7 +31,7 @@ Materializer не должен молча отбрасывать парамет�
 - VLESS/Trojan transport кроме TCP, например WS/gRPC;
 - VLESS Reality и неизвестные security modes;
 - Shadowsocks plugins;
-- TUIC/WireGuard/VMess и другие протоколы, которым ещё нужен typed multi-secret/особый credential model;
+- WireGuard/VMess и другие протоколы, которым ещё нужен полный typed transport descriptor;
 - нулевой local port и некорректные numeric/bool options.
 
 Это лучше, чем показать пользователю «Connected», запустив другой transport, чем был задан подпиской.
@@ -46,4 +46,4 @@ Materializer не должен молча отбрасывать парамет�
 
 ## Следующий шаг
 
-Расширить typed credential model для TUIC/WireGuard/VMess и затем добавить typed transport descriptors для WS/gRPC/Reality вместо строкового копирования неизвестных query-параметров.
+Материализовать полный WireGuard/VMess descriptor и затем добавить typed transport descriptors для WS/gRPC/Reality вместо строкового копирования неизвестных query-параметров. TUIC уже использует отдельный username/password variant и не кладёт секреты в options.

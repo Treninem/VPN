@@ -32,6 +32,6 @@ protection and kill-switch enforcement are confirmed.
 
 ## Current protocols
 
-The production renderer currently accepts VLESS, Trojan, Shadowsocks and Hysteria2 configurations
-supported by `amri-node-config`. VMess, TUIC and WireGuard need the planned typed multi-secret
-credential model.
+The production renderer currently accepts VLESS, Trojan, Shadowsocks, Hysteria2 and TUIC
+configurations supported by `amri-node-config`. VMess and WireGuard still need their full typed
+transport descriptors.

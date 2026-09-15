@@ -23,6 +23,54 @@ impl fmt::Debug for TransportSecret {
     }
 }
 
+/// Protocol-shaped credential material. Secrets stay out of generic option maps and Debug output.
+pub enum TransportCredentials {
+    Single(TransportSecret),
+    UsernamePassword {
+        username: TransportSecret,
+        password: TransportSecret,
+    },
+    WireGuard {
+        private_key: TransportSecret,
+        peer_public_key: String,
+        preshared_key: Option<TransportSecret>,
+    },
+}
+
+impl TransportCredentials {
+    pub fn single(value: impl Into<String>) -> Self {
+        Self::Single(TransportSecret::new(value))
+    }
+
+    pub fn as_single(&self) -> Option<&str> {
+        match self {
+            Self::Single(secret) => Some(secret.expose_secret()),
+            _ => None,
+        }
+    }
+
+    pub fn as_username_password(&self) -> Option<(&str, &str)> {
+        match self {
+            Self::UsernamePassword { username, password } => {
+                Some((username.expose_secret(), password.expose_secret()))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Debug for TransportCredentials {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Single(_) => formatter.write_str("Single([REDACTED])"),
+            Self::UsernamePassword { .. } => {
+                formatter.write_str("UsernamePassword([REDACTED])")
+            }
+            Self::WireGuard { .. } => formatter.write_str("WireGuard([REDACTED])"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransportEndpoint {
     pub host: String,
@@ -36,7 +84,7 @@ pub struct ConnectRequest {
     pub node_fingerprint: String,
     pub protocol: NodeProtocol,
     pub endpoint: TransportEndpoint,
-    pub secret: TransportSecret,
+    pub credentials: TransportCredentials,
     pub options: BTreeMap<String, String>,
 }
 
@@ -391,7 +439,7 @@ mod tests {
             ));
             drop(calls);
 
-            assert_eq!(request.secret.expose_secret(), "private");
+            assert_eq!(request.credentials.as_single(), Some("private"));
             Ok(TransportSession {
                 route_id: request.route_id.clone(),
                 node_fingerprint: if request.node_fingerprint == "wrong-node-result" {
@@ -454,7 +502,7 @@ mod tests {
                 host: "vpn.example".into(),
                 port: 51820,
             },
-            secret: TransportSecret::new("private"),
+            credentials: TransportCredentials::single("private"),
             options: BTreeMap::new(),
         }
     }

@@ -52,7 +52,7 @@ Supported non-secret options currently include:
 - `up_mbps` / `down_mbps` for Hysteria2;
 - `local_port` for an optional loopback `mixed` inbound.
 
-TUIC, WireGuard and other protocols that require multiple credential fields are intentionally rejected for now instead of putting additional secrets into the ordinary options map.
+`TransportCredentials` is protocol-shaped: single-secret, username/password (TUIC), and a reserved WireGuard key set. TUIC is production-rendered without copying credentials into ordinary options. WireGuard remains rejected until its complete address/peer descriptor is materialized.
 
 ## Licensing boundary
 
@@ -62,7 +62,7 @@ Before any third-party core is shipped inside an AMRI installer/APK, its current
 
 ## Remaining work
 
-- typed multi-secret credential material for TUIC/WireGuard/VMess and other protocols;
+- complete typed WireGuard/VMess transport descriptors;
 - Android Keystore implementation of `SecretStore`;
 - secure conversion from imported node URI to typed `ConnectRequest` without retaining unnecessary plaintext copies;
 - production readiness handshake beyond basic process liveness;
