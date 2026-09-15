@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod theme;
 mod secure_nodes;
+mod theme;
 mod transport_worker;
 
 use amri_core::{

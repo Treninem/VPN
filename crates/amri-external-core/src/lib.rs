@@ -363,7 +363,11 @@ impl CoreConfigRenderer for SingBoxRenderer {
                 outbound.insert("uuid".into(), json!(secret));
                 outbound.insert(
                     "security".into(),
-                    json!(request.options.get("security").map(String::as_str).unwrap_or("auto")),
+                    json!(request
+                        .options
+                        .get("security")
+                        .map(String::as_str)
+                        .unwrap_or("auto")),
                 );
                 if let Some(alter_id) = option_u64(request, "alter_id")? {
                     outbound.insert("alter_id".into(), json!(alter_id));
@@ -609,7 +613,9 @@ mod tests {
         request.options.insert("security".into(), "auto".into());
         request.options.insert("alter_id".into(), "0".into());
         request.options.insert("tls".into(), "true".into());
-        request.options.insert("server_name".into(), "edge.example".into());
+        request
+            .options
+            .insert("server_name".into(), "edge.example".into());
 
         let config = SingBoxRenderer.render(&request).unwrap();
         let value: Value = serde_json::from_str(config.expose_secret()).unwrap();

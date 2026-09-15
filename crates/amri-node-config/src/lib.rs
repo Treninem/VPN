@@ -648,7 +648,9 @@ mod tests {
         let request = materialize_connect_request(
             node,
             "web",
-            MaterializeOptions { local_port: Some(20800) },
+            MaterializeOptions {
+                local_port: Some(20800),
+            },
         )
         .unwrap();
 
