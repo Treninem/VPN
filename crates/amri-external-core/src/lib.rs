@@ -27,53 +27,6 @@ impl RenderedConfig {
         self.0.as_str()
     }
 
-    #[test]
-    fn readiness_timeout_stops_unusable_process() {
-        let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = reserved.local_addr().unwrap().port();
-        drop(reserved);
-
-        let stopped = Arc::new(AtomicBool::new(false));
-        let mut adapter = SupervisedProcessAdapter::with_spawner_and_policy(
-            sing_box_process_spec("sing-box"),
-            SingBoxRenderer,
-            FakeSpawner {
-                exit_after_connect_check: false,
-                stopped: stopped.clone(),
-            },
-            ReadinessPolicy {
-                startup_timeout: Duration::from_millis(10),
-                poll_interval: Duration::from_millis(1),
-                connect_timeout: Duration::from_millis(1),
-            },
-        );
-        let mut request = request(NodeProtocol::Vless);
-        request.options.insert("local_port".into(), port.to_string());
-
-        let error = adapter.connect(&request).unwrap_err();
-
-        assert!(error.message.contains("readiness timed out"));
-        assert!(stopped.load(Ordering::SeqCst));
-        assert!(adapter.processes.is_empty());
-    }
-
-    #[test]
-    fn missing_local_port_fails_before_process_start() {
-        let stopped = Arc::new(AtomicBool::new(false));
-        let mut adapter = SupervisedProcessAdapter::with_spawner(
-            sing_box_process_spec("sing-box"),
-            SingBoxRenderer,
-            FakeSpawner {
-                exit_after_connect_check: false,
-                stopped,
-            },
-        );
-
-        let error = adapter.connect(&request(NodeProtocol::Vless)).unwrap_err();
-
-        assert!(error.message.contains("non-zero local_port"));
-        assert!(adapter.processes.is_empty());
-    }
 }
 
 impl fmt::Debug for RenderedConfig {
@@ -681,5 +634,53 @@ mod tests {
             adapter.health(&session).unwrap().state,
             SessionState::Degraded
         );
+    }
+
+    #[test]
+    fn readiness_timeout_stops_unusable_process() {
+        let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = reserved.local_addr().unwrap().port();
+        drop(reserved);
+
+        let stopped = Arc::new(AtomicBool::new(false));
+        let mut adapter = SupervisedProcessAdapter::with_spawner_and_policy(
+            sing_box_process_spec("sing-box"),
+            SingBoxRenderer,
+            FakeSpawner {
+                exit_after_connect_check: false,
+                stopped: stopped.clone(),
+            },
+            ReadinessPolicy {
+                startup_timeout: Duration::from_millis(10),
+                poll_interval: Duration::from_millis(1),
+                connect_timeout: Duration::from_millis(1),
+            },
+        );
+        let mut request = request(NodeProtocol::Vless);
+        request.options.insert("local_port".into(), port.to_string());
+
+        let error = adapter.connect(&request).unwrap_err();
+
+        assert!(error.message.contains("readiness timed out"));
+        assert!(stopped.load(Ordering::SeqCst));
+        assert!(adapter.processes.is_empty());
+    }
+
+    #[test]
+    fn missing_local_port_fails_before_process_start() {
+        let stopped = Arc::new(AtomicBool::new(false));
+        let mut adapter = SupervisedProcessAdapter::with_spawner(
+            sing_box_process_spec("sing-box"),
+            SingBoxRenderer,
+            FakeSpawner {
+                exit_after_connect_check: false,
+                stopped,
+            },
+        );
+
+        let error = adapter.connect(&request(NodeProtocol::Vless)).unwrap_err();
+
+        assert!(error.message.contains("non-zero local_port"));
+        assert!(adapter.processes.is_empty());
     }
 }
