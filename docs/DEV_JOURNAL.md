@@ -227,6 +227,14 @@
 
 **Проверка:** materializer/renderer/Debug tests покрывают TUIC и credential-shape mismatch; полный CI обязателен перед merge.
 
+### Ручная настройка UI без изменения ядра
+
+- Основные Windows/Android colors, radii, spacing и control sizes вынесены в platform theme tokens.
+- Layout остаётся нативным для платформ, а вся утверждённая графика — единственным источником в `assets/brand`.
+- `docs/UI_CUSTOMIZATION.md` фиксирует точные файлы, безопасную замену ресурсов и обновление reviewed asset lock.
+
+**Почему:** владелец должен иметь возможность вручную менять визуал/расположение без риска затронуть routing/security code или случайно вернуть устаревший asset.
+
 ## Постоянный протокол разработки
 
 - `AGENTS.md` + этот журнал — canonical cross-chat/cross-account handoff mechanism.

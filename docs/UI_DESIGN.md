@@ -18,6 +18,10 @@
 
 ## Визуальные токены
 
+Редактируемые source-of-truth находятся в `apps/windows/src/theme.rs` и
+`apps/android/app/src/main/java/ru/amri/vpn/AmriTheme.kt`. Инструкция по ручной замене layout и
+утверждённых ресурсов: `docs/UI_CUSTOMIZATION.md`.
+
 - Базовый радиус карточек: 18 px.
 - Крупные панели/модальные окна: 24 px.
 - Кнопки: 14–18 px.
