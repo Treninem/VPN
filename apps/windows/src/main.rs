@@ -1,7 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod transport_worker;
+
 use amri_core::{ui_text, Language, UiMessage};
+use amri_subscriptions::{parse_subscription_text, ImportedNode};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
+use std::path::PathBuf;
+use std::time::Duration;
+use transport_worker::{TransportUiState, TransportWorker};
 
 fn amri_window_icon() -> egui::IconData {
     let image = image::load_from_memory(include_bytes!("../../../assets/brand/amri-icon.png"))
@@ -45,7 +51,13 @@ enum Page {
 struct AmriApp {
     page: Page,
     language: Language,
-    connected: bool,
+    transport: TransportWorker,
+    transport_state: TransportUiState,
+    subscription_input: String,
+    imported_nodes: Vec<ImportedNode>,
+    selected_node: usize,
+    core_path: String,
+    local_port: String,
     smart_routing: bool,
     kill_switch: bool,
     learning: bool,
@@ -79,12 +91,74 @@ impl AmriApp {
         Self {
             page: Page::Home,
             language,
-            connected: false,
+            transport: TransportWorker::new(),
+            transport_state: TransportUiState::Idle,
+            subscription_input: String::new(),
+            imported_nodes: Vec::new(),
+            selected_node: 0,
+            core_path: std::env::var("AMRI_SING_BOX_PATH")
+                .unwrap_or_else(|_| "sing-box.exe".into()),
+            local_port: "20800".into(),
             smart_routing: true,
             kill_switch: true,
             learning: true,
             federated_learning: false,
             background_probing: true,
+        }
+    }
+
+    fn transport_ready(&self) -> bool {
+        matches!(&self.transport_state, TransportUiState::Ready { .. })
+    }
+
+    fn refresh_transport_state(&mut self, ctx: &egui::Context) {
+        if let Some(state) = self.transport.latest_state() {
+            self.transport_state = state;
+        }
+        if matches!(&self.transport_state, TransportUiState::Connecting) {
+            ctx.request_repaint_after(Duration::from_millis(40));
+        }
+    }
+
+    fn import_subscription_text(&mut self) {
+        self.imported_nodes = parse_subscription_text("windows-manual", &self.subscription_input);
+        self.subscription_input.clear();
+        self.selected_node = 0;
+        if self.imported_nodes.is_empty() {
+            self.transport_state =
+                TransportUiState::Failed("no supported VPN nodes were found".into());
+        } else if matches!(&self.transport_state, TransportUiState::Failed(_)) {
+            self.transport_state = TransportUiState::Idle;
+        }
+    }
+
+    fn start_transport(&mut self) {
+        let Some(node) = self.imported_nodes.get(self.selected_node).cloned() else {
+            self.page = Page::Subscriptions;
+            return;
+        };
+        let port = match self.local_port.trim().parse::<u16>() {
+            Ok(port) if port != 0 => port,
+            _ => {
+                self.transport_state =
+                    TransportUiState::Failed("local port must be between 1 and 65535".into());
+                return;
+            }
+        };
+
+        match self
+            .transport
+            .connect(node, PathBuf::from(self.core_path.trim()), port)
+        {
+            Ok(()) => self.transport_state = TransportUiState::Connecting,
+            Err(error) => self.transport_state = TransportUiState::Failed(error),
+        }
+    }
+
+    fn stop_transport(&mut self) {
+        match self.transport.disconnect() {
+            Ok(()) => self.transport_state = TransportUiState::Connecting,
+            Err(error) => self.transport_state = TransportUiState::Failed(error),
         }
     }
 
@@ -218,50 +292,63 @@ impl AmriApp {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(
-                            RichText::new(if self.connected {
-                                ui_text(self.language, UiMessage::ProtectionOn)
-                            } else {
-                                ui_text(self.language, UiMessage::ProtectionOff)
-                            })
-                            .size(24.0)
-                            .strong(),
+                            RichText::new(ui_text(self.language, UiMessage::ProtectionOff))
+                                .size(24.0)
+                                .strong(),
                         );
                         ui.add_space(4.0);
                         ui.label(
-                            RichText::new(if self.connected {
-                                ui_text(self.language, UiMessage::EngineReady)
-                            } else {
-                                ui_text(self.language, UiMessage::AddSubscriptionFirst)
+                            RichText::new(match &self.transport_state {
+                                TransportUiState::Idle => {
+                                    ui_text(self.language, UiMessage::AddSubscriptionFirst).into()
+                                }
+                                TransportUiState::Connecting => {
+                                    ui_text(self.language, UiMessage::TransportConnecting).into()
+                                }
+                                TransportUiState::Ready {
+                                    node_name,
+                                    local_port,
+                                    ..
+                                } => format!(
+                                    "{} · {} · 127.0.0.1:{}",
+                                    ui_text(self.language, UiMessage::TransportReady),
+                                    node_name,
+                                    local_port
+                                ),
+                                TransportUiState::Failed(error) => error.clone(),
                             })
                             .color(Color32::from_gray(155)),
                         );
                     });
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let label = if self.connected {
+                        let label = if self.transport_ready() {
                             ui_text(self.language, UiMessage::Disconnect)
                         } else {
                             ui_text(self.language, UiMessage::Connect)
                         };
-                        let fill = if self.connected {
+                        let fill = if self.transport_ready() {
                             Color32::from_rgb(58, 72, 98)
                         } else {
                             Color32::from_rgb(67, 104, 255)
                         };
+                        let button = egui::Button::new(RichText::new(label).size(16.0).strong())
+                            .fill(fill)
+                            .stroke(Stroke::NONE)
+                            .corner_radius(18);
+                        let enabled =
+                            !matches!(&self.transport_state, TransportUiState::Connecting);
                         if ui
-                            .add_sized(
-                                [150.0, 54.0],
-                                egui::Button::new(RichText::new(label).size(16.0).strong())
-                                    .fill(fill)
-                                    .stroke(Stroke::NONE)
-                                    .corner_radius(18),
-                            )
+                            .add_enabled_ui(enabled, |ui| ui.add_sized([150.0, 54.0], button))
+                            .inner
                             .clicked()
                         {
-                            if self.connected {
-                                self.connected = false;
-                            } else {
+                            if self.transport_ready() {
+                                self.stop_transport();
+                            } else if self.imported_nodes.is_empty() {
                                 self.page = Page::Subscriptions;
+                            } else {
+                                self.start_transport();
                             }
                         }
                     });
@@ -273,27 +360,12 @@ impl AmriApp {
             Self::metric_card(
                 ui,
                 ui_text(self.language, UiMessage::ActiveRoutes),
-                if self.connected { "4" } else { "0" },
+                if self.transport_ready() { "1" } else { "0" },
                 "",
             );
-            Self::metric_card(
-                ui,
-                ui_text(self.language, UiMessage::AveragePing),
-                if self.connected { "31 ms" } else { "—" },
-                "",
-            );
-            Self::metric_card(
-                ui,
-                ui_text(self.language, UiMessage::Jitter),
-                if self.connected { "2.8 ms" } else { "—" },
-                "",
-            );
-            Self::metric_card(
-                ui,
-                ui_text(self.language, UiMessage::RouteScore),
-                if self.connected { "94" } else { "—" },
-                "",
-            );
+            Self::metric_card(ui, ui_text(self.language, UiMessage::AveragePing), "—", "");
+            Self::metric_card(ui, ui_text(self.language, UiMessage::Jitter), "—", "");
+            Self::metric_card(ui, ui_text(self.language, UiMessage::RouteScore), "—", "");
         });
 
         ui.add_space(22.0);
@@ -338,18 +410,98 @@ impl AmriApp {
 
     fn routes(&mut self, ui: &mut egui::Ui) {
         ui.heading(RichText::new(ui_text(self.language, UiMessage::Routes)).size(30.0));
-        ui.label(
-            RichText::new(ui_text(self.language, UiMessage::NoActiveRoutes))
-                .color(Color32::from_gray(150)),
-        );
-        ui.add_space(18.0);
+        ui.add_space(12.0);
+
         egui::Frame::new()
             .fill(Color32::from_rgb(22, 27, 36))
             .corner_radius(18)
             .inner_margin(18)
-            .show(ui, |ui| {
-                ui.label(ui_text(self.language, UiMessage::AddSubscriptionFirst));
+            .show(ui, |ui| match &self.transport_state {
+                TransportUiState::Ready {
+                    node_name,
+                    node_fingerprint,
+                    local_port,
+                } => {
+                    ui.label(RichText::new(node_name).size(18.0).strong());
+                    ui.label(
+                        RichText::new(format!("127.0.0.1:{local_port}"))
+                            .color(Color32::from_rgb(99, 220, 160)),
+                    );
+                    ui.label(
+                        RichText::new(node_fingerprint)
+                            .size(11.0)
+                            .color(Color32::from_gray(120)),
+                    );
+                    ui.add_space(8.0);
+                    ui.label(
+                        RichText::new(ui_text(self.language, UiMessage::TransportOnlyWarning))
+                            .color(Color32::from_rgb(238, 187, 88)),
+                    );
+                }
+                _ => {
+                    ui.label(
+                        RichText::new(ui_text(self.language, UiMessage::NoActiveRoutes))
+                            .color(Color32::from_gray(150)),
+                    );
+                }
             });
+    }
+
+    fn subscriptions(&mut self, ui: &mut egui::Ui) {
+        ui.heading(RichText::new(ui_text(self.language, UiMessage::Subscriptions)).size(30.0));
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::SubscriptionContent))
+                .color(Color32::from_gray(150)),
+        );
+        ui.add(
+            egui::TextEdit::multiline(&mut self.subscription_input)
+                .desired_rows(7)
+                .hint_text("vless://…\ntrojan://…\nss://…\nhysteria2://…"),
+        );
+
+        if ui
+            .add(egui::Button::new(ui_text(self.language, UiMessage::Import)).corner_radius(12))
+            .clicked()
+        {
+            self.import_subscription_text();
+        }
+
+        ui.add_space(12.0);
+        ui.label(format!(
+            "{}: {}",
+            ui_text(self.language, UiMessage::ImportedNodes),
+            self.imported_nodes.len()
+        ));
+
+        if !self.imported_nodes.is_empty() {
+            let selected = self
+                .imported_nodes
+                .get(self.selected_node)
+                .map(|node| node.display_name.as_str())
+                .unwrap_or("—");
+            egui::ComboBox::from_id_salt("transport-node")
+                .selected_text(selected)
+                .show_ui(ui, |ui| {
+                    for (index, node) in self.imported_nodes.iter().enumerate() {
+                        ui.selectable_value(
+                            &mut self.selected_node,
+                            index,
+                            format!("{} · {:?}", node.display_name, node.protocol),
+                        );
+                    }
+                });
+        }
+
+        ui.add_space(12.0);
+        ui.label(ui_text(self.language, UiMessage::CoreExecutable));
+        ui.text_edit_singleline(&mut self.core_path);
+        ui.label(ui_text(self.language, UiMessage::LocalPort));
+        ui.text_edit_singleline(&mut self.local_port);
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::TransportOnlyWarning))
+                .size(12.0)
+                .color(Color32::from_rgb(238, 187, 88)),
+        );
     }
 
     fn placeholder(&self, ui: &mut egui::Ui, title: &str) {
@@ -363,6 +515,7 @@ impl AmriApp {
 
 impl eframe::App for AmriApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.refresh_transport_state(ui.ctx());
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::from_rgb(13, 16, 22)))
             .show(ui, |ui| {
@@ -386,10 +539,7 @@ impl eframe::App for AmriApp {
                             match self.page {
                                 Page::Home => self.home(ui),
                                 Page::Routes => self.routes(ui),
-                                Page::Subscriptions => self.placeholder(
-                                    ui,
-                                    ui_text(self.language, UiMessage::Subscriptions),
-                                ),
+                                Page::Subscriptions => self.subscriptions(ui),
                                 Page::Rules => {
                                     self.placeholder(ui, ui_text(self.language, UiMessage::Rules))
                                 }

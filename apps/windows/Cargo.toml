@@ -9,3 +9,6 @@ eframe = { version = "0.36.2", default-features = true }
 image = { version = "0.25", default-features = false, features = ["png"] }
 amri-core = { path = "../../crates/amri-core" }
 amri-subscriptions = { path = "../../crates/amri-subscriptions" }
+amri-node-config = { path = "../../crates/amri-node-config" }
+amri-transport = { path = "../../crates/amri-transport" }
+amri-external-core = { path = "../../crates/amri-external-core" }

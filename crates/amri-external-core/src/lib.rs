@@ -262,6 +262,15 @@ impl SupervisedProcessAdapter {
     }
 }
 
+impl Drop for SupervisedProcessAdapter {
+    fn drop(&mut self) {
+        for managed in self.processes.values_mut() {
+            let _ = managed.process.stop();
+        }
+        self.processes.clear();
+    }
+}
+
 impl TransportAdapter for SupervisedProcessAdapter {
     fn id(&self) -> &str {
         &self.spec.adapter_id
@@ -623,6 +632,25 @@ mod tests {
         adapter.disconnect(&session).unwrap();
         assert!(stopped.load(Ordering::SeqCst));
         assert!(adapter.health(&session).is_err());
+    }
+
+    #[test]
+    fn dropping_adapter_stops_tracked_processes() {
+        let stopped = Arc::new(AtomicBool::new(false));
+        let (request, _listener) = ready_request(NodeProtocol::Trojan);
+        {
+            let mut adapter = SupervisedProcessAdapter::with_spawner(
+                sing_box_process_spec("sing-box"),
+                SingBoxRenderer,
+                FakeSpawner {
+                    exit_after_connect_check: false,
+                    stopped: stopped.clone(),
+                },
+            );
+            adapter.connect(&request).unwrap();
+        }
+
+        assert!(stopped.load(Ordering::SeqCst));
     }
 
     #[test]
