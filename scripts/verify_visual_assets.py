@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / "assets" / "brand"
+ASSET_LOCK = BRAND / "asset-blobs.lock"
 
 CANONICAL_GRAPHICS = {
     "amri-icon.png",
@@ -85,6 +86,55 @@ def read(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
+def locked_blobs(errors: list[str]) -> dict[str, str]:
+    if not ASSET_LOCK.is_file():
+        errors.append("missing assets/brand/asset-blobs.lock")
+        return {}
+
+    entries: dict[str, str] = {}
+    for line_number, raw_line in enumerate(
+        ASSET_LOCK.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2:
+            errors.append(f"malformed asset lock line {line_number}")
+            continue
+        blob, name = parts
+        if name in entries:
+            errors.append(f"duplicate asset lock entry: {name}")
+            continue
+        entries[name] = blob
+
+    locked_names = set(entries)
+    if locked_names != CANONICAL_GRAPHICS:
+        missing = sorted(CANONICAL_GRAPHICS - locked_names)
+        extra = sorted(locked_names - CANONICAL_GRAPHICS)
+        if missing:
+            errors.append(f"asset lock is missing entries: {', '.join(missing)}")
+        if extra:
+            errors.append(f"asset lock contains unknown entries: {', '.join(extra)}")
+    return entries
+
+
+def verify_locked_bytes(errors: list[str]) -> None:
+    entries = locked_blobs(errors)
+    for name, expected_blob in sorted(entries.items()):
+        asset = BRAND / name
+        if not asset.is_file():
+            continue
+        actual_blob = subprocess.check_output(
+            ["git", "hash-object", str(asset)], cwd=ROOT, text=True
+        ).strip()
+        if actual_blob != expected_blob:
+            errors.append(
+                f"canonical asset bytes changed without review: {name} "
+                f"(locked {expected_blob}, actual {actual_blob})"
+            )
+
+
 def main() -> None:
     errors: list[str] = []
     tracked = tracked_files()
@@ -93,6 +143,8 @@ def main() -> None:
         path = BRAND / name
         if not path.is_file():
             errors.append(f"missing canonical asset: assets/brand/{name}")
+
+    verify_locked_bytes(errors)
 
     # A canonical basename must never be maintained somewhere else in the repo.
     for path in tracked:
@@ -151,8 +203,8 @@ def main() -> None:
 
     fail(errors)
     print(
-        "AMRI visual assets OK: canonical single-source artwork, platform references, "
-        "and duplicate guards verified."
+        "AMRI visual assets OK: exact approved bytes, canonical single-source artwork, "
+        "platform references, and duplicate guards verified."
     )
 
 
