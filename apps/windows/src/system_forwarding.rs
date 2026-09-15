@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use std::mem::{size_of, zeroed};
 use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread::{self, JoinHandle};
@@ -461,13 +460,7 @@ pub(crate) fn resolve_server_ips(host: &str, port: u16) -> Result<Vec<IpAddr>, S
 }
 
 fn bypass_cidrs(ips: &[IpAddr]) -> Result<Vec<IpCidr>, String> {
-    ips.iter()
-        .map(|ip| {
-            let prefix = if ip.is_ipv4() { 32 } else { 128 };
-            IpCidr::from_str(&format!("{ip}/{prefix}"))
-                .map_err(|_| "failed to construct VPN server bypass route".to_string())
-        })
-        .collect()
+    Ok(ips.iter().copied().map(IpCidr::new_host).collect())
 }
 
 fn preflight_runtime() -> Result<(), String> {
@@ -559,14 +552,15 @@ mod tests {
 
     #[test]
     fn bypass_routes_are_host_specific_for_both_ip_families() {
-        let cidrs = bypass_cidrs(&[
-            "203.0.113.7".parse().unwrap(),
-            "2001:db8::7".parse().unwrap(),
-        ])
-        .unwrap();
-        let rendered = cidrs.iter().map(ToString::to_string).collect::<Vec<_>>();
-        assert!(rendered.contains(&"203.0.113.7/32".to_string()));
-        assert!(rendered.contains(&"2001:db8::7/128".to_string()));
+        let ipv4 = "203.0.113.7".parse::<IpAddr>().unwrap();
+        let ipv6 = "2001:db8::7".parse::<IpAddr>().unwrap();
+        let cidrs = bypass_cidrs(&[ipv4, ipv6]).unwrap();
+        assert!(cidrs.iter().any(|cidr| {
+            cidr.first_address() == ipv4 && cidr.network_length() == 32 && cidr.is_host_address()
+        }));
+        assert!(cidrs.iter().any(|cidr| {
+            cidr.first_address() == ipv6 && cidr.network_length() == 128 && cidr.is_host_address()
+        }));
     }
 
     #[test]
