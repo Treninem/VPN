@@ -239,16 +239,16 @@ pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEval
 ) -> jint {
     evaluate_mobile_policy(
         kind,
-        validated != 0,
-        metered != 0,
-        roaming != 0,
-        data_saver != 0,
-        battery_saver != 0,
+        validated,
+        metered,
+        roaming,
+        data_saver,
+        battery_saver,
         downstream_kbps,
         upstream_kbps,
         mode,
-        allow_metered_secondary != 0,
-        allow_latency_duplication != 0,
+        allow_metered_secondary,
+        allow_latency_duplication,
     )
 }
 
