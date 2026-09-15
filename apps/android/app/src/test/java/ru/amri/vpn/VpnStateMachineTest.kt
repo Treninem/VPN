@@ -17,9 +17,26 @@ class VpnStateMachineTest {
     }
 
     @Test
-    fun duplicate_start_is_rejected() {
+    fun serviceReadyIsNotProtectedUntilExplicitGatePasses() {
         val state = VpnStateMachine()
         assertTrue(state.startPreparing())
+        state.serviceReady()
+        assertEquals(VpnControllerState.SERVICE_READY, state.state)
+
+        state.protectionReady()
+        assertEquals(VpnControllerState.PROTECTED, state.state)
+
+        state.protectionLost()
+        assertEquals(VpnControllerState.SERVICE_READY, state.state)
+    }
+
+    @Test
+    fun duplicate_start_is_rejected_in_preparing_or_protected_state() {
+        val state = VpnStateMachine()
+        assertTrue(state.startPreparing())
+        assertFalse(state.startPreparing())
+        state.serviceReady()
+        state.protectionReady()
         assertFalse(state.startPreparing())
     }
 
