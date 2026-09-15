@@ -116,6 +116,22 @@
 
 **Текущий NDK:** CI использует предустановленный runner NDK 29, чтобы не скачивать большой NDK на каждый run. Переход на отдельно pinned/downloaded NDK LTS является инфраструктурным улучшением и не должен менять JNI contract.
 
+### Android service runtime bootstrap + asset verification
+
+- `AmriVpnService` теперь до создания control TUN запускает service-owned `AndroidRuntimeOwner`, который через узкий JNI bridge создаёт/проверяет Route Proof key в Android Keystore.
+- Ошибка native/Keystore bootstrap оставляет сервис в `FAILED`; явный повтор разрешён state machine и может восстановиться после временной ошибки. После успеха bootstrap не повторяется в рамках экземпляра сервиса.
+- UI не получает ключ и не владеет runtime lifecycle; тексты исключений не логируются.
+- Android notification использует каноническую AMRI app icon вместо системной warning icon.
+- Выполнен визуальный просмотр canonical icon/background/button set; устаревшая raster ON-кнопка с квадратным фоном не подключена. Windows и Android используют canonical sources напрямую или через build-time copy.
+- Существующий `asset-blobs.lock` + `scripts/verify_visual_assets.py` остаются единым byte-integrity guard в CI; дублирующая Gradle-проверка не добавлялась.
+- Windows headline снова всегда показывает protection OFF при одной лишь loopback transport readiness; ON допускается только будущим public-tunnel gate.
+
+**Почему:** упакованная `.so` сама по себе не инициализирует runtime security owner, а local proxy/VpnService control interface не доказывают защиту публичного трафика. Единый asset lock предотвращает незаметную подмену утверждённых ресурсов.
+
+**Альтернативы:** UI-owned secret bootstrap, generic JNI secret store, продолжение после native failure, отдельные перерисованные Android icons и второй параллельный asset lock отвергнуты.
+
+**Проверка:** окончательная проверка — полный GitHub Actions CI ветки (Rust fmt/test/check, Android tests/native build/APK и canonical asset lock).
+
 ### Route Proof / Shadow Race
 
 - Shadow Race оценивает завершённый параллельный burst без искусственного countdown.
@@ -185,7 +201,8 @@
 - Rust workspace компилируется и проходит unit-тесты.
 - Android app компилируется, JVM unit-тесты проходят, debug APK собирается.
 - `libamri_android_ffi.so` реально cross-compiled и проверенно упаковывается в APK для `arm64-v8a` и `x86_64`.
-- Android Keystore persistence и narrow exact-slot JNI bridge реализованы; runtime owner ещё не вызывает bridge автоматически.
+- Android Keystore persistence, narrow exact-slot JNI bridge и service-owned Route Proof bootstrap реализованы.
+- Утверждённые visual assets закреплены byte lock и проверяются CI; Windows/Android используют canonical set.
 - Multi-subscription, scoring, confidence, hysteresis, circuit breaker, hot pool, micro-race и Shadow Race реализованы.
 - Probe/race реально влияют на quarantine и stable route decision.
 - Route Proof persistent/authenticated и привязан к transport-confirmed executed node.
@@ -197,20 +214,18 @@
 
 # NEXT PRIORITIES
 
-1. Инициализировать Android Route Proof/runtime owner через уже упакованный `AmriNativeBridge`, не перенося управление секретами в UI и не расширяя JNI до generic credential API.
-2. Подключить Android `NetworkCapabilities`/callbacks к `MobileNetworkSnapshot` и держать наблюдение за сетью отдельно от UI.
-3. Добавить per-socket network binding и применение `AdaptiveMtuController` в production forwarding path.
-4. Реализовать public packet forwarding: Android TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
-5. Добавить public-tunnel confirmation gate; только после него UI показывает реальную защиту.
-6. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
-7. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover; AMRI Bond relay проектировать отдельным opt-in этапом.
-8. Добавить end-to-end failover/leak tests, kill-switch, затем per-domain/per-process routing.
+1. Подключить Android `NetworkCapabilities`/callbacks к `MobileNetworkSnapshot` и держать наблюдение за сетью отдельно от UI.
+2. Добавить per-socket network binding и применение `AdaptiveMtuController` в production forwarding path.
+3. Реализовать public packet forwarding: Android TUN forwarding и Windows system forwarding/TUN-WFP + DNS protection.
+4. Добавить public-tunnel confirmation gate; только после него UI показывает реальную защиту.
+5. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и richer transport descriptors.
+6. После стабильного single-path VPN добавить optional Wi-Fi + cellular warm failover; AMRI Bond relay проектировать отдельным opt-in этапом.
+7. Добавить end-to-end failover/leak tests, kill-switch, затем per-domain/per-process routing.
 
 # KNOWN ISSUES / RISKS
 
 - Нет полноценного подтверждённого public packet forwarding end-to-end.
 - Loopback readiness подтверждает local inbound, но не Internet traffic через tunnel.
-- Native `.so` уже упакована, но Android runtime bootstrap ещё не инициализирует Route Proof owner через bridge.
 - Android mobile snapshot пока не получает live `NetworkCapabilities`; core policy ещё не управляет реальными sockets/TUN MTU.
 - `ImportedNode.raw_uri` всё ещё существует как обычный `String` в импортированном пуле; нужна encrypted persistence и сокращение plaintext lifetime.
 - TUIC/WireGuard/VMess ещё не production-rendered.

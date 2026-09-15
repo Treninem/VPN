@@ -23,7 +23,11 @@ class VpnStateMachine {
 
     @Synchronized
     fun startPreparing(): Boolean {
-        if (state != VpnControllerState.IDLE && state != VpnControllerState.PERMISSION_REQUIRED) {
+        if (
+            state != VpnControllerState.IDLE &&
+            state != VpnControllerState.PERMISSION_REQUIRED &&
+            state != VpnControllerState.FAILED
+        ) {
             return false
         }
         state = VpnControllerState.PREPARING
