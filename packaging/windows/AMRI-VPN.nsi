@@ -17,11 +17,14 @@ UninstPage uninstConfirm
 UninstPage instfiles
 
 Section "AMRI VPN" SecMain
+  SetRegView 64
   SetOutPath "$INSTDIR"
   File "..\..\dist\windows\AMRI-VPN.exe"
   File "..\..\dist\windows\sing-box.exe"
+  File "..\..\dist\windows\wintun.dll"
   File "..\..\THIRD_PARTY_NOTICES.md"
   File /nonfatal "..\..\dist\windows\sing-box-LICENSE"
+  File /nonfatal "..\..\dist\windows\wintun-LICENSE.txt"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\AMRI VPN" "InstallDir" "$INSTDIR"
@@ -29,6 +32,9 @@ Section "AMRI VPN" SecMain
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "Publisher" "${PRODUCT_PUBLISHER}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+  ; Wintun route/DNS setup requires an elevated process. Force the installed executable to request
+  ; the normal Windows UAC prompt instead of failing only after the user presses Connect.
+  WriteRegStr HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe" "RUNASADMIN"
 
   CreateDirectory "$SMPROGRAMS\AMRI VPN"
   CreateShortcut "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
@@ -36,13 +42,17 @@ Section "AMRI VPN" SecMain
 SectionEnd
 
 Section "Uninstall"
+  SetRegView 64
   Delete "$DESKTOP\AMRI VPN.lnk"
   Delete "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk"
   RMDir "$SMPROGRAMS\AMRI VPN"
+  DeleteRegValue HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe"
   Delete "$INSTDIR\AMRI-VPN.exe"
   Delete "$INSTDIR\sing-box.exe"
+  Delete "$INSTDIR\wintun.dll"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"
   Delete "$INSTDIR\sing-box-LICENSE"
+  Delete "$INSTDIR\wintun-LICENSE.txt"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN"

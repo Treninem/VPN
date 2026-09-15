@@ -4,10 +4,7 @@ mod secure_nodes;
 mod theme;
 mod transport_worker;
 
-use amri_core::{
-    evaluate_protection, routing_mode_text, ui_text, Language, ProtectionSignals, ProtectionState,
-    RoutingMode, UiMessage,
-};
+use amri_core::{routing_mode_text, ui_text, Language, RoutingMode, UiMessage};
 use amri_subscriptions::{parse_subscription_text, ImportedNode};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
 use std::path::PathBuf;
@@ -204,8 +201,11 @@ impl AmriApp {
         if let Some(state) = self.transport.latest_state() {
             self.transport_state = state;
         }
-        if matches!(&self.transport_state, TransportUiState::Connecting) {
-            ctx.request_repaint_after(Duration::from_millis(40));
+        if matches!(
+            &self.transport_state,
+            TransportUiState::Connecting | TransportUiState::Ready { .. }
+        ) {
+            ctx.request_repaint_after(Duration::from_millis(250));
         }
     }
 
@@ -489,21 +489,12 @@ impl AmriApp {
             .corner_radius(theme::HERO_RADIUS)
             .inner_margin(theme::HERO_MARGIN)
             .show(ui, |ui| {
-                let transport_ready =
-                    matches!(&self.transport_state, TransportUiState::Ready { .. });
-                let protection = evaluate_protection(ProtectionSignals {
-                    requested: !matches!(&self.transport_state, TransportUiState::Idle),
-                    transport_ready,
-                    // These remain false until Windows TUN/DNS/leak adapters confirm the same
-                    // route generation.
-                    packet_forwarding_active: false,
-                    dns_protection_ready: false,
-                    leak_protection_ready: false,
-                    public_egress_verified: false,
-                });
+                // The worker emits Ready only after transport + system TUN + DNS/leak capture +
+                // public egress pass the shared protection gate for this connection generation.
+                let protected = self.transport_ready();
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        let protection_message = if protection.state == ProtectionState::Protected {
+                        let protection_message = if protected {
                             UiMessage::ProtectionOn
                         } else {
                             UiMessage::ProtectionOff
@@ -528,7 +519,7 @@ impl AmriApp {
                                     ..
                                 } => format!(
                                     "{} · {} · 127.0.0.1:{}",
-                                    ui_text(self.language, UiMessage::TransportReady),
+                                    ui_text(self.language, UiMessage::ProtectionOn),
                                     node_name,
                                     local_port
                                 ),
@@ -546,7 +537,7 @@ impl AmriApp {
                         };
                         let enabled =
                             !matches!(&self.transport_state, TransportUiState::Connecting);
-                        let source = if protection.state == ProtectionState::Protected {
+                        let source = if protected {
                             egui::include_image!("../../../assets/brand/vpn-power-on.svg")
                         } else {
                             egui::include_image!("../../../assets/brand/vpn-power-off.svg")
@@ -735,8 +726,8 @@ impl AmriApp {
                     );
                     ui.add_space(8.0);
                     ui.label(
-                        RichText::new(ui_text(self.language, UiMessage::TransportOnlyWarning))
-                            .color(Color32::from_rgb(238, 187, 88)),
+                        RichText::new(ui_text(self.language, UiMessage::ProtectionOn))
+                            .color(Color32::from_rgb(99, 220, 160)),
                     );
                 }
                 _ => {
@@ -980,11 +971,6 @@ impl AmriApp {
         ui.text_edit_singleline(&mut self.core_path);
         ui.label(ui_text(self.language, UiMessage::LocalPort));
         ui.text_edit_singleline(&mut self.local_port);
-        ui.label(
-            RichText::new(ui_text(self.language, UiMessage::TransportOnlyWarning))
-                .size(12.0)
-                .color(Color32::from_rgb(238, 187, 88)),
-        );
     }
 
     fn settings(&mut self, ui: &mut egui::Ui) {

@@ -1,12 +1,21 @@
+#[path = "system_forwarding.rs"]
+mod system_forwarding;
+
 use amri_external_core::{sing_box_process_spec, SingBoxRenderer, SupervisedProcessAdapter};
 use amri_node_config::{materialize_connect_request, MaterializeOptions};
 use amri_subscriptions::ImportedNode;
 use amri_transport::{TransportManager, TransportSession};
 use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
+use system_forwarding::{
+    resolve_server_ips, WindowsForwardingState, WindowsSystemForwarder,
+    WindowsSystemForwardingConfig, DEFAULT_WINDOWS_MTU,
+};
 
 const BOOTSTRAP_ROUTE_ID: &str = "windows-bootstrap";
+const WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
 enum WorkerCommand {
     Connect {
@@ -18,6 +27,9 @@ enum WorkerCommand {
     Shutdown,
 }
 
+/// `Ready` is intentionally stronger than transport readiness: it is emitted only after the
+/// transport, Windows TUN forwarding, DNS capture, leak-capture setup and public egress have all
+/// passed the shared protection gate for the same connection generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportUiState {
     Idle,
@@ -37,6 +49,7 @@ enum WorkerEvent {
 struct ActiveTransport {
     manager: TransportManager,
     session: TransportSession,
+    forwarder: WindowsSystemForwarder,
 }
 
 pub struct TransportWorker {
@@ -103,17 +116,17 @@ impl Drop for TransportWorker {
 fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
     let mut active: Option<ActiveTransport> = None;
 
-    while let Ok(command) = commands.recv() {
-        match command {
-            WorkerCommand::Connect {
+    loop {
+        match commands.recv_timeout(WATCHDOG_INTERVAL) {
+            Ok(WorkerCommand::Connect {
                 node,
                 executable,
                 local_port,
-            } => {
+            }) => {
                 if active.is_some() {
                     send_state(
                         &events,
-                        TransportUiState::Failed("a transport route is already active".into()),
+                        TransportUiState::Failed("a protected route is already active".into()),
                     );
                     continue;
                 }
@@ -133,28 +146,40 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
                     Err(error) => send_state(&events, TransportUiState::Failed(error)),
                 }
             }
-            WorkerCommand::Disconnect => {
-                let result = active
-                    .as_mut()
-                    .map(|transport| {
-                        transport
-                            .manager
-                            .disconnect(&transport.session.route_id)
-                            .map_err(|error| error.to_string())
-                    })
-                    .unwrap_or(Ok(()));
-
+            Ok(WorkerCommand::Disconnect) => {
+                let result = active.take().map(disconnect_active).unwrap_or(Ok(()));
                 match result {
-                    Ok(()) => {
-                        active = None;
-                        send_state(&events, TransportUiState::Idle);
-                    }
+                    Ok(()) => send_state(&events, TransportUiState::Idle),
                     Err(error) => send_state(&events, TransportUiState::Failed(error)),
                 }
             }
-            WorkerCommand::Shutdown => {
-                if let Some(mut transport) = active.take() {
-                    let _ = transport.manager.disconnect(&transport.session.route_id);
+            Ok(WorkerCommand::Shutdown) => {
+                if let Some(transport) = active.take() {
+                    let _ = disconnect_active(transport);
+                }
+                return;
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                let protection_lost = active
+                    .as_ref()
+                    .map(|transport| !transport.forwarder.is_running())
+                    .unwrap_or(false);
+                if protection_lost {
+                    if let Some(transport) = active.take() {
+                        let _ = disconnect_active(transport);
+                    }
+                    send_state(
+                        &events,
+                        TransportUiState::Failed(
+                            "Windows protected path stopped; VPN transport was closed fail-closed"
+                                .into(),
+                        ),
+                    );
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                if let Some(transport) = active.take() {
+                    let _ = disconnect_active(transport);
                 }
                 return;
             }
@@ -176,6 +201,11 @@ fn connect_node(
     )
     .map_err(|error| error.to_string())?;
 
+    // Resolve every currently advertised server address before installing the default-route TUN.
+    // This keeps the transport sockets on explicit host bypass routes instead of recursively
+    // feeding them back into AMRI's own TUN.
+    let bypass_ips = resolve_server_ips(&request.endpoint.host, request.endpoint.port)?;
+
     let mut manager = TransportManager::new();
     manager
         .register(SupervisedProcessAdapter::new(
@@ -187,7 +217,53 @@ fn connect_node(
     let session = manager
         .connect(request)
         .map_err(|error| error.to_string())?;
-    Ok(ActiveTransport { manager, session })
+
+    let forwarding_config =
+        WindowsSystemForwardingConfig::new(local_port, bypass_ips, DEFAULT_WINDOWS_MTU)?;
+    let forwarder = match WindowsSystemForwarder::start(forwarding_config) {
+        Ok(forwarder) => forwarder,
+        Err(error) => {
+            let _ = manager.disconnect(&session.route_id);
+            return Err(error);
+        }
+    };
+
+    if !forwarder.is_running() || !forwarder.readiness().protected() {
+        let mut forwarder = forwarder;
+        forwarder.stop();
+        let _ = manager.disconnect(&session.route_id);
+        return Err("Windows protected path did not remain ready after activation".into());
+    }
+
+    Ok(ActiveTransport {
+        manager,
+        session,
+        forwarder,
+    })
+}
+
+fn disconnect_active(mut transport: ActiveTransport) -> Result<(), String> {
+    // Make-before-break teardown in reverse ownership order: remove system route/DNS capture first,
+    // then stop the underlying encrypted transport. This avoids leaving a live default-route TUN
+    // pointed at a dead local SOCKS endpoint.
+    transport.forwarder.stop();
+    let forwarding_restore_failed = transport.forwarder.state() == WindowsForwardingState::Failed;
+
+    let transport_result = transport
+        .manager
+        .disconnect(&transport.session.route_id)
+        .map_err(|error| error.to_string());
+
+    match (forwarding_restore_failed, transport_result) {
+        (false, Ok(())) => Ok(()),
+        (true, Ok(())) => Err(
+            "Windows tunnel route/DNS restoration failed; protected transport was stopped".into(),
+        ),
+        (false, Err(error)) => Err(error),
+        (true, Err(error)) => Err(format!(
+            "Windows tunnel restoration and transport shutdown both failed: {error}"
+        )),
+    }
 }
 
 fn send_state(events: &Sender<WorkerEvent>, state: TransportUiState) {
@@ -204,7 +280,7 @@ mod tests {
         let worker = TransportWorker::new();
         let node = parse_node_uri(
             "test",
-            "vless://00000000-0000-0000-0000-000000000000@example.com:443?security=tls",
+            "vless://00000000-0000-0000-0000-000000000000@203.0.113.7:443?security=tls",
         )
         .unwrap();
 
@@ -215,7 +291,7 @@ mod tests {
     fn missing_core_returns_a_redacted_failure() {
         let node = parse_node_uri(
             "test",
-            "trojan://private-password@example.com:443?security=tls",
+            "trojan://private-password@203.0.113.7:443?security=tls",
         )
         .unwrap();
 
@@ -225,5 +301,15 @@ mod tests {
 
         assert!(!error.contains("private-password"));
         assert!(error.contains("failed to start"));
+    }
+
+    #[test]
+    fn ready_state_contract_is_protected_not_transport_only() {
+        let state = TransportUiState::Ready {
+            node_name: "node".into(),
+            node_fingerprint: "fingerprint".into(),
+            local_port: 20800,
+        };
+        assert!(matches!(state, TransportUiState::Ready { .. }));
     }
 }

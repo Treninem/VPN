@@ -9,8 +9,10 @@ permissions:
   contents: read
 
 env:
-  SING_BOX_VERSION: "1.14.1"
-  SING_BOX_WINDOWS_SHA256: "5197f16d492d93202dc623622149a6ed040f8eca263128f91d603f2b901baa89"
+  SING_BOX_VERSION: "1.14.0"
+  SING_BOX_WINDOWS_SHA256: "3ffb56267da14e287be48bd10cf7e6505260125bad940b75101fbb4d5d58e5d6"
+  WINTUN_VERSION: "0.14.1"
+  WINTUN_ARCHIVE_SHA256: "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51"
 
 jobs:
   windows-installer:
@@ -38,6 +40,22 @@ jobs:
           Copy-Item (Get-ChildItem $expanded -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName dist/windows/sing-box.exe
           $license = Get-ChildItem $expanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($license) { Copy-Item $license.FullName dist/windows/sing-box-LICENSE }
+      - name: Stage official signed Wintun
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "wintun.zip"
+          $url = "https://www.wintun.net/builds/wintun-$env:WINTUN_VERSION.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:WINTUN_ARCHIVE_SHA256) { throw "Wintun archive checksum mismatch" }
+          $expanded = Join-Path $env:RUNNER_TEMP "wintun"
+          Expand-Archive $archive -DestinationPath $expanded
+          $dll = Get-ChildItem $expanded -Recurse -Filter wintun.dll | Where-Object { $_.FullName -match '[\\/]bin[\\/]amd64[\\/]wintun\.dll$' } | Select-Object -First 1
+          if (-not $dll) { throw "official amd64 wintun.dll was not found in archive" }
+          Copy-Item $dll.FullName dist/windows/wintun.dll
+          $license = Get-ChildItem $expanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
+          if ($license) { Copy-Item $license.FullName dist/windows/wintun-LICENSE.txt }
+          if (-not (Test-Path dist/windows/wintun.dll)) { throw "wintun.dll was not staged" }
       - name: Build Windows installer
         shell: pwsh
         run: |
