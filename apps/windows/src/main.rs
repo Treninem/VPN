@@ -122,6 +122,7 @@ impl AmriApp {
 
     fn import_subscription_text(&mut self) {
         self.imported_nodes = parse_subscription_text("windows-manual", &self.subscription_input);
+        self.subscription_input.clear();
         self.selected_node = 0;
         if self.imported_nodes.is_empty() {
             self.transport_state =
