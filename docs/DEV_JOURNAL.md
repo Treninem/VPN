@@ -147,6 +147,13 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Health повторно проверяет process и loopback endpoint, поэтому исчезнувший inbound переводит route в `Degraded`.
 - Тесты покрывают ready endpoint, exit, timeout cleanup, missing port и invalid timing policy.
 
+## 2026-09-15 — Transport-confirmed node identity
+
+- `TransportSession` содержит fingerprint фактически запущенного узла без URI и credentials.
+- `TransportManager` сверяет node fingerprint с `ConnectRequest`; mismatch вызывает disconnect новой session и fail-closed ошибку.
+- Runtime/Route Proof теперь может использовать подтверждённую transport identity, а не предположение вызывающего кода.
+- Тест покрывает rollback ложной node identity.
+
 # CURRENT STATE
 
 - Rust workspace компилируется и проходит unit-тесты.
@@ -156,7 +163,7 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Android app компилируется, unit-тесты проходят, debug APK собирается.
 - Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool и micro-race реализованы.
 - Probe/race результаты реально влияют на dynamic quarantine и stable route decision через `amri-runtime`.
-- `TransportManager` имеет multi-session lifecycle и make-before-break replacement.
+- `TransportManager` имеет multi-session lifecycle, make-before-break replacement и fail-closed проверку executed node identity.
 - Есть безопасная external-core process boundary, loopback readiness gate и первый sing-box renderer для VLESS/Trojan/Shadowsocks/Hysteria2.
 - Windows secret persistence защищена DPAPI.
 - Public traffic через Windows/Android пока НЕ проходит через полноценный AMRI VPN tunnel.
@@ -194,3 +201,4 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Third-party VPN-core distribution отделена от технической integration boundary и требует отдельного license review.
 - UI может показывать защищённое состояние только после подтверждённых transport + packet forwarding.
 - Внешний core считается `Connected` только после process + loopback readiness; любой startup failure очищает новый process до handoff.
+- Transport-confirmed node fingerprint является единственным допустимым node id для executed Route Proof.
