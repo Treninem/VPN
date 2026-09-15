@@ -93,6 +93,7 @@ struct AmriApp {
     editing_node: Option<usize>,
     delete_confirmation: Option<usize>,
     info_node: Option<usize>,
+    node_actions_open: bool,
     core_path: String,
     local_port: String,
     smart_routing: bool,
@@ -139,6 +140,7 @@ impl AmriApp {
             editing_node: None,
             delete_confirmation: None,
             info_node: None,
+            node_actions_open: false,
             core_path: std::env::var("AMRI_SING_BOX_PATH")
                 .unwrap_or_else(|_| "sing-box.exe".into()),
             local_port: "20800".into(),
@@ -188,6 +190,7 @@ impl AmriApp {
 
         self.delete_confirmation = None;
         self.info_node = None;
+        self.node_actions_open = false;
         self.subscription_input.clear();
         if matches!(&self.transport_state, TransportUiState::Failed(_)) {
             self.transport_state = TransportUiState::Idle;
@@ -202,6 +205,7 @@ impl AmriApp {
         self.editing_node = Some(self.selected_node);
         self.delete_confirmation = None;
         self.info_node = None;
+        self.node_actions_open = false;
     }
 
     fn cancel_node_edit(&mut self) {
@@ -209,6 +213,7 @@ impl AmriApp {
         self.subscription_input.clear();
         self.delete_confirmation = None;
         self.info_node = None;
+        self.node_actions_open = false;
     }
 
     fn delete_confirmed_node(&mut self) {
@@ -221,6 +226,7 @@ impl AmriApp {
 
         self.imported_nodes.remove(index);
         self.info_node = None;
+        self.node_actions_open = false;
         match self.editing_node {
             Some(editing) if editing == index => {
                 self.editing_node = None;
@@ -668,139 +674,157 @@ impl AmriApp {
             if self.selected_node != previous_selected {
                 self.delete_confirmation = None;
                 self.info_node = None;
+                self.node_actions_open = false;
             }
 
-            let (edit_clicked, delete_clicked, copy_clicked, info_clicked) = ui
-                .horizontal(|ui| {
-                    let edit = brand_button(
-                        ui,
-                        egui::include_image!("../../../assets/brand/edit-button.svg"),
-                        42.0,
-                        "Edit selected node",
-                    )
-                    .clicked();
-                    let delete = brand_button(
-                        ui,
-                        egui::include_image!("../../../assets/brand/delete-button.svg"),
-                        42.0,
-                        "Delete selected node",
-                    )
-                    .clicked();
-                    let copy = brand_button(
-                        ui,
-                        egui::include_image!("../../../assets/brand/copy-button.svg"),
-                        42.0,
-                        "Copy node fingerprint",
-                    )
-                    .clicked();
-                    let info = brand_button(
-                        ui,
-                        egui::include_image!("../../../assets/brand/info-button.svg"),
-                        42.0,
-                        "Show safe node information",
-                    )
-                    .clicked();
-                    (edit, delete, copy, info)
-                })
-                .inner;
-
-            if edit_clicked {
-                self.begin_edit_selected_node();
-            }
-            if delete_clicked {
-                self.delete_confirmation = Some(self.selected_node);
-                self.info_node = None;
-            }
-            if copy_clicked {
-                if let Some(node) = self.imported_nodes.get(self.selected_node) {
-                    ui.ctx().copy_text(node.fingerprint.clone());
+            if brand_button(
+                ui,
+                egui::include_image!("../../../assets/brand/more-button.svg"),
+                42.0,
+                "More node actions",
+            )
+            .clicked()
+            {
+                self.node_actions_open = !self.node_actions_open;
+                if !self.node_actions_open {
+                    self.delete_confirmation = None;
+                    self.info_node = None;
                 }
             }
-            if info_clicked {
-                self.delete_confirmation = None;
-                self.info_node = if self.info_node == Some(self.selected_node) {
-                    None
-                } else {
-                    Some(self.selected_node)
-                };
-            }
 
-            if self.info_node == Some(self.selected_node) {
-                if let Some(node) = self.imported_nodes.get(self.selected_node) {
-                    let host = node.host.as_deref().unwrap_or("—");
-                    let port = node
-                        .port
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|| "—".into());
+            if self.node_actions_open {
+                let (edit_clicked, delete_clicked, copy_clicked, info_clicked) = ui
+                    .horizontal(|ui| {
+                        let edit = brand_button(
+                            ui,
+                            egui::include_image!("../../../assets/brand/edit-button.svg"),
+                            42.0,
+                            "Edit selected node",
+                        )
+                        .clicked();
+                        let delete = brand_button(
+                            ui,
+                            egui::include_image!("../../../assets/brand/delete-button.svg"),
+                            42.0,
+                            "Delete selected node",
+                        )
+                        .clicked();
+                        let copy = brand_button(
+                            ui,
+                            egui::include_image!("../../../assets/brand/copy-button.svg"),
+                            42.0,
+                            "Copy node fingerprint",
+                        )
+                        .clicked();
+                        let info = brand_button(
+                            ui,
+                            egui::include_image!("../../../assets/brand/info-button.svg"),
+                            42.0,
+                            "Show safe node information",
+                        )
+                        .clicked();
+                        (edit, delete, copy, info)
+                    })
+                    .inner;
+
+                if edit_clicked {
+                    self.begin_edit_selected_node();
+                }
+                if delete_clicked {
+                    self.delete_confirmation = Some(self.selected_node);
+                    self.info_node = None;
+                }
+                if copy_clicked {
+                    if let Some(node) = self.imported_nodes.get(self.selected_node) {
+                        ui.ctx().copy_text(node.fingerprint.clone());
+                    }
+                }
+                if info_clicked {
+                    self.delete_confirmation = None;
+                    self.info_node = if self.info_node == Some(self.selected_node) {
+                        None
+                    } else {
+                        Some(self.selected_node)
+                    };
+                }
+
+                if self.info_node == Some(self.selected_node) {
+                    if let Some(node) = self.imported_nodes.get(self.selected_node) {
+                        let host = node.host.as_deref().unwrap_or("—");
+                        let port = node
+                            .port
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "—".into());
+                        egui::Frame::new()
+                            .fill(Color32::from_rgb(18, 35, 51))
+                            .stroke(Stroke::new(1.0, Color32::from_rgb(46, 132, 177)))
+                            .corner_radius(14)
+                            .inner_margin(14)
+                            .show(ui, |ui| {
+                                ui.label(RichText::new(&node.display_name).size(15.0).strong());
+                                ui.label(format!("Protocol: {:?}", node.protocol));
+                                ui.label(format!("Host: {host}"));
+                                ui.label(format!("Port: {port}"));
+                                ui.label(
+                                    RichText::new(format!("Fingerprint: {}", node.fingerprint))
+                                        .monospace()
+                                        .size(10.0)
+                                        .color(Color32::from_rgb(145, 218, 240)),
+                                );
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new(
+                                        "Secret URI and credentials are intentionally hidden.",
+                                    )
+                                    .size(11.0)
+                                    .color(Color32::from_gray(155)),
+                                );
+                            });
+                    }
+                }
+
+                if self.delete_confirmation == Some(self.selected_node) {
+                    let safe_name = self
+                        .imported_nodes
+                        .get(self.selected_node)
+                        .map(|node| node.display_name.clone())
+                        .unwrap_or_else(|| "selected node".into());
+                    let mut confirm = false;
+                    let mut cancel = false;
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(18, 35, 51))
-                        .stroke(Stroke::new(1.0, Color32::from_rgb(46, 132, 177)))
+                        .fill(Color32::from_rgb(45, 28, 34))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(154, 76, 91)))
                         .corner_radius(14)
                         .inner_margin(14)
                         .show(ui, |ui| {
-                            ui.label(RichText::new(&node.display_name).size(15.0).strong());
-                            ui.label(format!("Protocol: {:?}", node.protocol));
-                            ui.label(format!("Host: {host}"));
-                            ui.label(format!("Port: {port}"));
                             ui.label(
-                                RichText::new(format!("Fingerprint: {}", node.fingerprint))
-                                    .monospace()
-                                    .size(10.0)
-                                    .color(Color32::from_rgb(145, 218, 240)),
+                                RichText::new(format!("Delete ‘{safe_name}’?"))
+                                    .strong()
+                                    .color(Color32::from_rgb(255, 218, 224)),
                             );
-                            ui.add_space(4.0);
                             ui.label(
-                                RichText::new(
-                                    "Secret URI and credentials are intentionally hidden.",
-                                )
-                                .size(11.0)
-                                .color(Color32::from_gray(155)),
+                                RichText::new("The credential-bearing URI is not shown here.")
+                                    .size(11.0)
+                                    .color(Color32::from_gray(155)),
                             );
+                            ui.horizontal(|ui| {
+                                confirm = ui
+                                    .add(
+                                        egui::Button::new("Delete")
+                                            .fill(Color32::from_rgb(118, 43, 58))
+                                            .corner_radius(10),
+                                    )
+                                    .clicked();
+                                cancel = ui
+                                    .add(egui::Button::new("Cancel").corner_radius(10))
+                                    .clicked();
+                            });
                         });
-                }
-            }
-
-            if self.delete_confirmation == Some(self.selected_node) {
-                let safe_name = self
-                    .imported_nodes
-                    .get(self.selected_node)
-                    .map(|node| node.display_name.clone())
-                    .unwrap_or_else(|| "selected node".into());
-                let mut confirm = false;
-                let mut cancel = false;
-                egui::Frame::new()
-                    .fill(Color32::from_rgb(45, 28, 34))
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(154, 76, 91)))
-                    .corner_radius(14)
-                    .inner_margin(14)
-                    .show(ui, |ui| {
-                        ui.label(
-                            RichText::new(format!("Delete ‘{safe_name}’?"))
-                                .strong()
-                                .color(Color32::from_rgb(255, 218, 224)),
-                        );
-                        ui.label(
-                            RichText::new("The credential-bearing URI is not shown here.")
-                                .size(11.0)
-                                .color(Color32::from_gray(155)),
-                        );
-                        ui.horizontal(|ui| {
-                            confirm = ui
-                                .add(
-                                    egui::Button::new("Delete")
-                                        .fill(Color32::from_rgb(118, 43, 58))
-                                        .corner_radius(10),
-                                )
-                                .clicked();
-                            cancel = ui
-                                .add(egui::Button::new("Cancel").corner_radius(10))
-                                .clicked();
-                        });
-                    });
-                if confirm {
-                    self.delete_confirmed_node();
-                } else if cancel {
-                    self.delete_confirmation = None;
+                    if confirm {
+                        self.delete_confirmed_node();
+                    } else if cancel {
+                        self.delete_confirmation = None;
+                    }
                 }
             }
         }
