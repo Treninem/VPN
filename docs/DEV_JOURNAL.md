@@ -119,10 +119,22 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 - Экспериментальный Route Galaxy и неподтверждённые визуальные изменения не включались.
 - Актуальные параллельные изменения ядра, amri-secrets, external-core, runtime и brand assets из main сохранены.
 
+
+## 2026-09-15 — Persistent Route Proof
+
+- Добавлена генерация 256-bit installation key через OS CSPRNG и повторное получение через SecretStore.
+- Неверная длина сохранённого ключа вызывает fail-closed ошибку.
+- Route Proof переведён на независимые per-destination chains, чтобы очистка одного назначения не ломала остальные.
+- SQLite хранит только pseudonymous token, authenticated proof JSON и hash links.
+- При запуске вся история проверяется до восстановления tails; повреждённая цепочка не используется.
+- Реализованы очистка конкретного destination token и полный сброс.
+- Тесты покрывают CSPRNG key reuse, bad key length, persistence/reopen, tampering, broken continuation и selective delete.
+
 # CURRENT STATE
 
 - Rust workspace компилируется и проходит unit-тесты.
 - Route Proof и instant Shadow Race burst реализованы в общем ядре.
+- Route Proof key проходит через SecretStore, а verified receipts сохраняются в SQLite per destination.
 - Основной UI локализован на 9 языков; Android поддерживает RTL.
 - Android app компилируется, unit-тесты проходят, debug APK собирается.
 - Multi-subscription pool, scoring, confidence, hysteresis, circuit breaker, hot pool и micro-race реализованы.
@@ -135,16 +147,13 @@ TUIC, WireGuard, VMess и другие multi-secret/особые credential-мо
 
 # NEXT PRIORITIES
 
-1. Подключить Route Proof key к amri-secrets и сохранять verified receipts в SQLite.
-2. Добавить безопасное typed преобразование `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
-3. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess и других протоколов вместо секретов в обычном `options` map.
-4. Усилить external-core readiness: кроме process liveness подтверждать, что локальный inbound/туннель действительно готов принимать трафик.
-5. Подключить Windows app к `SecretStore` + `TransportManager` + external-core adapter и получить первый настоящий end-to-end connect/disconnect.
-6. Реализовать Windows packet forwarding/TUN/WFP + DNS leak protection.
-7. Реализовать Android Keystore + Rust FFI + production packet forwarding через `VpnService`.
-8. Добавить end-to-end integration tests connect → health → failover → make-before-break → disconnect.
-9. Только после рабочего туннеля переходить к DIRECT/VPN/BLOCK, per-domain/per-process Smart Routing и kill-switch.
-10. Перед bundling стороннего core провести отдельный license/security review, pin версии и проверку hash/signature binary.
+1. Подключить сохранение Route Proof к реальным решениям amri-runtime.
+2. Добавить Android Keystore adapter для того же installation key.
+3. Усилить external-core readiness и первый Windows end-to-end connect. `ImportedNode/raw_uri` → transport credential material → `ConnectRequest`, минимизируя время жизни plaintext URI/секретов.
+4. Ввести typed multi-secret credential model для TUIC/WireGuard/VMess.
+5. Реализовать Windows packet forwarding/TUN/WFP + DNS protection.
+6. Реализовать Android Rust FFI + production packet forwarding.
+7. Добавить end-to-end integration tests и только затем per-domain/process routing.
 
 # KNOWN ISSUES
 

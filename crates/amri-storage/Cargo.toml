@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 amri-core = { path = "../amri-core" }
+amri-secrets = { path = "../amri-secrets" }
 rusqlite.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
+serde_json.workspace = true
