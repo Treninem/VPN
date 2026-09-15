@@ -457,11 +457,10 @@ impl AmriApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        let protection_message = if self.transport_ready() {
-                            UiMessage::ProtectionOn
-                        } else {
-                            UiMessage::ProtectionOff
-                        };
+                        // A ready local proxy is not proof of public packet forwarding. Keep the
+                        // protection claim off until TUN/system routing and leak protection pass
+                        // the future public-tunnel gate.
+                        let protection_message = UiMessage::ProtectionOff;
                         ui.label(
                             RichText::new(ui_text(self.language, protection_message))
                                 .size(24.0)

@@ -22,4 +22,15 @@ class VpnStateMachineTest {
         assertTrue(state.startPreparing())
         assertFalse(state.startPreparing())
     }
+
+    @Test
+    fun explicit_retry_can_recover_from_failed_bootstrap() {
+        val state = VpnStateMachine()
+        assertTrue(state.startPreparing())
+        state.fail()
+
+        assertTrue(state.startPreparing())
+        state.serviceReady()
+        assertEquals(VpnControllerState.SERVICE_READY, state.state)
+    }
 }

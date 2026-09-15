@@ -13,6 +13,9 @@ import android.os.ParcelFileDescriptor
 
 class AmriVpnService : VpnService() {
     private var controlInterface: ParcelFileDescriptor? = null
+    private val runtimeOwner by lazy(LazyThreadSafetyMode.NONE) {
+        AndroidRuntimeOwner.production(this)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
 
@@ -52,6 +55,7 @@ class AmriVpnService : VpnService() {
         }
 
         try {
+            check(runtimeOwner.initialize()) { "AMRI native runtime initialization failed" }
             // This narrow control-only interface proves VpnService ownership without
             // capturing public traffic before a real transport adapter is ready.
             controlInterface = Builder()
@@ -101,7 +105,7 @@ class AmriVpnService : VpnService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(R.drawable.amri_app_icon)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.notification_ready))
             .setContentIntent(openApp)
