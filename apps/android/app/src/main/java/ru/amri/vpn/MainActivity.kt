@@ -77,10 +77,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildContent(): View {
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(AmriTheme.backgroundColor)
-        }
-
+        val root = FrameLayout(this).apply { setBackgroundColor(AmriTheme.backgroundColor) }
         val background = svgImageView(R.raw.amri_background_mobile).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             contentDescription = null
@@ -97,7 +94,6 @@ class MainActivity : Activity() {
                 dp(AmriTheme.screenPaddingBottom),
             )
         }
-
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -105,44 +101,25 @@ class MainActivity : Activity() {
         val brand = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(text("AMRI", 30f, Color.WHITE, true))
-            addView(
-                text(
-                    getString(R.string.product_subtitle),
-                    14f,
-                    AmriTheme.mutedTextColor,
-                    false,
-                ),
-            )
+            addView(text(getString(R.string.product_subtitle), 14f, AmriTheme.mutedTextColor, false))
         }
         header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-
-        val languageButton = svgIconButton(
-            R.raw.amri_language_button,
-            "Language / Язык",
-        ).apply {
+        val languageButton = svgIconButton(R.raw.amri_language_button, "Language / Язык").apply {
             setOnClickListener { showLanguageDialog() }
         }
         header.addView(
             languageButton,
             LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)),
         )
-
-        val settingsButton = svgIconButton(
-            R.raw.amri_settings_button,
-            "Settings / Настройки",
-        ).apply {
+        val settingsButton = svgIconButton(R.raw.amri_settings_button, "Settings / Настройки").apply {
             setOnClickListener { toggleSettingsPanel() }
         }
         header.addView(
             settingsButton,
-            LinearLayout.LayoutParams(
-                dp(AmriTheme.iconButtonSize),
-                dp(AmriTheme.iconButtonSize),
-            ).apply {
+            LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)).apply {
                 marginStart = dp(8)
             },
         )
-
         foreground.addView(header)
         foreground.addView(space(24))
 
@@ -150,10 +127,7 @@ class MainActivity : Activity() {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
         }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val protectionCard = card().apply {
             status = text("", 25f, Color.WHITE, true)
             detail = text("", 14f, AmriTheme.detailTextColor, false)
@@ -170,9 +144,7 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams(
                     dp(AmriTheme.powerButtonSize),
                     dp(AmriTheme.powerButtonSize),
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                },
+                ).apply { gravity = Gravity.CENTER_HORIZONTAL },
             )
             addView(space(6))
             addView(actionLabel, LinearLayout.LayoutParams(-1, -2))
@@ -187,48 +159,17 @@ class MainActivity : Activity() {
         settingsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            addView(
-                toggleCard(
-                    getString(R.string.smart_routing),
-                    getString(R.string.smart_routing_description),
-                    true,
-                ),
-            )
+            addView(toggleCard(getString(R.string.smart_routing), getString(R.string.smart_routing_description), true))
             addView(space(10))
-            addView(
-                toggleCard(
-                    getString(R.string.dns_protection),
-                    getString(R.string.dns_protection_description),
-                    true,
-                ),
-            )
+            addView(toggleCard(getString(R.string.dns_protection), getString(R.string.dns_protection_description), true))
             addView(space(10))
-            addView(
-                toggleCard(
-                    getString(R.string.kill_switch),
-                    getString(R.string.kill_switch_description),
-                    true,
-                ),
-            )
+            addView(toggleCard(getString(R.string.kill_switch), getString(R.string.kill_switch_description), true))
             addView(space(10))
-            addView(
-                toggleCard(
-                    getString(R.string.local_learning),
-                    getString(R.string.local_learning_description),
-                    true,
-                ),
-            )
+            addView(toggleCard(getString(R.string.local_learning), getString(R.string.local_learning_description), true))
             addView(space(10))
-            addView(
-                toggleCard(
-                    getString(R.string.federated_learning),
-                    getString(R.string.federated_learning_description),
-                    false,
-                ),
-            )
+            addView(toggleCard(getString(R.string.federated_learning), getString(R.string.federated_learning_description), false))
         }
         content.addView(settingsContainer)
-
         scroll.addView(content)
         foreground.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(foreground, FrameLayout.LayoutParams(-1, -1))
@@ -253,36 +194,30 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun toggleCard(title: String, subtitle: String, enabled: Boolean): View =
-        card(16).apply {
-            val row = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            val labels = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(text(title, 16f, Color.WHITE, true))
-                addView(text(subtitle, 12f, AmriTheme.mutedTextColor, false))
-            }
-            row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
-            row.addView(Switch(this@MainActivity).apply { isChecked = enabled })
-            addView(row)
+    private fun toggleCard(title: String, subtitle: String, enabled: Boolean): View = card(16).apply {
+        val row = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
+        val labels = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text(title, 16f, Color.WHITE, true))
+            addView(text(subtitle, 12f, AmriTheme.mutedTextColor, false))
+        }
+        row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(Switch(this@MainActivity).apply { isChecked = enabled })
+        addView(row)
+    }
 
     private fun toggleSettingsPanel() {
         if (!::settingsContainer.isInitialized) return
-        settingsContainer.visibility = if (settingsContainer.visibility == View.VISIBLE) {
-            View.GONE
-        } else {
-            View.VISIBLE
-        }
+        settingsContainer.visibility = if (settingsContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 
     private fun showLanguageDialog() {
         val preferences = getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
         val currentTag = preferences.getString(KEY_LANGUAGE, null)
         val checkedIndex = LANGUAGE_TAGS.indexOf(currentTag)
-
         AlertDialog.Builder(this)
             .setTitle("Language / Язык")
             .setSingleChoiceItems(LANGUAGE_NAMES, checkedIndex) { dialog, which ->
@@ -307,9 +242,7 @@ class MainActivity : Activity() {
     }
 
     private fun startController() {
-        startForegroundService(
-            Intent(this, AmriVpnService::class.java).setAction(AmriVpnService.ACTION_START),
-        )
+        startForegroundService(Intent(this, AmriVpnService::class.java).setAction(AmriVpnService.ACTION_START))
         refreshState()
     }
 
@@ -321,44 +254,35 @@ class MainActivity : Activity() {
     private fun refreshState() {
         if (!::status.isInitialized) return
         when (AmriVpnService.STATE.state) {
+            VpnControllerState.PROTECTED -> {
+                status.text = getString(R.string.status_protected)
+                detail.text = getString(R.string.detail_protected)
+                setPowerState(R.raw.amri_vpn_power_on, getString(R.string.stop), true)
+                actionButton.setOnClickListener { stopController() }
+            }
             VpnControllerState.SERVICE_READY -> {
                 status.text = getString(R.string.status_service_ready)
                 detail.text = getString(R.string.detail_service_ready)
-                setPowerState(
-                    imageRes = R.raw.amri_vpn_power_on,
-                    label = getString(R.string.stop),
-                    enabled = true,
-                )
+                // Service ownership/control TUN is not public protection.
+                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.stop), true)
                 actionButton.setOnClickListener { stopController() }
             }
             VpnControllerState.PREPARING -> {
                 status.text = getString(R.string.status_preparing)
                 detail.text = getString(R.string.detail_preparing)
-                setPowerState(
-                    imageRes = R.raw.amri_vpn_power_off,
-                    label = getString(R.string.wait),
-                    enabled = false,
-                )
+                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.wait), false)
                 actionButton.setOnClickListener(null)
             }
             VpnControllerState.FAILED -> {
                 status.text = getString(R.string.status_failed)
                 detail.text = getString(R.string.detail_failed)
-                setPowerState(
-                    imageRes = R.raw.amri_vpn_power_off,
-                    label = getString(R.string.retry),
-                    enabled = true,
-                )
+                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.retry), true)
                 actionButton.setOnClickListener { requestVpnStart() }
             }
             else -> {
                 status.text = getString(R.string.status_off)
                 detail.text = getString(R.string.detail_off)
-                setPowerState(
-                    imageRes = R.raw.amri_vpn_power_off,
-                    label = getString(R.string.prepare_vpn),
-                    enabled = true,
-                )
+                setPowerState(R.raw.amri_vpn_power_off, getString(R.string.prepare_vpn), true)
                 actionButton.setOnClickListener { requestVpnStart() }
             }
         }
@@ -386,15 +310,14 @@ class MainActivity : Activity() {
         getString(R.string.prepare_vpn),
     )
 
-    private fun svgIconButton(resourceId: Int, description: String): ImageButton =
-        ImageButton(this).apply {
-            background = null
-            setPadding(0, 0, 0, 0)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = description
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-            setSvg(this, resourceId)
-        }
+    private fun svgIconButton(resourceId: Int, description: String): ImageButton = ImageButton(this).apply {
+        background = null
+        setPadding(0, 0, 0, 0)
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        contentDescription = description
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        setSvg(this, resourceId)
+    }
 
     private fun svgImageView(resourceId: Int): ImageView = ImageView(this).apply {
         setLayerType(View.LAYER_TYPE_SOFTWARE, null)
@@ -415,13 +338,12 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun text(value: String, size: Float, color: Int, bold: Boolean): TextView =
-        TextView(this).apply {
-            text = value
-            textSize = size
-            setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
+    private fun text(value: String, size: Float, color: Int, bold: Boolean): TextView = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(color)
+        if (bold) setTypeface(typeface, Typeface.BOLD)
+    }
 
     private fun space(height: Int): View = View(this).apply {
         layoutParams = LinearLayout.LayoutParams(1, dp(height))
@@ -434,28 +356,9 @@ class MainActivity : Activity() {
         private const val NOTIFICATION_REQUEST = 7002
         private const val UI_PREFS = "amri_ui"
         private const val KEY_LANGUAGE = "language_tag"
-
-        private val LANGUAGE_TAGS = arrayOf(
-            "en",
-            "ru",
-            "es",
-            "pt",
-            "fr",
-            "de",
-            "zh-CN",
-            "hi",
-            "ar",
-        )
+        private val LANGUAGE_TAGS = arrayOf("en", "ru", "es", "pt", "fr", "de", "zh-CN", "hi", "ar")
         private val LANGUAGE_NAMES = arrayOf(
-            "English",
-            "Русский",
-            "Español",
-            "Português",
-            "Français",
-            "Deutsch",
-            "简体中文",
-            "हिन्दी",
-            "العربية",
+            "English", "Русский", "Español", "Português", "Français", "Deutsch", "简体中文", "हिन्दी", "العربية",
         )
     }
 }
