@@ -7,3 +7,8 @@ license.workspace = true
 [dependencies]
 amri-core = { path = "../amri-core" }
 amri-probe = { path = "../amri-probe" }
+chrono.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
