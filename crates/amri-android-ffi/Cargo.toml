@@ -10,8 +10,13 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 amri-core = { path = "../amri-core" }
 amri-secrets = { path = "../amri-secrets" }
+amri-subscriptions = { path = "../amri-subscriptions" }
+amri-node-config = { path = "../amri-node-config" }
+amri-transport = { path = "../amri-transport" }
+amri-external-core = { path = "../amri-external-core" }
 getrandom.workspace = true
 jni.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread"] }
