@@ -55,7 +55,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn wrap_png_as_ico(source_png: &std::path::Path, output_ico: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn wrap_png_as_ico(
+    source_png: &std::path::Path,
+    output_ico: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     let png = fs::read(source_png)?;
     if png.len() < 24 || png.get(..8) != Some(PNG_SIGNATURE) || png.get(12..16) != Some(b"IHDR") {
         return Err("canonical AMRI icon is not a valid PNG".into());
