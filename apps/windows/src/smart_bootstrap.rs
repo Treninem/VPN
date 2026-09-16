@@ -83,7 +83,10 @@ fn probe_target(node: &ImportedNode, local_port: u16) -> Option<ProbeTarget> {
 fn tcp_bootstrap_eligible(protocol: NodeProtocol) -> bool {
     matches!(
         protocol,
-        NodeProtocol::Vless | NodeProtocol::Vmess | NodeProtocol::Trojan | NodeProtocol::Shadowsocks
+        NodeProtocol::Vless
+            | NodeProtocol::Vmess
+            | NodeProtocol::Trojan
+            | NodeProtocol::Shadowsocks
     )
 }
 
@@ -114,11 +117,8 @@ mod tests {
 
     #[test]
     fn udp_only_preferred_route_is_not_replaced_by_tcp_probe() {
-        let udp = parse_node_uri(
-            "test",
-            "hysteria2://private-password@203.0.113.40:443#udp",
-        )
-        .unwrap();
+        let udp =
+            parse_node_uri("test", "hysteria2://private-password@203.0.113.40:443#udp").unwrap();
         let tcp = vless(1);
         let nodes = vec![udp, tcp];
 
