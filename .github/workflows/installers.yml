@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -58,12 +60,41 @@ jobs:
           $license = Get-ChildItem $expanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($license) { Copy-Item $license.FullName dist/windows/wintun-LICENSE.txt }
           if (-not (Test-Path dist/windows/wintun.dll)) { throw "wintun.dll was not staged" }
+      - name: Smoke test staged Windows application
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist/windows/AMRI-VPN.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "staged AMRI application exited during startup smoke test with code $($process.ExitCode)"
+          }
+          Stop-Process -Id $process.Id -Force
       - name: Build Windows installer
         shell: pwsh
         run: |
           choco install nsis --yes --no-progress
           & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" packaging/windows/AMRI-VPN.nsi
           if (-not (Test-Path dist/AMRI-VPN-Windows-Setup.exe)) { throw "installer was not created" }
+      - name: Install and launch packaged Windows application
+        shell: pwsh
+        run: |
+          $installDir = "C:\amri-vpn-ci-test"
+          if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
+          $installer = Resolve-Path "dist/AMRI-VPN-Windows-Setup.exe"
+          $install = Start-Process -FilePath $installer -ArgumentList "/S", "/D=$installDir" -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "AMRI installer failed with code $($install.ExitCode)" }
+          foreach ($file in @("AMRI-VPN.exe", "sing-box.exe", "wintun.dll")) {
+            if (-not (Test-Path (Join-Path $installDir $file))) { throw "installed package is missing $file" }
+          }
+          $app = Start-Process -FilePath (Join-Path $installDir "AMRI-VPN.exe") -WorkingDirectory $installDir -PassThru
+          Start-Sleep -Seconds 8
+          if ($app.HasExited) { throw "installed AMRI application exited with code $($app.ExitCode)" }
+          Stop-Process -Id $app.Id -Force
+          $uninstaller = Join-Path $installDir "Uninstall.exe"
+          if (Test-Path $uninstaller) {
+            Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: AMRI-VPN-Windows-Installer
