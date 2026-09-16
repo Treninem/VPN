@@ -1,7 +1,7 @@
-#[path = "system_forwarding.rs"]
-mod system_forwarding;
 #[path = "smart_bootstrap.rs"]
 mod smart_bootstrap;
+#[path = "system_forwarding.rs"]
+mod system_forwarding;
 
 use amri_external_core::{sing_box_process_spec, SupervisedProcessAdapter};
 use amri_node_config::{materialize_connect_request, MaterializeOptions};
