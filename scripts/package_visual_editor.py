@@ -27,7 +27,7 @@ FILES = [
     "apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt",
     "apps/android/app/src/main/java/ru/amri/vpn/AmriTheme.kt",
     "apps/android/app/src/main/java/ru/amri/vpn/GeneratedAmriTheme.kt",
-    "asset-blobs.lock",
+    "assets/brand/asset-blobs.lock",
 ]
 
 BRAND_DIR = ROOT / "assets" / "brand"
