@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_vpn_links">VPN लिंक आयात करें</string>
+    <string name="delete_selected_server">चुना हुआ सर्वर हटाएँ</string>
+    <string name="encrypted_local_pool">एन्क्रिप्टेड स्थानीय पूल · %1$d · %2$s</string>
+    <string name="import_vpn_links_hint">प्रति पंक्ति एक समर्थित नोड लिंक चिपकाएँ। क्रेडेंशियल Android Keystore से एन्क्रिप्ट किए जाते हैं।</string>
+    <string name="import_action">आयात करें</string>
+    <string name="delete_server_title">%1$s हटाएँ?</string>
+    <string name="delete_server_message">क्रेडेंशियल वाला एन्क्रिप्टेड नोड इस डिवाइस से हटा दिया जाएगा।</string>
+    <string name="delete_action">हटाएँ</string>
+</resources>
