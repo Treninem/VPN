@@ -191,30 +191,39 @@ Android package:
 - official pinned sing-box arm64/amd64;
 - current CI artifact is debug-signed unless a private production keystore is supplied outside git.
 
-Previous installer workflow run `35007731400` successfully built both artifacts, but it predates the completed Android production owner and therefore is not the final release artifact. After PR #32 merge, installer workflow must be green again and those artifacts become the release candidates.
+PR #32 merged as `bfc09d9322a0997186e0f33f7fd84d9b7fc35d6a`.
+
+Post-merge verification:
+
+- CI run `35053692063`: Windows fmt/tests/check and Android tests/NDK/APK — success;
+- installer run `35053691970`: Windows NSIS and Android APK — success;
+- Windows Setup SHA-256: `765ef1977193222d18681f42346603b3c5bce54d9fa75be32e0dc19bbd17f671`;
+- Android APK SHA-256: `f990694abef0b5967490fe1c0ae9e09cdc2f5be9910ec9cc35235b6ea2774344`;
+- APK inspection confirmed Rust JNI and pinned sing-box for arm64-v8a and x86_64;
+- Windows job verified pinned sing-box/Wintun archives and NSIS packaged 105,047,719 bytes of install data.
+
+The exact-power PNG import workflow from parallel work did not install replacement artwork: uploaded base64 parts do not contain the start of an XZ stream, so padding cannot repair them. Existing approved SVG buttons remain active and byte-locked. Exact replacement PNGs must be re-uploaded from their original files; do not synthesize or silently substitute them.
 
 ## CURRENT STATE
 
 - Windows end-to-end active-generation VPN path implemented and merged.
-- Android production transport + encrypted pool + real selection + public forwarding path implemented in PR #32 and already proven green on a production-owner head; final current-head CI pending after documentation/localization cleanup.
+- Android production transport + encrypted pool + real selection + public forwarding path merged.
+- Post-merge Windows and Android CI is green; both installable artifacts were built and downloaded.
 - Approved artwork remains unchanged and byte-locked.
 - Developer-only visual editing source exists and is not shipped in apps.
-- Installer pipeline exists and has previously produced both artifacts.
+- A separate visual-source bundle can be produced from the repository and remains outside both apps.
 
 ## Remaining release/hardening work
 
-1. Final current-head PR #32 CI; fix only real failures.
-2. Fresh compare against newest parallel `main`; preserve unrelated exact-power/UI commits; merge #32 only when mergeable/green.
-3. Verify post-merge main CI and `Build installable packages`; inspect/download both final artifacts.
-4. Create release/prerelease packaging including a separate developer visual-source bundle, not embedded in apps.
-5. Production signing:
+1. Real-device E2E on Windows and Android with owner-provided test nodes and physical hardware.
+2. Re-upload original exact-power PNG files; current split transfer is corrupt and intentionally unused.
+3. Production signing:
    - Android needs owner-controlled release keystore secret outside git;
    - Windows public-trust signing needs owner-controlled code-signing certificate.
    Without these secrets, builds can be installable/testable but should not be described as production-signed.
-6. Real-device E2E with real VPN nodes still requires non-public test credentials/hardware; CI can prove compile/package/lifecycle units but cannot invent private production server access.
-7. Windows WFP crash-persistent kill switch is still not implemented; current active-generation protection must not be called WFP lockdown.
-8. WireGuard and VMess WS/gRPC remain unsupported/fail-closed until complete typed descriptors/renderers exist.
-9. PMTU telemetry should eventually feed classified evidence from actual forwarding/transport path; generic loss remains forbidden.
+4. Windows WFP crash-persistent kill switch is still not implemented; current active-generation protection must not be called WFP lockdown.
+5. WireGuard and VMess WS/gRPC remain unsupported/fail-closed until complete typed descriptors/renderers exist.
+6. PMTU telemetry should eventually feed classified evidence from actual forwarding/transport path; generic loss remains forbidden.
 
 ## Постоянный протокол разработки
 
