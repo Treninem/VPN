@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   SING_BOX_VERSION: "1.14.1"
   SING_BOX_ANDROID_ARM64_SHA256: "34e2373cfcdd17ef3a0cac13d7f9f971e206257413a9f7b1da63ea02bcf88aab"
@@ -33,8 +37,8 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
-      - name: Check workspace
-        run: cargo check --workspace
+      - name: Check workspace all targets
+        run: cargo check --workspace --all-targets
 
       - name: Build Windows release executable
         run: cargo build --release -p amri-windows
