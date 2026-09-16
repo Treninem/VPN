@@ -3,7 +3,7 @@ use amri_probe::{race_tcp_hot_pool, ProbeRaceConfig, ProbeTarget};
 use amri_subscriptions::{ImportedNode, NodeProtocol};
 use std::time::Duration;
 
-const SMART_MAX_CANDIDATES: usize = 8;
+const SMART_MAX_CANDIDATES: usize = 4;
 
 pub(crate) fn select_node_index(
     nodes: &[ImportedNode],
