@@ -76,7 +76,6 @@ jobs:
             & scripts/windows_gui_smoke.ps1 `
               -ExePath "dist/windows/AMRI-VPN.exe" `
               -DiagnosticExePath $diagnosticExe
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           finally {
             Remove-Item $diagnosticExe -Force -ErrorAction SilentlyContinue
@@ -110,7 +109,6 @@ jobs:
             & scripts/windows_gui_smoke.ps1 `
               -ExePath $installedExe `
               -DiagnosticExePath $diagnosticExe
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           finally {
             Remove-Item $diagnosticExe -Force -ErrorAction SilentlyContinue

@@ -29,7 +29,7 @@ $releaseProcess.Refresh()
 if (-not $releaseProcess.HasExited) {
     Stop-AmriProcess $releaseProcess
     Write-Host "AMRI Windows GUI remained alive for $WaitSeconds seconds."
-    exit 0
+    return
 }
 
 $releaseExitCode = $releaseProcess.ExitCode
@@ -62,7 +62,7 @@ try {
         $stderrText -eq $knownHostedRunnerError
     ) {
         Write-Warning "GitHub hosted Windows runner has no usable OpenGL 2.0 context. AMRI reached eframe renderer initialization; graphical liveness is environment-limited and still requires real-desktop E2E."
-        exit 0
+        return
     }
 
     throw "AMRI Windows startup failed: release exit=$releaseExitCode diagnostic exit=$diagnosticExitCode (not the exact known hosted-runner OpenGL limitation)"
