@@ -323,7 +323,8 @@ fn fetch_subscription_url(
     if bytes.len() as u64 > MAX_SUBSCRIPTION_BYTES {
         return Err(SubscriptionError::InvalidSubscriptionPayload);
     }
-    let payload = String::from_utf8(bytes).map_err(|_| SubscriptionError::InvalidSubscriptionPayload)?;
+    let payload =
+        String::from_utf8(bytes).map_err(|_| SubscriptionError::InvalidSubscriptionPayload)?;
     let nodes = parse_subscription_payload(subscription_id, &payload);
     if nodes.is_empty() {
         Err(SubscriptionError::InvalidSubscriptionPayload)
