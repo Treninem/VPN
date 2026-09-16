@@ -20,6 +20,7 @@ Section "AMRI VPN" SecMain
   SetRegView 64
   SetOutPath "$INSTDIR"
   File "..\..\dist\windows\AMRI-VPN.exe"
+  File "..\..\dist\windows\AMRI-VPN-Launcher.exe"
   File "..\..\dist\windows\sing-box.exe"
   File "..\..\dist\windows\wintun.dll"
   File "..\..\THIRD_PARTY_NOTICES.md"
@@ -34,13 +35,13 @@ Section "AMRI VPN" SecMain
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayIcon" '"$INSTDIR\AMRI-VPN.exe",0'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "UninstallString" '"$INSTDIR\Uninstall.exe"'
 
-  ; Older preview installers used the AppCompat RUNASADMIN compatibility layer. The executable now
-  ; carries a proper requireAdministrator manifest, so remove that legacy override on upgrade.
+  ; Remove compatibility overrides left by preview installers. AMRI now keeps the GUI asInvoker and
+  ; requests elevation explicitly through its tiny launcher so startup remains deterministic.
   DeleteRegValue HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe"
 
   CreateDirectory "$SMPROGRAMS\AMRI VPN"
-  CreateShortcut "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
-  CreateShortcut "$DESKTOP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
+  CreateShortcut "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
+  CreateShortcut "$DESKTOP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
 SectionEnd
 
 Section "Uninstall"
@@ -50,6 +51,7 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\AMRI VPN"
   DeleteRegValue HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe"
   Delete "$INSTDIR\AMRI-VPN.exe"
+  Delete "$INSTDIR\AMRI-VPN-Launcher.exe"
   Delete "$INSTDIR\sing-box.exe"
   Delete "$INSTDIR\wintun.dll"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"
