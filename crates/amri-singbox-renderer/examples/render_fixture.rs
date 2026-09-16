@@ -5,7 +5,9 @@ use amri_transport::{ConnectRequest, TransportCredentials, TransportEndpoint};
 use std::collections::BTreeMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = std::env::args().nth(1).unwrap_or_else(|| "vless-reality-grpc".into());
+    let fixture = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "vless-reality-grpc".into());
     let request = match fixture.as_str() {
         "vless-ws" => vless_ws(),
         "vless-reality-grpc" => vless_reality_grpc(),
@@ -33,10 +35,7 @@ fn base(protocol: NodeProtocol, secret: &str) -> ConnectRequest {
 }
 
 fn vless_ws() -> ConnectRequest {
-    let mut request = base(
-        NodeProtocol::Vless,
-        "123e4567-e89b-12d3-a456-426614174000",
-    );
+    let mut request = base(NodeProtocol::Vless, "123e4567-e89b-12d3-a456-426614174000");
     request.options.extend([
         ("tls".into(), "true".into()),
         ("server_name".into(), "example.com".into()),
@@ -48,10 +47,7 @@ fn vless_ws() -> ConnectRequest {
 }
 
 fn vless_reality_grpc() -> ConnectRequest {
-    let mut request = base(
-        NodeProtocol::Vless,
-        "123e4567-e89b-12d3-a456-426614174000",
-    );
+    let mut request = base(NodeProtocol::Vless, "123e4567-e89b-12d3-a456-426614174000");
     request.options.extend([
         ("tls".into(), "true".into()),
         ("server_name".into(), "www.microsoft.com".into()),
@@ -68,10 +64,7 @@ fn vless_reality_grpc() -> ConnectRequest {
 }
 
 fn vmess_ws() -> ConnectRequest {
-    let mut request = base(
-        NodeProtocol::Vmess,
-        "123e4567-e89b-12d3-a456-426614174000",
-    );
+    let mut request = base(NodeProtocol::Vmess, "123e4567-e89b-12d3-a456-426614174000");
     request.options.extend([
         ("security".into(), "auto".into()),
         ("alter_id".into(), "0".into()),
