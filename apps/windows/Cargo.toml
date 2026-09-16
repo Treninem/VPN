@@ -24,4 +24,6 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "net", "time", "syn
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
 
 [build-dependencies]
+ico = "0.5.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
 winresource = "0.1.31"
