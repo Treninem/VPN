@@ -4,7 +4,8 @@ mod system_forwarding;
 use amri_external_core::{sing_box_process_spec, SingBoxRenderer, SupervisedProcessAdapter};
 use amri_node_config::{materialize_connect_request, MaterializeOptions};
 use amri_subscriptions::ImportedNode;
-use amri_transport::{TransportManager, TransportSession};
+use amri_transport::{ConnectRequest, TransportManager, TransportSession};
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -192,7 +193,7 @@ fn connect_node(
     executable: PathBuf,
     local_port: u16,
 ) -> Result<ActiveTransport, String> {
-    let request = materialize_connect_request(
+    let mut request = materialize_connect_request(
         node,
         BOOTSTRAP_ROUTE_ID,
         MaterializeOptions {
@@ -202,9 +203,12 @@ fn connect_node(
     .map_err(|error| error.to_string())?;
 
     // Resolve every currently advertised server address before installing the default-route TUN.
-    // This keeps the transport sockets on explicit host bypass routes instead of recursively
-    // feeding them back into AMRI's own TUN.
-    let bypass_ips = resolve_server_ips(&request.endpoint.host, request.endpoint.port)?;
+    // Then pin the actual transport to one of those resolved IPs. This avoids a post-capture DNS
+    // dependency (and sing-box 1.14 domain-resolver requirements) while preserving the original
+    // hostname as TLS SNI when certificate verification needs it.
+    let original_host = request.endpoint.host.clone();
+    let bypass_ips = resolve_server_ips(&original_host, request.endpoint.port)?;
+    pin_transport_endpoint(&mut request, &original_host, &bypass_ips)?;
 
     let mut manager = TransportManager::new();
     manager
@@ -240,6 +244,32 @@ fn connect_node(
         session,
         forwarder,
     })
+}
+
+fn pin_transport_endpoint(
+    request: &mut ConnectRequest,
+    original_host: &str,
+    resolved_ips: &[IpAddr],
+) -> Result<(), String> {
+    if original_host.parse::<IpAddr>().is_ok() {
+        return Ok(());
+    }
+    let selected_ip = resolved_ips
+        .first()
+        .ok_or_else(|| "VPN server did not resolve to a usable IP address".to_string())?;
+
+    let tls_enabled = request
+        .options
+        .get("tls")
+        .map(|value| matches!(value.as_str(), "true" | "1" | "yes"))
+        .unwrap_or(false);
+    if tls_enabled && !request.options.contains_key("server_name") {
+        request
+            .options
+            .insert("server_name".into(), original_host.to_string());
+    }
+    request.endpoint.host = selected_ip.to_string();
+    Ok(())
 }
 
 fn disconnect_active(mut transport: ActiveTransport) -> Result<(), String> {
@@ -301,6 +331,53 @@ mod tests {
 
         assert!(!error.contains("private-password"));
         assert!(error.contains("failed to start"));
+    }
+
+    #[test]
+    fn hostname_endpoint_is_pinned_and_original_host_becomes_tls_sni() {
+        let node = parse_node_uri(
+            "test",
+            "trojan://private-password@vpn.example:443?security=tls",
+        )
+        .unwrap();
+        let mut request = materialize_connect_request(
+            node,
+            BOOTSTRAP_ROUTE_ID,
+            MaterializeOptions {
+                local_port: Some(20800),
+            },
+        )
+        .unwrap();
+        let ip = "203.0.113.7".parse::<IpAddr>().unwrap();
+
+        pin_transport_endpoint(&mut request, "vpn.example", &[ip]).unwrap();
+
+        assert_eq!(request.endpoint.host, "203.0.113.7");
+        assert_eq!(
+            request.options.get("server_name").map(String::as_str),
+            Some("vpn.example")
+        );
+    }
+
+    #[test]
+    fn literal_ip_endpoint_is_not_rewritten() {
+        let node = parse_node_uri(
+            "test",
+            "trojan://private-password@203.0.113.7:443?security=tls",
+        )
+        .unwrap();
+        let mut request = materialize_connect_request(
+            node,
+            BOOTSTRAP_ROUTE_ID,
+            MaterializeOptions::default(),
+        )
+        .unwrap();
+        let ip = "203.0.113.7".parse::<IpAddr>().unwrap();
+
+        pin_transport_endpoint(&mut request, "203.0.113.7", &[ip]).unwrap();
+
+        assert_eq!(request.endpoint.host, "203.0.113.7");
+        assert!(!request.options.contains_key("server_name"));
     }
 
     #[test]
