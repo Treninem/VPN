@@ -270,7 +270,11 @@ class MainActivity : Activity() {
             uiPreferences().edit().putInt(KEY_SELECTED_NODE, selected).apply()
         }
         routePrimary.text = AndroidNodeStore.safeLabel(nodes[selected], selected)
-        routeSecondary.text = "Encrypted local pool · ${nodes.size} · ${AndroidNodeStore.safeFingerprint(nodes[selected])}"
+        routeSecondary.text = getString(
+            R.string.encrypted_local_pool,
+            nodes.size,
+            AndroidNodeStore.safeFingerprint(nodes[selected]),
+        )
     }
 
     private fun showServerDialog() {
@@ -281,8 +285,8 @@ class MainActivity : Activity() {
         val items = nodes.mapIndexed { index, raw ->
             AndroidNodeStore.safeLabel(raw, index)
         }.toMutableList().apply {
-            add("＋ Import VPN links")
-            if (nodes.isNotEmpty()) add("Delete selected server")
+            add("＋ ${getString(R.string.import_vpn_links)}")
+            if (nodes.isNotEmpty()) add(getString(R.string.delete_selected_server))
         }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.choose_server))
@@ -316,10 +320,10 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(10), dp(16), dp(10))
         }
         AlertDialog.Builder(this)
-            .setTitle("Import VPN links")
-            .setMessage("Paste one supported node link per line. Credentials are encrypted with Android Keystore.")
+            .setTitle(getString(R.string.import_vpn_links))
+            .setMessage(getString(R.string.import_vpn_links_hint))
             .setView(input)
-            .setPositiveButton("Import") { _, _ ->
+            .setPositiveButton(getString(R.string.import_action)) { _, _ ->
                 runCatching {
                     val store = AndroidNodeStore(this)
                     val nodes = store.importText(input.text.toString())
@@ -344,9 +348,9 @@ class MainActivity : Activity() {
         val selected = uiPreferences().getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
         val safeName = AndroidNodeStore.safeLabel(nodes[selected], selected)
         AlertDialog.Builder(this)
-            .setTitle("Delete $safeName?")
-            .setMessage("The encrypted credential-bearing node will be removed from this device.")
-            .setPositiveButton("Delete") { _, _ ->
+            .setTitle(getString(R.string.delete_server_title, safeName))
+            .setMessage(getString(R.string.delete_server_message))
+            .setPositiveButton(getString(R.string.delete_action)) { _, _ ->
                 nodes.removeAt(selected)
                 store.save(nodes)
                 val replacement = if (nodes.isEmpty()) 0 else selected.coerceAtMost(nodes.lastIndex)
