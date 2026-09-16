@@ -1,7 +1,7 @@
 use amri_core::{evaluate_protection, ProtectionSignals, ProtectionState};
 use std::collections::BTreeSet;
 use std::mem::{size_of, zeroed};
-use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc};
@@ -13,6 +13,7 @@ use tproxy_config::{
 use tun::AbstractDevice;
 use tun2proxy::{ArgDns, ArgProxy, Args, CancellationToken};
 use windows_sys::Win32::Foundation::CloseHandle;
+use windows_sys::Win32::NetworkManagement::IpHelper::GetBestInterface;
 use windows_sys::Win32::Security::{
     GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
 };
@@ -29,6 +30,7 @@ const DNS_VERIFY_TIMEOUT: Duration = Duration::from_millis(1500);
 const DNS_TARGET: &str = "1.1.1.1:53";
 const DNS_TEST_NAME: &str = "example.com";
 const EGRESS_TARGETS: [&str; 2] = ["1.1.1.1:443", "8.8.8.8:443"];
+const ROUTE_VERIFY_TARGETS: [Ipv4Addr; 2] = [Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WindowsForwardingState {
@@ -134,7 +136,7 @@ impl WindowsSystemForwarder {
         let thread_shutdown = shutdown.clone();
         let state = Arc::new(AtomicU8::new(WindowsForwardingState::Starting.code()));
         let thread_state = Arc::clone(&state);
-        let (setup_tx, setup_rx) = mpsc::sync_channel::<Result<(), String>>(1);
+        let (setup_tx, setup_rx) = mpsc::sync_channel::<Result<u32, String>>(1);
 
         let join = thread::Builder::new()
             .name("amri-windows-forwarder".into())
@@ -176,8 +178,8 @@ impl WindowsSystemForwarder {
             },
         };
 
-        match setup_rx.recv_timeout(SETUP_TIMEOUT) {
-            Ok(Ok(())) => {}
+        let tun_index = match setup_rx.recv_timeout(SETUP_TIMEOUT) {
+            Ok(Ok(tun_index)) => tun_index,
             Ok(Err(error)) => {
                 forwarder.stop();
                 return Err(error);
@@ -186,9 +188,9 @@ impl WindowsSystemForwarder {
                 forwarder.stop();
                 return Err("Windows TUN setup timed out".into());
             }
-        }
+        };
 
-        let readiness = verify_readiness(forwarder.state());
+        let readiness = verify_readiness(forwarder.state(), tun_index);
         if !readiness.protected() {
             forwarder.stop();
             return Err("Windows system forwarding did not pass protected-path readiness".into());
@@ -238,7 +240,7 @@ impl Drop for WindowsSystemForwarder {
 async fn run_forwarder(
     config: WindowsSystemForwardingConfig,
     state: Arc<AtomicU8>,
-    setup_tx: mpsc::SyncSender<Result<(), String>>,
+    setup_tx: mpsc::SyncSender<Result<u32, String>>,
     shutdown: CancellationToken,
 ) {
     let proxy_url = format!("socks5://127.0.0.1:{}", config.local_socks_port);
@@ -306,6 +308,25 @@ async fn run_forwarder(
             return;
         }
     };
+    let tun_index = match AbstractDevice::tun_index(&*device) {
+        Ok(index) if index > 0 => index as u32,
+        Ok(_) => {
+            fail_setup(
+                &state,
+                &setup_tx,
+                "Wintun adapter returned an invalid interface index".into(),
+            );
+            return;
+        }
+        Err(error) => {
+            fail_setup(
+                &state,
+                &setup_tx,
+                format!("failed to read Wintun adapter index: {error}"),
+            );
+            return;
+        }
+    };
 
     let tproxy_args = TproxyArgs::new()
         .tun_dns(args.dns_addr)
@@ -327,7 +348,7 @@ async fn run_forwarder(
     };
 
     state.store(WindowsForwardingState::Running.code(), Ordering::Release);
-    let _ = setup_tx.send(Ok(()));
+    let _ = setup_tx.send(Ok(tun_index));
 
     let run_result = tun2proxy::run(device, config.mtu, args, shutdown.clone()).await;
     let restore_result = tproxy_remove(Some(restore)).await;
@@ -344,14 +365,14 @@ async fn run_forwarder(
 
 fn fail_setup(
     state: &Arc<AtomicU8>,
-    setup_tx: &mpsc::SyncSender<Result<(), String>>,
+    setup_tx: &mpsc::SyncSender<Result<u32, String>>,
     message: String,
 ) {
     state.store(WindowsForwardingState::Failed.code(), Ordering::Release);
     let _ = setup_tx.send(Err(message));
 }
 
-fn verify_readiness(state: WindowsForwardingState) -> WindowsForwardingReadiness {
+fn verify_readiness(state: WindowsForwardingState, tun_index: u32) -> WindowsForwardingReadiness {
     let packet_forwarding_active = state == WindowsForwardingState::Running;
     if !packet_forwarding_active {
         return WindowsForwardingReadiness {
@@ -365,9 +386,19 @@ fn verify_readiness(state: WindowsForwardingState) -> WindowsForwardingReadiness
     WindowsForwardingReadiness {
         packet_forwarding_active,
         dns_protection_ready: verify_dns_over_tunnel(),
-        leak_protection_ready: true,
+        leak_protection_ready: verify_ipv4_default_route_capture(tun_index),
         public_egress_verified: verify_public_egress(),
     }
+}
+
+fn verify_ipv4_default_route_capture(tun_index: u32) -> bool {
+    tun_index != 0
+        && ROUTE_VERIFY_TARGETS.iter().all(|address| {
+            let mut best_interface_index = 0u32;
+            let destination = u32::from_ne_bytes(address.octets());
+            let result = unsafe { GetBestInterface(destination, &mut best_interface_index) };
+            result == 0 && best_interface_index == tun_index
+        })
 }
 
 fn verify_public_egress() -> bool {
@@ -582,6 +613,11 @@ mod tests {
 
         assert!(!WindowsForwardingReadiness {
             public_egress_verified: false,
+            ..full
+        }
+        .protected());
+        assert!(!WindowsForwardingReadiness {
+            leak_protection_ready: false,
             ..full
         }
         .protected());
