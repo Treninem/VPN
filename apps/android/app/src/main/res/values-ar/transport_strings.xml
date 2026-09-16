@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_vpn_links">استيراد روابط VPN</string>
+    <string name="delete_selected_server">حذف الخادم المحدد</string>
+    <string name="encrypted_local_pool">مجموعة محلية مشفرة · %1$d · %2$s</string>
+    <string name="import_vpn_links_hint">ألصق رابط عقدة مدعومًا واحدًا في كل سطر. يتم تشفير بيانات الاعتماد باستخدام Android Keystore.</string>
+    <string name="import_action">استيراد</string>
+    <string name="delete_server_title">حذف %1$s؟</string>
+    <string name="delete_server_message">ستتم إزالة العقدة المشفرة التي تحتوي على بيانات الاعتماد من هذا الجهاز.</string>
+    <string name="delete_action">حذف</string>
+</resources>
