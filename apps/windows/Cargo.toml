@@ -14,6 +14,7 @@ amri-subscriptions = { path = "../../crates/amri-subscriptions" }
 amri-node-config = { path = "../../crates/amri-node-config" }
 amri-transport = { path = "../../crates/amri-transport" }
 amri-external-core = { path = "../../crates/amri-external-core" }
+amri-singbox-renderer = { path = "../../crates/amri-singbox-renderer" }
 amri-secrets = { path = "../../crates/amri-secrets" }
 serde_json.workspace = true
 zeroize.workspace = true
