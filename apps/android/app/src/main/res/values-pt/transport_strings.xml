@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_vpn_links">Importar links VPN</string>
+    <string name="delete_selected_server">Excluir servidor selecionado</string>
+    <string name="encrypted_local_pool">Pool local criptografado · %1$d · %2$s</string>
+    <string name="import_vpn_links_hint">Cole um link de nó compatível por linha. As credenciais são criptografadas com Android Keystore.</string>
+    <string name="import_action">Importar</string>
+    <string name="delete_server_title">Excluir %1$s?</string>
+    <string name="delete_server_message">O nó criptografado com credenciais será removido deste dispositivo.</string>
+    <string name="delete_action">Excluir</string>
+</resources>
