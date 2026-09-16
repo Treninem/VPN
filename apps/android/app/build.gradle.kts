@@ -36,6 +36,7 @@ val generateAmriUiResources by tasks.registering(org.gradle.api.tasks.Copy::clas
 
 val amriRustWorkspace = rootProject.layout.projectDirectory.dir("../..")
 val generatedAmriNativeLibs = layout.buildDirectory.dir("generated/amri-native-jni")
+val stagedAmriTransportLibs = rootProject.layout.projectDirectory.dir("../../dist/android-transport-jni")
 val buildAmriRustNative by tasks.registering(org.gradle.api.tasks.Exec::class) {
     val enabled = providers.environmentVariable("AMRI_BUILD_NATIVE")
         .map { value -> value == "1" || value.equals("true", ignoreCase = true) }
@@ -76,6 +77,17 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // The bundled sing-box transport is launched as a separate executable from
+            // applicationInfo.nativeLibraryDir, so it must be extracted to a real filesystem path.
+            useLegacyPackaging = true
+        }
     }
 
     compileOptions {
@@ -87,6 +99,7 @@ android {
 android.sourceSets["main"].res.srcDir(generatedAmriIconRes.get().asFile)
 android.sourceSets["main"].res.srcDir(generatedAmriUiRes.get().asFile)
 android.sourceSets["main"].jniLibs.srcDir(generatedAmriNativeLibs.get().asFile)
+android.sourceSets["main"].jniLibs.srcDir(stagedAmriTransportLibs.asFile)
 
 tasks.named("preBuild").configure {
     dependsOn(generateAmriIconResource)
