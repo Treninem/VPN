@@ -1,8 +1,7 @@
+use image::imageops::FilterType;
 use std::env;
-use std::fs;
-use std::path::PathBuf;
-
-const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
 
 const WINDOWS_MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
@@ -35,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let generated_ico = out_dir.join("amri-vpn.ico");
-    wrap_png_as_ico(&source_png, &generated_ico)?;
+    render_windows_icon(&source_png, &generated_ico)?;
 
     let icon_path = generated_ico
         .to_str()
@@ -55,35 +54,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn wrap_png_as_ico(
-    source_png: &std::path::Path,
-    output_ico: &std::path::Path,
+fn render_windows_icon(
+    source_png: &Path,
+    output_ico: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let png = fs::read(source_png)?;
-    if png.len() < 24 || png.get(..8) != Some(PNG_SIGNATURE) || png.get(12..16) != Some(b"IHDR") {
-        return Err("canonical AMRI icon is not a valid PNG".into());
-    }
-
-    let width = u32::from_be_bytes(png[16..20].try_into()?);
-    let height = u32::from_be_bytes(png[20..24].try_into()?);
-    if !(1..=256).contains(&width) || !(1..=256).contains(&height) {
-        return Err("Windows ICO wrapper requires PNG dimensions from 1 to 256 pixels".into());
-    }
-
-    let png_len = u32::try_from(png.len())?;
-    let mut ico = Vec::with_capacity(22 + png.len());
-    ico.extend_from_slice(&0u16.to_le_bytes()); // reserved
-    ico.extend_from_slice(&1u16.to_le_bytes()); // image type: icon
-    ico.extend_from_slice(&1u16.to_le_bytes()); // one image
-    ico.push(if width == 256 { 0 } else { width as u8 });
-    ico.push(if height == 256 { 0 } else { height as u8 });
-    ico.push(0); // palette count: PNG owns its palette
-    ico.push(0); // reserved
-    ico.extend_from_slice(&1u16.to_le_bytes());
-    ico.extend_from_slice(&32u16.to_le_bytes());
-    ico.extend_from_slice(&png_len.to_le_bytes());
-    ico.extend_from_slice(&22u32.to_le_bytes());
-    ico.extend_from_slice(&png);
-    fs::write(output_ico, ico)?;
+    let decoded = image::load_from_memory_with_format(&png, image::ImageFormat::Png)?;
+    let bounded = if decoded.width() > 256 || decoded.height() > 256 {
+        decoded.resize(256, 256, FilterType::Lanczos3)
+    } else {
+        decoded
+    };
+    let rgba = bounded.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let icon_image = ico::IconImage::from_rgba_data(width, height, rgba.into_raw());
+    let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
+    icon_dir.add_entry(ico::IconDirEntry::encode(&icon_image)?);
+    icon_dir.write(File::create(output_ico)?)?;
     Ok(())
 }
