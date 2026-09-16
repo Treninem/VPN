@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  SING_BOX_VERSION: "1.14.1"
+  SING_BOX_ANDROID_ARM64_SHA256: "34e2373cfcdd17ef3a0cac13d7f9f971e206257413a9f7b1da63ea02bcf88aab"
+  SING_BOX_ANDROID_AMD64_SHA256: "43d1b49a3086ad12092f028cbe3efb28422c2a6114d0dfb0ea18d0c2427573dc"
+
 jobs:
   test-windows:
     runs-on: windows-latest
@@ -69,6 +74,37 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
+      - name: Stage pinned official Android transport binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="../../dist/android-transport-jni"
+          rm -rf "$OUT"
+          mkdir -p "$OUT/arm64-v8a" "$OUT/x86_64"
+
+          stage_transport() {
+            local upstream_arch="$1"
+            local android_abi="$2"
+            local expected_sha="$3"
+            local archive="$RUNNER_TEMP/sing-box-${upstream_arch}.tar.gz"
+            local expanded="$RUNNER_TEMP/sing-box-${upstream_arch}"
+            local url="https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-android-${upstream_arch}.tar.gz"
+            curl --fail --location --retry 3 "$url" --output "$archive"
+            echo "${expected_sha}  ${archive}" | sha256sum --check --strict
+            rm -rf "$expanded"
+            mkdir -p "$expanded"
+            tar -xzf "$archive" -C "$expanded"
+            local binary
+            binary="$(find "$expanded" -type f -name sing-box -print -quit)"
+            test -n "$binary"
+            cp "$binary" "$OUT/$android_abi/libsing_box.so"
+            chmod 0755 "$OUT/$android_abi/libsing_box.so"
+          }
+
+          stage_transport arm64 arm64-v8a "$SING_BOX_ANDROID_ARM64_SHA256"
+          stage_transport amd64 x86_64 "$SING_BOX_ANDROID_AMD64_SHA256"
+          file "$OUT/arm64-v8a/libsing_box.so" "$OUT/x86_64/libsing_box.so"
+
       - name: Test and assemble Android with Rust native library
         env:
           AMRI_BUILD_NATIVE: "1"
@@ -78,9 +114,11 @@ jobs:
           export ANDROID_NDK="$ANDROID_NDK_LATEST_HOME"
           gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
-      - name: Verify Rust native ABIs are packaged
+      - name: Verify Android native ABIs and transport are packaged
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -f "$APK"
           unzip -l "$APK" | grep -F "lib/arm64-v8a/libamri_android_ffi.so"
           unzip -l "$APK" | grep -F "lib/x86_64/libamri_android_ffi.so"
+          unzip -l "$APK" | grep -F "lib/arm64-v8a/libsing_box.so"
+          unzip -l "$APK" | grep -F "lib/x86_64/libsing_box.so"
