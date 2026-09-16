@@ -1,8 +1,9 @@
 #[path = "system_forwarding.rs"]
 mod system_forwarding;
 
-use amri_external_core::{sing_box_process_spec, SingBoxRenderer, SupervisedProcessAdapter};
+use amri_external_core::{sing_box_process_spec, SupervisedProcessAdapter};
 use amri_node_config::{materialize_connect_request, MaterializeOptions};
+use amri_singbox_renderer::ProductionSingBoxRenderer;
 use amri_subscriptions::ImportedNode;
 use amri_transport::{ConnectRequest, TransportManager, TransportSession};
 use std::net::IpAddr;
@@ -214,7 +215,7 @@ fn connect_node(
     manager
         .register(SupervisedProcessAdapter::new(
             sing_box_process_spec(executable),
-            SingBoxRenderer,
+            ProductionSingBoxRenderer,
         ))
         .map_err(|error| error.to_string())?;
 
