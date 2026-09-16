@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: installers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -73,7 +77,6 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
-          python scripts/build_windows_icon.py
           choco install nsis --yes --no-progress
           & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" packaging/windows/AMRI-VPN.nsi
           if (-not (Test-Path dist/AMRI-VPN-Windows-Setup.exe)) { throw "installer was not created" }
