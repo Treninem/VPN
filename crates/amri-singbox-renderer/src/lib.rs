@@ -77,9 +77,10 @@ impl CoreConfigRenderer for ProductionSingBoxRenderer {
                 }
             }
             NodeProtocol::Tuic => {
-                let (uuid, password) = request.credentials.as_username_password().ok_or_else(|| {
-                    AdapterError::new("TUIC requires username/password credentials")
-                })?;
+                let (uuid, password) =
+                    request.credentials.as_username_password().ok_or_else(|| {
+                        AdapterError::new("TUIC requires username/password credentials")
+                    })?;
                 if uuid.is_empty() || password.is_empty() {
                     return Err(AdapterError::new("TUIC credentials are empty"));
                 }
@@ -415,10 +416,7 @@ mod tests {
         assert_eq!(outbound["tls"]["utls"]["fingerprint"], "chrome");
         assert_eq!(outbound["tls"]["reality"]["enabled"], true);
         assert_eq!(outbound["tls"]["reality"]["public_key"], "public-key");
-        assert_eq!(
-            outbound["tls"]["reality"]["short_id"],
-            "0123456789abcdef"
-        );
+        assert_eq!(outbound["tls"]["reality"]["short_id"], "0123456789abcdef");
     }
 
     #[test]
