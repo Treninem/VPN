@@ -10,7 +10,7 @@ const WINDOWS_MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalon
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>
