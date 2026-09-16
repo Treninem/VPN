@@ -52,6 +52,18 @@ class AndroidNetworkRecoveryGateTest {
     }
 
     @Test
+    fun networkReturnAfterTeardownCompletedStillRestarts() {
+        val gate = AndroidNetworkRecoveryGate()
+        gate.observe(10L, VpnControllerState.SERVICE_READY)
+        gate.observe(null, VpnControllerState.PROTECTED)
+
+        assertEquals(
+            NetworkRecoveryAction.RESTART_PROTECTED_PATH,
+            gate.observe(20L, VpnControllerState.FAILED),
+        )
+    }
+
+    @Test
     fun resetDropsPreviousNetworkIdentity() {
         val gate = AndroidNetworkRecoveryGate()
         gate.observe(10L, VpnControllerState.SERVICE_READY)
