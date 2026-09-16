@@ -18,16 +18,67 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Reconstruct exact uploaded PNG files
-        shell: bash
+      - name: Reconstruct exact RGBA pixels and canonical PNG files
+        shell: python3 {0}
         run: |
-          set -euo pipefail
-          cat .github/power-upload/off-*.b64 | base64 --decode > assets/brand/vpn-power-off.png
-          cat .github/power-upload/on-*.b64  | base64 --decode > assets/brand/vpn-power-on.png
-          echo '9e2c0fc24cd11b8f794a6b0f2b122ab0ce4c0c5a3732368f6ccaf5d87dab3dda  assets/brand/vpn-power-off.png' | sha256sum -c -
-          echo 'c4b33f20a4b2f7e13590c13fdd2d5f8564e9d05ed6ea0a482f488c6f87b3316d  assets/brand/vpn-power-on.png'  | sha256sum -c -
-          test "$(git hash-object assets/brand/vpn-power-off.png)" = 'f86da87979f7f4f8e1623230ffa5b091f9edf1ce'
-          test "$(git hash-object assets/brand/vpn-power-on.png)"  = 'c94bea6e77ee82a22fc82d105576b7be00546ccd'
+          from pathlib import Path
+          import base64, binascii, hashlib, lzma, struct, zlib
+
+          W = H = 1254
+          ROW = W * 4
+
+          items = {
+              'off': {
+                  'raw_sha': '6d19aac0ea5e4556c2129ad453ad3336f4a08881488df01d009ba187b9b110d8',
+                  'png_sha': 'eac85885eb8e9732f69cbda18b313e89867a90d0d16e1c245e1cb0f415b08e30',
+                  'git_blob': '806c8645b8a64b60d96b97ddcc7af5af3a513cdc',
+              },
+              'on': {
+                  'raw_sha': '4f16ece20c0b30b6976ff0bf5e8fc5601e150127ef57d5c604abe636878d9840',
+                  'png_sha': 'b47a4a710215045ba3a65dc22439ff4de40f7a3e779b8c9c62e878e778f07ac0',
+                  'git_blob': 'a7ebcd58990c37a8cc96cf8469e67a4033b999d2',
+              },
+          }
+
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', binascii.crc32(kind + data) & 0xffffffff)
+
+          def png_from_up(filtered):
+              if len(filtered) != ROW * H:
+                  raise SystemExit(f'Unexpected filtered RGBA byte count: {len(filtered)}')
+              scan = bytearray()
+              raw = bytearray(len(filtered))
+              previous = bytearray(ROW)
+              for y in range(H):
+                  residual = filtered[y * ROW:(y + 1) * ROW]
+                  current = bytearray(ROW)
+                  for i, value in enumerate(residual):
+                      current[i] = (value + previous[i]) & 0xff
+                  raw[y * ROW:(y + 1) * ROW] = current
+                  scan.append(2)
+                  scan.extend(residual)
+                  previous = current
+              signature = b'\x89PNG\r\n\x1a\n'
+              ihdr = struct.pack('>IIBBBBB', W, H, 8, 6, 0, 0, 0)
+              png = signature + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib.compress(bytes(scan), 9)) + chunk(b'IEND', b'')
+              return bytes(raw), png
+
+          for state, expected in items.items():
+              pieces = sorted(Path('.github/power-upload').glob(f'{state}-*.xz.b64'))
+              if not pieces:
+                  raise SystemExit(f'No upload pieces for {state}')
+              encoded = ''.join(p.read_text(encoding='ascii').strip() for p in pieces)
+              filtered = lzma.decompress(base64.b64decode(encoded))
+              raw, png = png_from_up(filtered)
+              if hashlib.sha256(raw).hexdigest() != expected['raw_sha']:
+                  raise SystemExit(f'{state}: RGBA pixel hash mismatch')
+              if hashlib.sha256(png).hexdigest() != expected['png_sha']:
+                  raise SystemExit(f'{state}: deterministic PNG hash mismatch')
+              header = f'blob {len(png)}\0'.encode()
+              git_blob = hashlib.sha1(header + png).hexdigest()
+              if git_blob != expected['git_blob']:
+                  raise SystemExit(f'{state}: Git blob mismatch {git_blob}')
+              Path(f'assets/brand/vpn-power-{state}.png').write_bytes(png)
 
       - name: Switch project from old SVGs to exact PNGs
         shell: python3 {0}
@@ -41,7 +92,6 @@ jobs:
               'vpn-power-on.svg': 'vpn-power-on.png',
           }
 
-          # Update every tracked UTF-8 text reference so no stale SVG path survives.
           tracked = subprocess.check_output(['git', 'ls-files', '-z']).split(b'\0')
           for raw in tracked:
               if not raw:
@@ -57,14 +107,9 @@ jobs:
               if updated != text:
                   path.write_text(updated, encoding='utf-8')
 
-          # Android: power states are now PNG resources, while the other icons remain SVG.
           activity = root / 'apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt'
           text = activity.read_text(encoding='utf-8')
-          text = text.replace(
-              'import android.graphics.Color\n',
-              'import android.graphics.BitmapFactory\nimport android.graphics.Color\n',
-              1,
-          )
+          text = text.replace('import android.graphics.Color\n', 'import android.graphics.BitmapFactory\nimport android.graphics.Color\n', 1)
           text = text.replace('actionButton = svgPowerButton()', 'actionButton = pngPowerButton()', 1)
           text = text.replace('        setSvg(actionButton, imageRes)\n', '        setPng(actionButton, imageRes)\n', 1)
           old_block = '''    private fun svgPowerButton(): ImageButton = svgIconButton(\n        R.raw.amri_vpn_power_off,\n        getString(R.string.prepare_vpn),\n    )\n'''
@@ -72,19 +117,18 @@ jobs:
           if old_block not in text:
               raise SystemExit('Expected svgPowerButton block not found')
           text = text.replace(old_block, new_block, 1)
-          svg_marker = '''    private fun setSvg(target: ImageView, resourceId: Int) {\n'''
+          svg_marker = '    private fun setSvg(target: ImageView, resourceId: Int) {\n'
           png_helper = '''    private fun setPng(target: ImageView, resourceId: Int) {\n        target.setImageBitmap(BitmapFactory.decodeResource(resources, resourceId))\n    }\n\n'''
           if svg_marker not in text:
               raise SystemExit('Expected setSvg helper not found')
           text = text.replace(svg_marker, png_helper + svg_marker, 1)
           activity.write_text(text, encoding='utf-8')
 
-          # Lock the exact approved bytes under their new canonical PNG names.
           lock_path = root / 'assets/brand/asset-blobs.lock'
           lines = lock_path.read_text(encoding='utf-8').splitlines()
           kept = [line for line in lines if not line.rstrip().endswith(('vpn-power-off.png', 'vpn-power-on.png'))]
-          kept.append('f86da87979f7f4f8e1623230ffa5b091f9edf1ce  vpn-power-off.png')
-          kept.append('c94bea6e77ee82a22fc82d105576b7be00546ccd  vpn-power-on.png')
+          kept.append('806c8645b8a64b60d96b97ddcc7af5af3a513cdc  vpn-power-off.png')
+          kept.append('a7ebcd58990c37a8cc96cf8469e67a4033b999d2  vpn-power-on.png')
           header = [line for line in kept if line.startswith('#')]
           entries = sorted(line for line in kept if line and not line.startswith('#'))
           lock_path.write_text('\n'.join(header + entries) + '\n', encoding='utf-8')
@@ -93,7 +137,7 @@ jobs:
           text = readme.read_text(encoding='utf-8')
           text = text.replace(
               'Do **not** use the earlier raster ON button with the solid dark square background. It was superseded by `vpn-power-on.png`.',
-              'The `vpn-power-off.png` and `vpn-power-on.png` files are the exact user-approved power-state PNGs. Do not redraw, resize, crop, recolor, re-encode, or otherwise alter their pixels; only these exact locked bytes are approved.',
+              'The `vpn-power-off.png` and `vpn-power-on.png` files are the exact user-approved 1254×1254 RGBA power-state images. Their RGBA pixel matrices are locked and must not be redrawn, resized, cropped, recolored, filtered, or otherwise changed.',
           )
           readme.write_text(text, encoding='utf-8')
 
@@ -113,8 +157,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '9e2c0fc24cd11b8f794a6b0f2b122ab0ce4c0c5a3732368f6ccaf5d87dab3dda  assets/brand/vpn-power-off.png' | sha256sum -c -
-          echo 'c4b33f20a4b2f7e13590c13fdd2d5f8564e9d05ed6ea0a482f488c6f87b3316d  assets/brand/vpn-power-on.png' | sha256sum -c -
+          echo 'eac85885eb8e9732f69cbda18b313e89867a90d0d16e1c245e1cb0f415b08e30  assets/brand/vpn-power-off.png' | sha256sum -c -
+          echo 'b47a4a710215045ba3a65dc22439ff4de40f7a3e779b8c9c62e878e778f07ac0  assets/brand/vpn-power-on.png' | sha256sum -c -
+          test "$(git hash-object assets/brand/vpn-power-off.png)" = '806c8645b8a64b60d96b97ddcc7af5af3a513cdc'
+          test "$(git hash-object assets/brand/vpn-power-on.png)" = 'a7ebcd58990c37a8cc96cf8469e67a4033b999d2'
           python3 scripts/verify_visual_assets.py
 
       - name: Commit exact user-approved power buttons
