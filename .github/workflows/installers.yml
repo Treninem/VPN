@@ -49,6 +49,19 @@ jobs:
           Copy-Item (Get-ChildItem $expanded -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName dist/windows/sing-box.exe
           $license = Get-ChildItem $expanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($license) { Copy-Item $license.FullName dist/windows/sing-box-LICENSE }
+      - name: Validate rendered protocols with pinned sing-box
+        shell: pwsh
+        run: |
+          $singBox = Resolve-Path "dist/windows/sing-box.exe"
+          foreach ($fixture in @("vless-ws", "vless-reality-grpc", "vmess-ws", "trojan-httpupgrade")) {
+            $config = Join-Path $env:RUNNER_TEMP "amri-$fixture.json"
+            $lines = & cargo run --quiet -p amri-singbox-renderer --example render_fixture -- $fixture
+            if ($LASTEXITCODE -ne 0) { throw "failed to render protocol fixture $fixture" }
+            [System.IO.File]::WriteAllText($config, ($lines -join [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+            & $singBox check -c $config
+            if ($LASTEXITCODE -ne 0) { throw "sing-box rejected protocol fixture $fixture" }
+            Remove-Item $config -Force
+          }
       - name: Stage official signed Wintun
         shell: pwsh
         run: |
