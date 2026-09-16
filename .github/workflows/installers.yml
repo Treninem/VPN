@@ -139,3 +139,19 @@ jobs:
           name: AMRI-VPN-Android-Installer
           path: AMRI-VPN-Android.apk
           if-no-files-found: error
+
+  developer-visual-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and package source-only visual editor
+        run: |
+          python3 scripts/generate_ui_theme.py --check
+          python3 scripts/verify_visual_assets.py
+          python3 scripts/package_visual_editor.py
+          unzip -t dist/AMRI-VPN-Visual-Source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AMRI-VPN-Visual-Source
+          path: dist/AMRI-VPN-Visual-Source.zip
+          if-no-files-found: error

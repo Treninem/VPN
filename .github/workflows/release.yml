@@ -1,0 +1,194 @@
+name: Publish AMRI release candidate
+
+on:
+  push:
+    branches:
+      - "release/v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SING_BOX_VERSION: "1.14.1"
+  SING_BOX_WINDOWS_SHA256: "5197f16d492d93202dc623622149a6ed040f8eca263128f91d603f2b901baa89"
+  SING_BOX_ANDROID_ARM64_SHA256: "34e2373cfcdd17ef3a0cac13d7f9f971e206257413a9f7b1da63ea02bcf88aab"
+  SING_BOX_ANDROID_AMD64_SHA256: "43d1b49a3086ad12092f028cbe3efb28422c2a6114d0dfb0ea18d0c2427573dc"
+  WINTUN_VERSION: "0.14.1"
+  WINTUN_ARCHIVE_SHA256: "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: python scripts/generate_ui_theme.py --check
+      - run: cargo test --workspace
+      - run: cargo build --release -p amri-windows
+      - name: Stage verified Windows runtime
+        shell: pwsh
+        run: |
+          $singArchive = Join-Path $env:RUNNER_TEMP "sing-box.zip"
+          $singUrl = "https://github.com/SagerNet/sing-box/releases/download/v$env:SING_BOX_VERSION/sing-box-$env:SING_BOX_VERSION-windows-amd64.zip"
+          Invoke-WebRequest -Uri $singUrl -OutFile $singArchive
+          $singActual = (Get-FileHash $singArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($singActual -ne $env:SING_BOX_WINDOWS_SHA256) { throw "sing-box checksum mismatch" }
+          $singExpanded = Join-Path $env:RUNNER_TEMP "sing-box"
+          Expand-Archive $singArchive -DestinationPath $singExpanded
+          New-Item -ItemType Directory -Force dist/windows | Out-Null
+          Copy-Item target/release/amri-windows.exe dist/windows/AMRI-VPN.exe
+          Copy-Item (Get-ChildItem $singExpanded -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName dist/windows/sing-box.exe
+          $singLicense = Get-ChildItem $singExpanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
+          if ($singLicense) { Copy-Item $singLicense.FullName dist/windows/sing-box-LICENSE }
+
+          $wintunArchive = Join-Path $env:RUNNER_TEMP "wintun.zip"
+          $wintunUrl = "https://www.wintun.net/builds/wintun-$env:WINTUN_VERSION.zip"
+          Invoke-WebRequest -Uri $wintunUrl -OutFile $wintunArchive
+          $wintunActual = (Get-FileHash $wintunArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($wintunActual -ne $env:WINTUN_ARCHIVE_SHA256) { throw "Wintun checksum mismatch" }
+          $wintunExpanded = Join-Path $env:RUNNER_TEMP "wintun"
+          Expand-Archive $wintunArchive -DestinationPath $wintunExpanded
+          $dll = Get-ChildItem $wintunExpanded -Recurse -Filter wintun.dll | Where-Object { $_.FullName -match '[\\/]bin[\\/]amd64[\\/]wintun\.dll$' } | Select-Object -First 1
+          if (-not $dll) { throw "official amd64 wintun.dll was not found" }
+          Copy-Item $dll.FullName dist/windows/wintun.dll
+          $wintunLicense = Get-ChildItem $wintunExpanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
+          if ($wintunLicense) { Copy-Item $wintunLicense.FullName dist/windows/wintun-LICENSE.txt }
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          choco install nsis --yes --no-progress
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" packaging/windows/AMRI-VPN.nsi
+          if (-not (Test-Path dist/AMRI-VPN-Windows-Setup.exe)) { throw "installer was not created" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/AMRI-VPN-Windows-Setup.exe
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - run: cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Verify visual sources
+        run: |
+          python3 ../../scripts/verify_visual_assets.py
+          python3 ../../scripts/generate_ui_theme.py --check
+      - name: Stage verified Android transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="../../dist/android-transport-jni"
+          rm -rf "$OUT"
+          mkdir -p "$OUT/arm64-v8a" "$OUT/x86_64"
+          stage_transport() {
+            local upstream_arch="$1" android_abi="$2" expected_sha="$3"
+            local archive="$RUNNER_TEMP/sing-box-${upstream_arch}.tar.gz"
+            local expanded="$RUNNER_TEMP/sing-box-${upstream_arch}"
+            curl --fail --location --retry 3 "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-android-${upstream_arch}.tar.gz" --output "$archive"
+            echo "${expected_sha}  ${archive}" | sha256sum --check --strict
+            mkdir -p "$expanded"
+            tar -xzf "$archive" -C "$expanded"
+            local binary
+            binary="$(find "$expanded" -type f -name sing-box -print -quit)"
+            test -n "$binary"
+            cp "$binary" "$OUT/$android_abi/libsing_box.so"
+            chmod 0755 "$OUT/$android_abi/libsing_box.so"
+          }
+          stage_transport arm64 arm64-v8a "$SING_BOX_ANDROID_ARM64_SHA256"
+          stage_transport amd64 x86_64 "$SING_BOX_ANDROID_AMD64_SHA256"
+      - name: Build verified APK
+        env:
+          AMRI_BUILD_NATIVE: "1"
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME"
+          export ANDROID_NDK="$ANDROID_NDK_LATEST_HOME"
+          gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk ../../AMRI-VPN-Android.apk
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/arm64-v8a/libamri_android_ffi.so"
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libamri_android_ffi.so"
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/arm64-v8a/libsing_box.so"
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libsing_box.so"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: AMRI-VPN-Android.apk
+          if-no-files-found: error
+
+  visual-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/generate_ui_theme.py --check
+      - run: python3 scripts/verify_visual_assets.py
+      - run: python3 scripts/package_visual_editor.py
+      - run: unzip -t dist/AMRI-VPN-Visual-Source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-visual-source
+          path: dist/AMRI-VPN-Visual-Source.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [windows, android, visual-source]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+          path: release-dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-android
+          path: release-dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-visual-source
+          path: release-dist
+      - name: Derive release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" == release/* ]]; then
+            TAG="${GITHUB_REF_NAME#release/}"
+          else
+            TAG="v0.1.0-rc-manual-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+      - name: Generate checksums
+        run: |
+          cd release-dist
+          sha256sum AMRI-VPN-Windows-Setup.exe AMRI-VPN-Android.apk AMRI-VPN-Visual-Source.zip > SHA256SUMS.txt
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            release-dist/AMRI-VPN-Windows-Setup.exe \
+            release-dist/AMRI-VPN-Android.apk \
+            release-dist/AMRI-VPN-Visual-Source.zip \
+            release-dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "AMRI VPN $TAG" \
+            --prerelease \
+            --notes "AMRI VPN release candidate. Windows and Android VPN paths are packaged with pinned verified runtimes. Android APK is currently debug-signed and Windows Setup is not Authenticode-signed unless owner signing secrets are added. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
