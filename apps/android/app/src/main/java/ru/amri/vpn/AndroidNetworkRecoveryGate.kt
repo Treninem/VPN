@@ -39,7 +39,7 @@ internal class AndroidNetworkRecoveryGate {
         if (
             waitingForNetwork &&
             networkHandle != null &&
-            state == VpnControllerState.SERVICE_READY
+            (state == VpnControllerState.SERVICE_READY || state == VpnControllerState.FAILED)
         ) {
             waitingForNetwork = false
             return NetworkRecoveryAction.RESTART_PROTECTED_PATH
