@@ -12,14 +12,24 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import ru.amri.vpn.nativebridge.AmriNativeBridge
+import ru.amri.vpn.nativebridge.ExternalTransportState
+import java.io.File
 import java.net.DatagramSocket
+import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 class AmriVpnService : VpnService() {
     private var controlInterface: ParcelFileDescriptor? = null
     private var networkObserver: AndroidNetworkObserver? = null
     private val networkLease = AndroidNetworkLease()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val lifecycleGeneration = AtomicInteger(0)
+    private val transportExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "amri-android-transport").apply { isDaemon = true }
+    }
     private val runtimeOwner by lazy(LazyThreadSafetyMode.NONE) { AndroidRuntimeOwner.production(this) }
     private val mobilePolicyOwner by lazy(LazyThreadSafetyMode.NONE) { AndroidMobilePolicyOwner.production() }
     private val publicTunnelOwner by lazy(LazyThreadSafetyMode.NONE) { AndroidPublicTunnelOwner(this) }
@@ -27,10 +37,13 @@ class AmriVpnService : VpnService() {
     private val protectionWatchdog = object : Runnable {
         override fun run() {
             if (STATE.state != VpnControllerState.PROTECTED) return
-            val stillProtected = publicTunnelOwner.isRunning() &&
+            val transportReady = runCatching {
+                AmriNativeBridge.externalTransportState() == ExternalTransportState.RUNNING
+            }.getOrDefault(false)
+            val forwardingReady = publicTunnelOwner.isRunning() &&
                 publicTunnelOwner.readiness()?.protected == true
-            if (!stillProtected) {
-                downgradeFromPublicTunnel()
+            if (!transportReady || !forwardingReady) {
+                failProtectedGeneration()
                 return
             }
             mainHandler.postDelayed(this, PROTECTION_WATCHDOG_MS)
@@ -53,16 +66,20 @@ class AmriVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        lifecycleGeneration.incrementAndGet()
         stopProtectionWatchdog()
-        stopNetworkObservation()
         stopPublicForwarding()
         closeInterface()
+        stopNetworkObservation()
+        runCatching { AmriNativeBridge.stopExternalTransport() }
+        transportExecutor.shutdownNow()
         STATE.stop()
         super.onDestroy()
     }
 
     private fun startController() {
         if (!STATE.startPreparing()) return
+        val generation = lifecycleGeneration.incrementAndGet()
         createNotificationChannel()
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -81,30 +98,76 @@ class AmriVpnService : VpnService() {
             controlInterface = establishControlInterface()
                 ?: error("Android refused to establish the VPN interface")
             STATE.serviceReady()
+            transportExecutor.execute { startProtectedGeneration(generation) }
         } catch (_: Exception) {
-            STATE.fail()
-            stopNetworkObservation()
-            stopPublicForwarding()
-            closeInterface()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            failStartup(generation)
+        }
+    }
+
+    private fun startProtectedGeneration(generation: Int) {
+        var transportStarted = false
+        try {
+            val rawUri = selectedNodeUri() ?: error("no selected Android VPN node")
+            val executable = File(applicationInfo.nativeLibraryDir, TRANSPORT_LIBRARY_NAME)
+            check(executable.isFile) { "bundled Android VPN transport is unavailable" }
+            val localPort = reserveLoopbackPort()
+
+            AmriNativeBridge.startExternalTransport(rawUri, executable.absolutePath, localPort)
+            transportStarted = true
+            check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
+            check(AmriNativeBridge.externalTransportState() == ExternalTransportState.RUNNING) {
+                "VPN transport did not remain ready"
+            }
+            check(activatePublicForwarding(localPort, SAFE_INITIAL_MTU)) {
+                "public forwarding readiness failed"
+            }
+            check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
+        } catch (_: Exception) {
+            if (generation == lifecycleGeneration.get()) {
+                stopProtectionWatchdog()
+                stopPublicForwarding()
+                restoreControlInterfaceOrFail()
+                STATE.fail()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+            if (transportStarted) runCatching { AmriNativeBridge.stopExternalTransport() }
         }
     }
 
     private fun stopController() {
+        val generation = lifecycleGeneration.incrementAndGet()
         stopProtectionWatchdog()
-        stopNetworkObservation()
         stopPublicForwarding()
         closeInterface()
-        STATE.stop()
+        stopNetworkObservation()
+        transportExecutor.execute {
+            runCatching { AmriNativeBridge.stopExternalTransport() }
+            mainHandler.post {
+                if (generation == lifecycleGeneration.get()) {
+                    STATE.stop()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }
+        }
+    }
+
+    private fun failStartup(generation: Int) {
+        if (generation != lifecycleGeneration.get()) return
+        stopProtectionWatchdog()
+        stopPublicForwarding()
+        closeInterface()
+        stopNetworkObservation()
+        STATE.fail()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     /**
      * Promotes the control-only service to a verified public packet-forwarding generation.
-     * The caller must already own a transport-ready loopback SOCKS endpoint and protect/bind the
-     * transport's real network sockets through [prepareTransportSocket].
+     *
+     * The current external transport runs as an AMRI subprocess. The public TUN excludes AMRI's
+     * own package, so that subprocess cannot route back into the TUN it feeds. Future in-process
+     * adapters must continue to use [prepareTransportSocket] for per-socket protect/bind.
      */
     internal fun activatePublicForwarding(localSocksPort: Int, safeInitialMtu: Int): Boolean {
         if (STATE.state != VpnControllerState.SERVICE_READY) return false
@@ -153,11 +216,16 @@ class AmriVpnService : VpnService() {
         mainHandler.removeCallbacks(protectionWatchdog)
     }
 
-    private fun downgradeFromPublicTunnel() {
+    private fun failProtectedGeneration() {
+        val generation = lifecycleGeneration.incrementAndGet()
         stopProtectionWatchdog()
         if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
         stopPublicForwarding()
         restoreControlInterfaceOrFail()
+        transportExecutor.execute {
+            runCatching { AmriNativeBridge.stopExternalTransport() }
+            if (generation == lifecycleGeneration.get()) STATE.fail()
+        }
     }
 
     private fun restoreControlInterfaceOrFail(): Boolean {
@@ -180,6 +248,19 @@ class AmriVpnService : VpnService() {
             .establish()
     } catch (_: Exception) {
         null
+    }
+
+    private fun selectedNodeUri(): String? {
+        val nodes = AndroidNodeStore(this).load()
+        if (nodes.isEmpty()) return null
+        val selected = getSharedPreferences(UI_PREFS, MODE_PRIVATE)
+            .getInt(KEY_SELECTED_NODE, 0)
+            .coerceIn(nodes.indices)
+        return nodes[selected]
+    }
+
+    private fun reserveLoopbackPort(): Int = ServerSocket(0, 1).use { socket ->
+        socket.localPort.also { require(it in 1..65535) }
     }
 
     private fun stopPublicForwarding() {
@@ -205,10 +286,10 @@ class AmriVpnService : VpnService() {
         networkLease.clear()
     }
 
-    /** Transport adapters must reject and close a socket when this returns false. */
+    /** In-process transport adapters must reject and close a socket when this returns false. */
     internal fun prepareTransportSocket(socket: Socket): Boolean = networkLease.prepare(this, socket)
 
-    /** UDP equivalent used by WireGuard/Hysteria2/TUIC adapters. */
+    /** UDP equivalent used by future in-process WireGuard/Hysteria2/TUIC adapters. */
     internal fun prepareTransportSocket(socket: DatagramSocket): Boolean =
         networkLease.prepare(this, socket)
 
@@ -248,5 +329,9 @@ class AmriVpnService : VpnService() {
         private const val NOTIFICATION_ID = 1001
         private const val CONTROL_ADDRESS = "10.253.0.1"
         private const val PROTECTION_WATCHDOG_MS = 1000L
+        private const val SAFE_INITIAL_MTU = 1420
+        private const val TRANSPORT_LIBRARY_NAME = "libsing_box.so"
+        private const val UI_PREFS = "amri_ui"
+        private const val KEY_SELECTED_NODE = "selected_node"
     }
 }
