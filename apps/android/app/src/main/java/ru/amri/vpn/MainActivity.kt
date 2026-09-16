@@ -278,7 +278,9 @@ class MainActivity : Activity() {
         val selected = if (nodes.isEmpty()) -1 else uiPreferences()
             .getInt(KEY_SELECTED_NODE, 0)
             .coerceIn(nodes.indices)
-        val items = nodes.mapIndexed(AndroidNodeStore::safeLabel).toMutableList().apply {
+        val items = nodes.mapIndexed { index, raw ->
+            AndroidNodeStore.safeLabel(raw, index)
+        }.toMutableList().apply {
             add("＋ Import VPN links")
             if (nodes.isNotEmpty()) add("Delete selected server")
         }
