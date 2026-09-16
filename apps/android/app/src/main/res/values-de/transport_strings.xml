@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_vpn_links">VPN-Links importieren</string>
+    <string name="delete_selected_server">Ausgewählten Server löschen</string>
+    <string name="encrypted_local_pool">Verschlüsselter lokaler Pool · %1$d · %2$s</string>
+    <string name="import_vpn_links_hint">Fügen Sie pro Zeile einen unterstützten Node-Link ein. Zugangsdaten werden mit Android Keystore verschlüsselt.</string>
+    <string name="import_action">Importieren</string>
+    <string name="delete_server_title">%1$s löschen?</string>
+    <string name="delete_server_message">Der verschlüsselte Node mit Zugangsdaten wird von diesem Gerät entfernt.</string>
+    <string name="delete_action">Löschen</string>
+</resources>
