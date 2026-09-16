@@ -27,7 +27,6 @@ FILES = [
     "apps/android/app/src/main/java/ru/amri/vpn/MainActivity.kt",
     "apps/android/app/src/main/java/ru/amri/vpn/AmriTheme.kt",
     "apps/android/app/src/main/java/ru/amri/vpn/GeneratedAmriTheme.kt",
-    "assets/brand/asset-blobs.lock",
 ]
 
 BRAND_DIR = ROOT / "assets" / "brand"
@@ -40,6 +39,10 @@ def collect() -> list[Path]:
     if missing:
         relative = ", ".join(str(path.relative_to(ROOT)) for path in missing)
         raise FileNotFoundError(f"visual source inputs are missing: {relative}")
+
+    relative_paths = [path.relative_to(ROOT).as_posix() for path in paths]
+    if len(relative_paths) != len(set(relative_paths)):
+        raise RuntimeError("visual source input list contains duplicate paths")
     return paths
 
 
@@ -48,12 +51,17 @@ def build(output: Path) -> None:
     paths = collect()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in paths:
-            archive.write(path, path.relative_to(ROOT).as_posix())
+            name = path.relative_to(ROOT).as_posix()
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.create_system = 3
+            info.external_attr = 0o100644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, path.read_bytes(), compresslevel=9)
 
     with zipfile.ZipFile(output, "r") as archive:
-        names = set(archive.namelist())
-        expected = {path.relative_to(ROOT).as_posix() for path in paths}
-        if names != expected:
+        names = archive.namelist()
+        expected = [path.relative_to(ROOT).as_posix() for path in paths]
+        if names != expected or len(names) != len(set(names)):
             raise RuntimeError("visual source ZIP verification failed")
         if archive.testzip() is not None:
             raise RuntimeError("visual source ZIP contains a corrupt member")
