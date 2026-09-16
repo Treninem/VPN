@@ -3,8 +3,15 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt;
+#[cfg(target_os = "windows")]
+use std::io::Read;
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 use thiserror::Error;
 use url::Url;
+
+#[cfg(target_os = "windows")]
+const MAX_SUBSCRIPTION_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NodeProtocol {
@@ -147,6 +154,10 @@ impl fmt::Debug for PooledNode {
 pub enum SubscriptionError {
     #[error("unsupported or malformed node URI")]
     InvalidNodeUri,
+    #[error("subscription could not be downloaded securely")]
+    DownloadFailed,
+    #[error("subscription payload is invalid or contains no supported nodes")]
+    InvalidSubscriptionPayload,
 }
 
 fn normalize_uri_for_fingerprint(raw: &str) -> String {
@@ -173,7 +184,7 @@ pub fn parse_node_uri(subscription_id: &str, raw: &str) -> Result<ImportedNode, 
         return Err(SubscriptionError::InvalidNodeUri);
     }
 
-    // vmess links are often base64 payloads after the scheme and may not be RFC URL compliant.
+    // VMess links are often base64 payloads after the scheme and may not be RFC URL compliant.
     let scheme = raw.split_once("://").map(|(s, _)| s).unwrap_or_default();
     let protocol = NodeProtocol::from_scheme(scheme);
     if !protocol.is_production_importable() {
@@ -206,22 +217,38 @@ pub fn parse_node_uri(subscription_id: &str, raw: &str) -> Result<ImportedNode, 
     })
 }
 
-pub fn parse_subscription_text(subscription_id: &str, text: &str) -> Vec<ImportedNode> {
+fn parse_node_lines(subscription_id: &str, text: &str) -> Vec<ImportedNode> {
     text.lines()
         .filter_map(|line| parse_node_uri(subscription_id, line).ok())
         .collect()
+}
+
+/// Parses direct node links. On Windows, a single HTTPS provider subscription URL is fetched with
+/// strict bounds and then decoded. The credential-bearing URL is never included in returned errors.
+pub fn parse_subscription_text(subscription_id: &str, text: &str) -> Vec<ImportedNode> {
+    let trimmed = text.trim();
+
+    #[cfg(target_os = "windows")]
+    if !trimmed.contains(['\r', '\n']) && trimmed.starts_with("https://") {
+        return fetch_subscription_url(subscription_id, trimmed).unwrap_or_default();
+    }
+
+    parse_node_lines(subscription_id, text)
 }
 
 /// Parses a provider response without ever treating the credential-bearing subscription URL itself
 /// as a node. Plain newline-delimited node links are accepted first; if none are present, the whole
 /// response is decoded using the common base64 variants used by subscription providers.
 pub fn parse_subscription_payload(subscription_id: &str, payload: &str) -> Vec<ImportedNode> {
-    let direct = parse_subscription_text(subscription_id, payload);
+    let direct = parse_node_lines(subscription_id, payload);
     if !direct.is_empty() {
         return direct;
     }
 
-    let compact: String = payload.chars().filter(|character| !character.is_whitespace()).collect();
+    let compact: String = payload
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect();
     if compact.is_empty() || compact.len() > 8 * 1024 * 1024 {
         return Vec::new();
     }
@@ -238,13 +265,71 @@ pub fn parse_subscription_payload(subscription_id: &str, payload: &str) -> Vec<I
         let Ok(text) = String::from_utf8(decoded) else {
             continue;
         };
-        let parsed = parse_subscription_text(subscription_id, &text);
+        let parsed = parse_node_lines(subscription_id, &text);
         if !parsed.is_empty() {
             return parsed;
         }
     }
 
     Vec::new()
+}
+
+#[cfg(target_os = "windows")]
+fn fetch_subscription_url(
+    subscription_id: &str,
+    source_url: &str,
+) -> Result<Vec<ImportedNode>, SubscriptionError> {
+    let parsed_url = Url::parse(source_url).map_err(|_| SubscriptionError::DownloadFailed)?;
+    if parsed_url.scheme() != "https" || parsed_url.host_str().is_none() {
+        return Err(SubscriptionError::DownloadFailed);
+    }
+
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 5 {
+            attempt.error("redirect limit exceeded")
+        } else if attempt.url().scheme() != "https" {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    });
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(12))
+        .redirect(redirect_policy)
+        .build()
+        .map_err(|_| SubscriptionError::DownloadFailed)?;
+
+    let response = client
+        .get(source_url)
+        .header(reqwest::header::USER_AGENT, "AMRI-VPN/0.1")
+        .send()
+        .map_err(|_| SubscriptionError::DownloadFailed)?;
+    if !response.status().is_success() || response.url().scheme() != "https" {
+        return Err(SubscriptionError::DownloadFailed);
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_SUBSCRIPTION_BYTES)
+    {
+        return Err(SubscriptionError::InvalidSubscriptionPayload);
+    }
+
+    let mut bytes = Vec::new();
+    response
+        .take(MAX_SUBSCRIPTION_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| SubscriptionError::DownloadFailed)?;
+    if bytes.len() as u64 > MAX_SUBSCRIPTION_BYTES {
+        return Err(SubscriptionError::InvalidSubscriptionPayload);
+    }
+    let payload = String::from_utf8(bytes).map_err(|_| SubscriptionError::InvalidSubscriptionPayload)?;
+    let nodes = parse_subscription_payload(subscription_id, &payload);
+    if nodes.is_empty() {
+        Err(SubscriptionError::InvalidSubscriptionPayload)
+    } else {
+        Ok(nodes)
+    }
 }
 
 pub fn build_unified_pool(nodes: impl IntoIterator<Item = ImportedNode>) -> Vec<PooledNode> {
@@ -317,16 +402,18 @@ mod tests {
         let encoded = general_purpose::STANDARD.encode(plain);
         let parsed = parse_subscription_payload("provider", &encoded);
         assert_eq!(parsed.len(), 2);
-        assert!(parsed.iter().any(|node| node.protocol == NodeProtocol::Vless));
-        assert!(parsed.iter().any(|node| node.protocol == NodeProtocol::Trojan));
+        assert!(parsed
+            .iter()
+            .any(|node| node.protocol == NodeProtocol::Vless));
+        assert!(parsed
+            .iter()
+            .any(|node| node.protocol == NodeProtocol::Trojan));
     }
 
     #[test]
     fn direct_payload_still_wins_without_base64_roundtrip() {
-        let parsed = parse_subscription_payload(
-            "provider",
-            "hysteria2://pw@fi.example.com:443#Helsinki",
-        );
+        let parsed =
+            parse_subscription_payload("provider", "hysteria2://pw@fi.example.com:443#Helsinki");
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].protocol, NodeProtocol::Hysteria2);
     }
