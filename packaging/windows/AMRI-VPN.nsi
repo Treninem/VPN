@@ -8,6 +8,8 @@ SetCompressor /SOLID lzma
 
 Name "${PRODUCT_NAME}"
 OutFile "..\..\dist\AMRI-VPN-Windows-Setup.exe"
+Icon "..\..\dist\windows\amri-vpn.ico"
+UninstallIcon "..\..\dist\windows\amri-vpn.ico"
 InstallDir "$PROGRAMFILES64\AMRI VPN"
 InstallDirRegKey HKLM "Software\AMRI VPN" "InstallDir"
 
@@ -31,6 +33,7 @@ Section "AMRI VPN" SecMain
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayName" "${PRODUCT_NAME}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "Publisher" "${PRODUCT_PUBLISHER}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayIcon" '"$INSTDIR\AMRI-VPN.exe",0'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "UninstallString" '"$INSTDIR\Uninstall.exe"'
 
   ; Older preview installers used the AppCompat RUNASADMIN compatibility layer. The executable now
