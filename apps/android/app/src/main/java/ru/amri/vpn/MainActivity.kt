@@ -17,9 +17,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
@@ -37,6 +39,8 @@ class MainActivity : Activity() {
     private lateinit var actionButton: ImageButton
     private lateinit var actionLabel: TextView
     private lateinit var settingsContainer: LinearLayout
+    private lateinit var routePrimary: TextView
+    private lateinit var routeSecondary: TextView
     private val stateHandler = Handler(Looper.getMainLooper())
     private val stateRefresh = object : Runnable {
         override fun run() {
@@ -66,11 +70,13 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildContent())
+        refreshRouteSummary()
         refreshState()
     }
 
     override fun onResume() {
         super.onResume()
+        refreshRouteSummary()
         stateHandler.removeCallbacks(stateRefresh)
         stateHandler.post(stateRefresh)
     }
@@ -233,8 +239,10 @@ class MainActivity : Activity() {
         val labels = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
             addView(text(getString(R.string.route_selection), 16f, Color.WHITE, true))
-            addView(text(getString(R.string.automatic_route), 14f, AmriTheme.actionTextColor, true))
-            addView(text(getString(R.string.no_imported_servers), 12f, AmriTheme.mutedTextColor, false))
+            routePrimary = text(getString(R.string.automatic_route), 14f, AmriTheme.actionTextColor, true)
+            routeSecondary = text(getString(R.string.no_imported_servers), 12f, AmriTheme.mutedTextColor, false)
+            addView(routePrimary)
+            addView(routeSecondary)
         }
         row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
         row.addView(
@@ -249,11 +257,99 @@ class MainActivity : Activity() {
         addView(row)
     }
 
+    private fun refreshRouteSummary() {
+        if (!::routePrimary.isInitialized || !::routeSecondary.isInitialized) return
+        val nodes = runCatching { AndroidNodeStore(this).load() }.getOrDefault(mutableListOf())
+        if (nodes.isEmpty()) {
+            routePrimary.text = getString(R.string.automatic_route)
+            routeSecondary.text = getString(R.string.no_imported_servers)
+            return
+        }
+        val selected = uiPreferences().getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
+        if (selected != uiPreferences().getInt(KEY_SELECTED_NODE, 0)) {
+            uiPreferences().edit().putInt(KEY_SELECTED_NODE, selected).apply()
+        }
+        routePrimary.text = AndroidNodeStore.safeLabel(nodes[selected], selected)
+        routeSecondary.text = "Encrypted local pool · ${nodes.size} · ${AndroidNodeStore.safeFingerprint(nodes[selected])}"
+    }
+
     private fun showServerDialog() {
+        val nodes = runCatching { AndroidNodeStore(this).load() }.getOrDefault(mutableListOf())
+        val selected = if (nodes.isEmpty()) -1 else uiPreferences()
+            .getInt(KEY_SELECTED_NODE, 0)
+            .coerceIn(nodes.indices)
+        val items = nodes.mapIndexed(AndroidNodeStore::safeLabel).toMutableList().apply {
+            add("＋ Import VPN links")
+            if (nodes.isNotEmpty()) add("Delete selected server")
+        }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.choose_server))
-            .setSingleChoiceItems(arrayOf(getString(R.string.automatic_route)), 0) { dialog, _ ->
-                dialog.dismiss()
+            .setSingleChoiceItems(items.toTypedArray(), selected) { dialog, which ->
+                when {
+                    which < nodes.size -> {
+                        uiPreferences().edit().putInt(KEY_SELECTED_NODE, which).apply()
+                        dialog.dismiss()
+                        refreshRouteSummary()
+                    }
+                    which == nodes.size -> {
+                        dialog.dismiss()
+                        showNodeImportDialog()
+                    }
+                    else -> {
+                        dialog.dismiss()
+                        deleteSelectedNode()
+                    }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showNodeImportDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 5
+            maxLines = 12
+            hint = "vless://…\nvmess://…\ntrojan://…\nss://…"
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Import VPN links")
+            .setMessage("Paste one supported node link per line. Credentials are encrypted with Android Keystore.")
+            .setView(input)
+            .setPositiveButton("Import") { _, _ ->
+                runCatching {
+                    val store = AndroidNodeStore(this)
+                    val nodes = store.importText(input.text.toString())
+                    if (nodes.isNotEmpty()) {
+                        val selected = uiPreferences().getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
+                        uiPreferences().edit().putInt(KEY_SELECTED_NODE, selected).apply()
+                    }
+                }.onFailure {
+                    AmriVpnService.STATE.fail()
+                }
+                refreshRouteSummary()
+                refreshState()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun deleteSelectedNode() {
+        val store = AndroidNodeStore(this)
+        val nodes = runCatching { store.load() }.getOrDefault(mutableListOf())
+        if (nodes.isEmpty()) return
+        val selected = uiPreferences().getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
+        val safeName = AndroidNodeStore.safeLabel(nodes[selected], selected)
+        AlertDialog.Builder(this)
+            .setTitle("Delete $safeName?")
+            .setMessage("The encrypted credential-bearing node will be removed from this device.")
+            .setPositiveButton("Delete") { _, _ ->
+                nodes.removeAt(selected)
+                store.save(nodes)
+                val replacement = if (nodes.isEmpty()) 0 else selected.coerceAtMost(nodes.lastIndex)
+                uiPreferences().edit().putInt(KEY_SELECTED_NODE, replacement).apply()
+                refreshRouteSummary()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
@@ -305,6 +401,11 @@ class MainActivity : Activity() {
     }
 
     private fun requestVpnStart() {
+        val hasNode = runCatching { AndroidNodeStore(this).load().isNotEmpty() }.getOrDefault(false)
+        if (!hasNode) {
+            showNodeImportDialog()
+            return
+        }
         requestNotificationPermission()
         val permissionIntent = VpnService.prepare(this)
         if (permissionIntent == null) {
@@ -414,6 +515,7 @@ class MainActivity : Activity() {
         private const val UI_PREFS = "amri_ui"
         private const val KEY_LANGUAGE = "language_tag"
         private const val KEY_ROUTING_MODE = "routing_mode"
+        private const val KEY_SELECTED_NODE = "selected_node"
         private const val KEY_SMART_ROUTING = "smart_routing"
         private const val KEY_DNS_PROTECTION = "dns_protection"
         private const val KEY_KILL_SWITCH = "kill_switch"
