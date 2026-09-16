@@ -65,16 +65,22 @@ jobs:
           $license = Get-ChildItem $expanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($license) { Copy-Item $license.FullName dist/windows/wintun-LICENSE.txt }
           if (-not (Test-Path dist/windows/wintun.dll)) { throw "wintun.dll was not staged" }
+      - name: Build Windows diagnostic executable
+        run: cargo build -p amri-windows
       - name: Smoke test staged Windows application
         shell: pwsh
         run: |
-          $exe = Resolve-Path "dist/windows/AMRI-VPN.exe"
-          $process = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 8
-          if ($process.HasExited) {
-            throw "staged AMRI application exited during startup smoke test with code $($process.ExitCode)"
+          $diagnosticExe = "dist/windows/AMRI-VPN-debug-ci.exe"
+          Copy-Item "target/debug/amri-windows.exe" $diagnosticExe
+          try {
+            & scripts/windows_gui_smoke.ps1 `
+              -ExePath "dist/windows/AMRI-VPN.exe" `
+              -DiagnosticExePath $diagnosticExe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          Stop-Process -Id $process.Id -Force
+          finally {
+            Remove-Item $diagnosticExe -Force -ErrorAction SilentlyContinue
+          }
       - name: Build Windows installer
         shell: pwsh
         run: |
@@ -92,10 +98,24 @@ jobs:
           foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll")) {
             if (-not (Test-Path (Join-Path $installDir $file))) { throw "installed package is missing $file" }
           }
-          $app = Start-Process -FilePath (Join-Path $installDir "AMRI-VPN.exe") -WorkingDirectory $installDir -PassThru
-          Start-Sleep -Seconds 8
-          if ($app.HasExited) { throw "installed AMRI application exited with code $($app.ExitCode)" }
-          Stop-Process -Id $app.Id -Force
+
+          $stagedHash = (Get-FileHash "dist/windows/AMRI-VPN.exe" -Algorithm SHA256).Hash
+          $installedExe = Join-Path $installDir "AMRI-VPN.exe"
+          $installedHash = (Get-FileHash $installedExe -Algorithm SHA256).Hash
+          if ($installedHash -ne $stagedHash) { throw "installed AMRI executable does not match the staged release executable" }
+
+          $diagnosticExe = Join-Path $installDir "AMRI-VPN-debug-ci.exe"
+          Copy-Item "target/debug/amri-windows.exe" $diagnosticExe
+          try {
+            & scripts/windows_gui_smoke.ps1 `
+              -ExePath $installedExe `
+              -DiagnosticExePath $diagnosticExe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          finally {
+            Remove-Item $diagnosticExe -Force -ErrorAction SilentlyContinue
+          }
+
           $uninstaller = Join-Path $installDir "Uninstall.exe"
           if (Test-Path $uninstaller) {
             Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait

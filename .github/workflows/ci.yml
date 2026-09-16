@@ -43,46 +43,23 @@ jobs:
       - name: Build Windows release executable
         run: cargo build --release -p amri-windows
 
+      - name: Build Windows diagnostic executable
+        run: cargo build -p amri-windows
+
       - name: Launch Windows executable smoke test
         shell: pwsh
         run: |
-          $releaseExe = Resolve-Path "target/release/amri-windows.exe"
-          $releaseProcess = Start-Process -FilePath $releaseExe -PassThru
-          Start-Sleep -Seconds 8
-          if (-not $releaseProcess.HasExited) {
-            Stop-Process -Id $releaseProcess.Id -Force
-            exit 0
+          $diagnosticExe = "target/release/amri-windows-debug-ci.exe"
+          Copy-Item "target/debug/amri-windows.exe" $diagnosticExe
+          try {
+            & scripts/windows_gui_smoke.ps1 `
+              -ExePath "target/release/amri-windows.exe" `
+              -DiagnosticExePath $diagnosticExe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-
-          $releaseExitCode = $releaseProcess.ExitCode
-          Write-Host "Release GUI exited during startup with code $releaseExitCode; collecting console diagnostic."
-
-          cargo build -p amri-windows
-          if ($LASTEXITCODE -ne 0) { throw "failed to build diagnostic Windows executable" }
-
-          $debugExe = Resolve-Path "target/debug/amri-windows.exe"
-          $stdout = Join-Path $env:RUNNER_TEMP "amri-startup-stdout.txt"
-          $stderr = Join-Path $env:RUNNER_TEMP "amri-startup-stderr.txt"
-          $debugProcess = Start-Process -FilePath $debugExe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          Start-Sleep -Seconds 8
-
-          if (-not $debugProcess.HasExited) {
-            Stop-Process -Id $debugProcess.Id -Force
-            Write-Host "Diagnostic build remained alive; release-only startup path failed."
-          } else {
-            Write-Host "Diagnostic build exited with code $($debugProcess.ExitCode)."
+          finally {
+            Remove-Item $diagnosticExe -Force -ErrorAction SilentlyContinue
           }
-
-          if (Test-Path $stdout) {
-            Write-Host "--- diagnostic stdout ---"
-            Get-Content $stdout
-          }
-          if (Test-Path $stderr) {
-            Write-Host "--- diagnostic stderr ---"
-            Get-Content $stderr
-          }
-
-          throw "AMRI Windows release executable exited during startup smoke test with code $releaseExitCode"
 
   test-android:
     runs-on: ubuntu-latest
