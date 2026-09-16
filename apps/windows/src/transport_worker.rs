@@ -366,12 +366,9 @@ mod tests {
             "trojan://private-password@203.0.113.7:443?security=tls",
         )
         .unwrap();
-        let mut request = materialize_connect_request(
-            node,
-            BOOTSTRAP_ROUTE_ID,
-            MaterializeOptions::default(),
-        )
-        .unwrap();
+        let mut request =
+            materialize_connect_request(node, BOOTSTRAP_ROUTE_ID, MaterializeOptions::default())
+                .unwrap();
         let ip = "203.0.113.7".parse::<IpAddr>().unwrap();
 
         pin_transport_endpoint(&mut request, "203.0.113.7", &[ip]).unwrap();
