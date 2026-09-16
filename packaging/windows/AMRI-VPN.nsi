@@ -20,6 +20,7 @@ Section "AMRI VPN" SecMain
   SetRegView 64
   SetOutPath "$INSTDIR"
   File "..\..\dist\windows\AMRI-VPN.exe"
+  File "..\..\dist\windows\AMRI-VPN-Launcher.exe"
   File "..\..\dist\windows\sing-box.exe"
   File "..\..\dist\windows\wintun.dll"
   File "..\..\THIRD_PARTY_NOTICES.md"
@@ -31,14 +32,16 @@ Section "AMRI VPN" SecMain
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayName" "${PRODUCT_NAME}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "Publisher" "${PRODUCT_PUBLISHER}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayIcon" '"$INSTDIR\AMRI-VPN.exe",0'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-  ; Wintun route/DNS setup requires an elevated process. Force the installed executable to request
-  ; the normal Windows UAC prompt instead of failing only after the user presses Connect.
-  WriteRegStr HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe" "RUNASADMIN"
+
+  ; Remove compatibility overrides left by preview installers. AMRI now keeps the GUI asInvoker and
+  ; requests elevation explicitly through its tiny launcher so startup remains deterministic.
+  DeleteRegValue HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe"
 
   CreateDirectory "$SMPROGRAMS\AMRI VPN"
-  CreateShortcut "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
-  CreateShortcut "$DESKTOP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
+  CreateShortcut "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
+  CreateShortcut "$DESKTOP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
 SectionEnd
 
 Section "Uninstall"
@@ -48,6 +51,7 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\AMRI VPN"
   DeleteRegValue HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe"
   Delete "$INSTDIR\AMRI-VPN.exe"
+  Delete "$INSTDIR\AMRI-VPN-Launcher.exe"
   Delete "$INSTDIR\sing-box.exe"
   Delete "$INSTDIR\wintun.dll"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"

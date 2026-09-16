@@ -228,8 +228,25 @@ impl AmriApp {
             self.selected_node = index;
             self.editing_node = None;
         } else {
-            self.imported_nodes = parsed;
-            self.selected_node = 0;
+            let mut first_new = None;
+            for node in parsed {
+                if self
+                    .imported_nodes
+                    .iter()
+                    .any(|existing| existing.fingerprint == node.fingerprint)
+                {
+                    continue;
+                }
+                if first_new.is_none() {
+                    first_new = Some(self.imported_nodes.len());
+                }
+                self.imported_nodes.push(node);
+            }
+            if let Some(index) = first_new {
+                self.selected_node = index;
+            } else if !self.imported_nodes.is_empty() {
+                self.selected_node = self.selected_node.min(self.imported_nodes.len() - 1);
+            }
         }
 
         self.delete_confirmation = None;

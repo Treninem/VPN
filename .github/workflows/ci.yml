@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   SING_BOX_VERSION: "1.14.1"
   SING_BOX_ANDROID_ARM64_SHA256: "34e2373cfcdd17ef3a0cac13d7f9f971e206257413a9f7b1da63ea02bcf88aab"
@@ -35,6 +39,26 @@ jobs:
 
       - name: Check workspace
         run: cargo check --workspace
+
+      - name: Build Windows release executable
+        run: cargo build --release -p amri-windows
+
+      - name: Build Windows diagnostic executable
+        run: cargo build -p amri-windows
+
+      - name: Launch Windows executable smoke test
+        shell: pwsh
+        run: |
+          $diagnosticExe = "target/release/amri-windows-debug-ci.exe"
+          Copy-Item "target/debug/amri-windows.exe" $diagnosticExe
+          try {
+            & scripts/windows_gui_smoke.ps1 `
+              -ExePath "target/release/amri-windows.exe" `
+              -DiagnosticExePath $diagnosticExe
+          }
+          finally {
+            Remove-Item $diagnosticExe -Force -ErrorAction SilentlyContinue
+          }
 
   test-android:
     runs-on: ubuntu-latest
