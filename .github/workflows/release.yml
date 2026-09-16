@@ -39,6 +39,7 @@ jobs:
           Expand-Archive $singArchive -DestinationPath $singExpanded
           New-Item -ItemType Directory -Force dist/windows | Out-Null
           Copy-Item target/release/amri-windows.exe dist/windows/AMRI-VPN.exe
+          Copy-Item target/release/amri-vpn-launcher.exe dist/windows/AMRI-VPN-Launcher.exe
           Copy-Item (Get-ChildItem $singExpanded -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName dist/windows/sing-box.exe
           $singLicense = Get-ChildItem $singExpanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($singLicense) { Copy-Item $singLicense.FullName dist/windows/sing-box-LICENSE }
