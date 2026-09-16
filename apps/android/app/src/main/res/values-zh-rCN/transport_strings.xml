@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_vpn_links">导入 VPN 链接</string>
+    <string name="delete_selected_server">删除所选服务器</string>
+    <string name="encrypted_local_pool">加密本地节点池 · %1$d · %2$s</string>
+    <string name="import_vpn_links_hint">每行粘贴一个受支持的节点链接。凭据使用 Android Keystore 加密。</string>
+    <string name="import_action">导入</string>
+    <string name="delete_server_title">删除 %1$s？</string>
+    <string name="delete_server_message">包含凭据的加密节点将从此设备中删除。</string>
+    <string name="delete_action">删除</string>
+</resources>

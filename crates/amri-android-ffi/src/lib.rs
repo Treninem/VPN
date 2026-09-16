@@ -1,5 +1,6 @@
 mod forwarder;
 mod runtime_gate;
+mod transport_owner;
 
 use amri_core::mobile::{
     AccessNetworkKind, MobileAccelerationMode, MobileAccelerationPreferences,
@@ -7,7 +8,7 @@ use amri_core::mobile::{
 };
 use amri_secrets::SecretValue;
 use jni::errors::{Result as JniResult, ThrowRuntimeExAndDefault};
-use jni::objects::{JByteArray, JClass, JObject};
+use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jint};
 use jni::{jni_sig, jni_str, Env, EnvUnowned, JValue};
 
@@ -240,6 +241,49 @@ pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeEval
         allow_metered_secondary,
         allow_latency_duplication,
     )
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeStartExternalTransport<
+    'caller,
+>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    raw_uri: JString<'caller>,
+    executable: JString<'caller>,
+    local_socks_port: jint,
+) -> jint {
+    unowned_env
+        .with_env(|env| -> JniResult<jint> {
+            let raw_uri = raw_uri.try_to_string(env)?;
+            let executable = executable.try_to_string(env)?;
+            Ok(transport_owner::start(
+                raw_uri,
+                executable,
+                local_socks_port,
+            ))
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeStopExternalTransport<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+) {
+    transport_owner::stop();
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ru_amri_vpn_nativebridge_AmriNativeBridge_nativeExternalTransportState<
+    'caller,
+>(
+    _env: EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+) -> jint {
+    transport_owner::status()
 }
 
 #[unsafe(no_mangle)]

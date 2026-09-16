@@ -1,153 +1,225 @@
 # Журнал разработки AMRI VPN
 
-Каноническая техническая память проекта для продолжения из любого чата/аккаунта. Перед работой читать этот файл и корневой `AGENTS.md`, затем проверять свежий `main`, открытые PR и рабочие ветки. Здесь хранится инженерный журнал: что сделано, почему принято решение, trade-offs, проверки, текущее состояние, следующие шаги и известные риски. Скрытый chain-of-thought, secrets, raw URI, subscription URL, browsing history и персональные идентификаторы сюда не записываются.
+Каноническая техническая память проекта. Перед продолжением из нового чата читать этот файл и корневой `AGENTS.md`, затем проверять свежий `main`, открытые PR и CI. Здесь записываются проверяемые инженерные решения, причины, результаты тестов, текущее состояние и следующие шаги. Скрытый chain-of-thought, credentials, raw URI, subscription URL, browsing history и персональные идентификаторы сюда не записываются.
 
 ## Архитектурные инварианты
 
-- Общая логика AMRI живёт в Rust workspace; Windows — eframe/egui, Android — нативный `VpnService` + Rust JNI.
-- AMRI core выбирает маршрут; transport/core исполняет. Внешний VPN-core не владеет scoring/learning.
-- Make-before-break обязателен; аварийный failover не должен блокироваться hysteresis.
-- Credentials запрещены в process args, Debug, telemetry и plaintext temp files. Multi-secret credentials имеют typed shape.
-- Windows secrets — DPAPI; Android secrets/key material — Android Keystore. Android JNI остаётся narrow capability boundary.
-- UI показывает ON/`Protected` только после transport + packet forwarding + DNS + leak/default-route capture + public egress текущего generation.
-- Mobile snapshot не содержит SSID/BSSID/cell ID/operator/device ID/stable network identity. Дополнительный cellular path/duplication — только explicit opt-in.
-- MTU adaptation не реагирует на generic packet loss: снижение разрешено только по классифицированному PMTU/fragmentation evidence.
-- Параллельные brand/UI изменения не откатывать core-ветками. Canonical assets защищены `asset-blobs.lock`.
+- Общая логика AMRI — Rust workspace; Windows UI — eframe/egui; Android — `VpnService` + Kotlin + Rust JNI.
+- AMRI выбирает маршрут; transport/core только исполняет. Внешний VPN-core не владеет scoring/learning/UI.
+- UI показывает ON/`Protected` только после подтверждения transport + packet forwarding + DNS + leak/default-route capture + public egress одного generation.
+- Credentials запрещены в process args, Debug, telemetry и plaintext temp files.
+- Windows secrets — DPAPI; Android secrets — Android Keystore/AES-GCM.
+- Multi-secret credentials имеют typed shape. Make-before-break обязателен; аварийный failover не должен блокироваться hysteresis.
+- Android current `Network` остаётся ephemeral и не логируется/не сохраняется.
+- Adaptive MTU реагирует только на классифицированный PMTU/fragmentation evidence, не на generic packet loss.
+- Android active TUN routing не равен Android OS lockdown. Windows live Wintun route не равен crash-persistent WFP kill switch.
+- Canonical artwork — `assets/brand`, byte integrity — `asset-blobs.lock`. Core-ветки не заменяют утверждённые изображения.
+- Developer visual tools не включаются в Windows Setup/Android APK.
 
-## Реализовано
+## Реализовано до текущего этапа
 
 ### Route intelligence / runtime
 
-- Multi-subscription pool с дедупликацией по fingerprint.
-- RouteScore учитывает latency, jitter, loss, DNS, TCP/TLS, throughput, historical success, stability и traffic class.
-- Confidence + hysteresis, circuit breaker/cooldown/backoff, quality-bounded hot pool и короткая parallel micro-race.
+- Multi-subscription pool с dedup fingerprint.
+- RouteScore: latency, jitter, loss, DNS, TCP/TLS, throughput, historical success, stability, traffic class.
+- Confidence + hysteresis, circuit breaker/cooldown/backoff, quality-bounded hot pool, короткая parallel micro-race.
 - `amri-runtime` связывает probes/race → health/quarantine → hot pool → stable decision.
 - Shadow Race использует quorum/confidence без искусственного countdown.
 
-Почему: массовые races расходуют трафик/батарею и вызывают flapping; selection должен оставаться независимым от VPN-core.
+Причина: массовые races расходуют трафик/батарею и вызывают flapping; route selection должен оставаться независимым от VPN-core.
 
-### Transport lifecycle / node materialization
+### Typed transport / secrets
 
-- `TransportManager` имеет route slots, make-before-break replacement и rollback.
-- Session подтверждает `route_id`, adapter и credential-free fingerprint фактически запущенного node; mismatch fail-closed.
-- External-core boundary передаёт credential config через zeroizing memory/stdin, без plaintext temp files/args.
-- Transport-ready = process + loopback inbound readiness; живой process сам по себе недостаточен.
-- Typed materialization/rendering: VLESS, Trojan, Shadowsocks, Hysteria2, TUIC и VMess TCP. VMess WS/gRPC и WireGuard пока fail-closed/incomplete.
+- `TransportManager`: route slots, make-before-break replacement, rollback.
+- Session подтверждает route/adapter/node fingerprint реально запущенного transport.
+- External core получает credential config через zeroizing memory/stdin.
+- Transport-ready означает process + loopback inbound readiness.
+- Production typed materialization/rendering: VLESS, Trojan, Shadowsocks, Hysteria2, TUIC, VMess TCP.
+- WireGuard и VMess WS/gRPC пока не считаются production-supported и должны fail-closed.
+- Route Proof создаёт pseudonymous HMAC-linked evidence только после transport-confirmed transition.
+- Windows imported nodes сохраняются через DPAPI; Android secure store использует Keystore-backed AES-256-GCM.
 
-### Route Proof / secrets
+### Windows Protected lifecycle — merged PR #31
 
-- Route Proof создаёт pseudonymous HMAC-linked evidence только после transport-confirmed executed transition.
-- SQLite receipts authenticated и проверяются при restore; raw destination/browsing history не хранится как proof identity.
-- Windows DPAPI secret store и Android AES-256-GCM master key в Android Keystore реализованы.
-- Windows imported node pool сохраняется через DPAPI-protected per-user persistence; plaintext JSON живёт только в zeroizing memory на время операции.
-- Route Proof Android key создаётся/проверяется через узкий JNI slot `route-proof:key`; ключ не возвращается UI/Kotlin.
+Merge main: `11cc3f7f02ba273c9b8a8d91eca29e94c20c3871`.
+Final PR CI #222: Windows fmt/theme/test/check + Android JVM/NDK/APK ABI/assets green.
 
-### Android native runtime / public forwarding
+Реальный путь:
 
-- `amri-android-ffi` (`cdylib`/`rlib`) cross-compiled через pinned `cargo-ndk 4.1.2` для `arm64-v8a` и `x86_64`; CI проверяет `.so` внутри APK.
-- `AmriVpnService` инициализирует Route Proof runtime до control TUN.
-- `AndroidNetworkObserver` передаёт privacy-safe `NetworkCapabilities` snapshot в общий Rust `MobilePathPolicy`; current `Network` остаётся ephemeral.
-- TCP/UDP transport socket boundary умеет `VpnService.protect` + bind к current underlying network, иначе fail-closed.
-- Public TUN: IPv4/IPv6 default routes + DNS; `tun2proxy 0.8.3` переносит TUN → already-ready local SOCKS, `setup=false`, DNS `OverTcp`, MSS=MTU-40.
-- Public generation включается только через explicit `activatePublicForwarding()` после готового local SOCKS; обычный service startup остаётся control-only.
-- Shared readiness требует forwarding + DNS + leak capture + numeric public egress; неполный gate закрывает public generation.
-- `PROTECTED` watchdog раз в секунду снимает protected state и возвращает control TUN при потере forwarding/readiness.
-- Adaptive MTU общий с Rust; generic loss не считается PMTU evidence. Recommendation применяется на следующем безопасном establishment, а не через опасный teardown живого default-route TUN.
-- Android Always-on + lockdown определяется отдельно и не подменяется обычным live-TUN routing claim.
+`Windows apps → Wintun → tun2proxy → local SOCKS → selected VPN server`
 
-Проверки: merged PR #24 и #25 прошли Windows regression + Android JVM/NDK/APK ABI/asset checks; #25 merge commit `2d58a1e5d7f7bc5710fc418ba1ac422af6dd73a9`.
+Сделано:
 
-### Unified UI / editable visual source
+- official Wintun 0.14.1 prerequisite + Administrator preflight;
+- все A/AAAA VPN-сервера разрешаются до default-route takeover;
+- `/32`/`/128` bypass предотвращает routing loop transport через собственный TUN;
+- `tun2proxy 0.8.3`, IPv4/IPv6, DNS `OverTcp`, bounded MTU/MSS;
+- route/DNS setup+restore через `tproxy-config 7.0.7`;
+- public egress + fixed DNS readiness;
+- `TransportUiState::Ready` означает полный Protected, а не только local SOCKS;
+- 1-second watchdog: потеря forwarding снимает protected generation и останавливает transport fail-closed;
+- normal teardown: system forwarding/routes/DNS first, encrypted transport second;
+- Windows ON artwork только после полного readiness gate.
 
-- Windows и Android главные экраны приведены к общей иерархии: header → protection hero → режим → route selection → настройки/метрики.
-- ON artwork допускается только для `PROTECTED`.
-- `design/amri-ui-theme.json` — общий редактируемый source для цветов, радиусов, отступов и control sizes; generated platform files проверяются CI.
-- `tools/amri-ui-studio` — локальный browser preview Windows/phone с экспортом JSON. Скругление позволяет визуально менять квадратные controls на круглые без правки Rust/Kotlin.
-- Canonical artwork остаётся в `assets/brand`; byte-lock предотвращает тихую замену утверждённых изображений.
-- Figma/Penpot подходят для свободного drag/drop прототипа структуры; runtime source остаётся responsive, чтобы не ломать разные экраны, длинные переводы и RTL.
+Важно: это active-generation leak/default-route capture, не crash-persistent WFP lockdown. Отдельный WFP kill switch остаётся будущим hardening этапом.
 
-### Preview installers / packaging
+### Android forwarding/readiness — merged #24/#25
 
-- `.github/workflows/installers.yml` собирает Windows NSIS installer и Android APK artifact.
-- Windows комплектует pinned official sing-box 1.14.0 после SHA-256 verification; license/source notice сохранены. Ранее в параллельной ветке ошибочно был указан 1.14.1; pin исправлен на существующий стабильный 1.14.0 до release merge.
-- Android artifact пока debug-signed и предназначен для тестовой установки; production signing key в git не допускается.
+- `amri-android-ffi` cross-build arm64-v8a + x86_64 через pinned `cargo-ndk 4.1.2`.
+- Android `VpnService` public IPv4/IPv6 TUN + DNS.
+- `tun2proxy 0.8.3` TUN → local SOCKS, DNS `OverTcp`, IPv6, MSS=MTU-40.
+- Shared Rust protection gate OFF/PREPARING/PROTECTED.
+- Adaptive MTU JNI state.
+- Public forwarding только после ready local transport.
+- Forwarding watchdog снимает PROTECTED при потере generation.
+- Always-on/lockdown определяется отдельно и не подменяется обычным TUN claim.
 
-## Активный этап: Windows Protected lifecycle — PR #31
+## Активный этап: Android production transport owner — PR #32
 
-Ветка `work/windows-protected-lifecycle` создана от свежего `main` `1451242d52e0782b20880194d8e3f36e1a35417a`, чтобы не затереть параллельно merged UI/installer/secure-node работу. Старый PR #26 не force-мержится и после успешного #31 должен быть закрыт как superseded.
+Branch: `work/android-production-transport`.
 
-### Что сделано
+### Transport owner
 
-- Перенесён проверенный W1 `system_forwarding.rs` на свежий main: Wintun + `tun2proxy 0.8.3` + `tproxy-config 7.0.7`.
-- Preflight требует elevated Windows process и official `wintun.dll` рядом с executable.
-- Все A/AAAA реального VPN-сервера разрешаются **до** default-route takeover; адреса дедуплицируются и превращаются в host-specific `/32`/`/128` bypass routes.
-- AMRI создаёт Wintun adapter `AMRI`, default MTU 1420; `tun2proxy` работает `setup=false`, IPv4/IPv6, DNS `OverTcp`, MSS=MTU-40.
-- `TransportWorker` теперь сначала подтверждает external transport/local SOCKS, затем запускает Windows system forwarding.
-- `TransportUiState::Ready` на Windows теперь означает **полный Protected**, а не просто local proxy readiness.
-- Readiness требует packet forwarding, DNS, route/leak capture и numeric public egress (`1.1.1.1:443`, fallback `8.8.8.8:443`). Fixed DNS probe использует только `example.com` → `1.1.1.1:53` и не смотрит пользовательские домены.
-- 1-second worker watchdog fail-closed: если forwarding generation умер, сначала закрываются/восстанавливаются TUN/routes/DNS, затем останавливается encrypted transport; UI получает failure.
-- Normal disconnect идёт в том же reverse ownership order: system capture first, transport second.
-- Windows UI больше не пересчитывает `Ready` как transport-only с hardcoded false readiness; ON/Protection ON показываются только для worker-gated Protected. UI запрашивает repaint и в Ready, поэтому async watchdog loss отображается без пользовательского клика.
-- Routes page для active Ready показывает Protection ON вместо старого transport-only warning.
+Добавлен Rust-owned supervised transport lifecycle:
 
-### Почему так
+- `crates/amri-android-ffi/src/transport_owner.rs`;
+- raw URI сразу помещается в `Zeroizing`;
+- `parse_node_uri` → `materialize_connect_request` → typed credentials;
+- `SupervisedProcessAdapter` + `SingBoxRenderer`;
+- credential-bearing config идёт в sing-box через stdin;
+- process args и logs credentials не содержат;
+- JNI/Kotlin boundary имеет только start/stop/state и строгие status codes.
 
-- Если поставить default route до разрешения адресов VPN-сервера, transport может завернуться в собственный TUN и потерять соединение.
-- Если UI считать connected по local SOCKS, пользователь получает ложный зелёный статус при отсутствии системной маршрутизации/DNS protection.
-- При teardown нельзя первым убивать SOCKS transport, иначе живой default-route TUN на короткое время будет указывать в мёртвый endpoint.
-- Текущая active-generation route/DNS capture не называется crash-persistent kill switch: для этого нужен отдельный WFP/firewall этап.
+### Android self-VPN loop protection
 
-### Windows installer hardening в PR #31
+Public TUN вызывает `addDisallowedApplication(service.packageName)`.
 
-- Installer workflow добавляет официальный Wintun 0.14.1 из `https://www.wintun.net/builds/`.
-- Archive SHA-256 pinned: `07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51`.
-- Из official archive берётся amd64 `wintun.dll` и upstream license/provenance; self-built/random DLL не принимается.
-- NSIS устанавливает `wintun.dll` рядом с `AMRI-VPN.exe` и удаляет его при uninstall.
-- Installed AMRI executable получает normal Windows `RUNASADMIN` UAC behavior, чтобы preflight не падал только после нажатия Connect.
-- Windows transport pin: official sing-box 1.14.0, archive SHA-256 `3ffb56267da14e287be48bd10cf7e6505260125bad940b75101fbb4d5d58e5d6`.
-- `THIRD_PARTY_NOTICES.md` объединяет sing-box GPL notice, tun2proxy/tproxy-config MIT и Wintun runtime provenance.
+Почему: bundled sing-box запускается как AMRI subprocess того же app UID. Если не исключить AMRI package из собственного VPN, upstream transport может попасть обратно в TUN, который сам же обслуживает, и образовать routing loop.
 
-### Verification status
+Trade-off: direct sockets самого AMRI теперь обходят TUN, поэтому старый direct TCP probe больше не может доказывать VPN egress.
 
-- Старый W1 code head прошёл CI run `34982044194`: Windows fmt/test/check и Android JVM/NDK/APK ABI/assets green.
-- На свежем PR #31 Android regression уже проходил на промежуточных heads; финальный head после UI/docs/installer изменений обязан пройти новый полный CI до merge.
-- Installer workflow после merge должен отдельно доказать, что NSIS реально собрал EXE с Wintun/sing-box, а Android workflow создал APK artifact.
+Решение: public egress проверяется через настоящий SOCKS5 CONNECT к ready local transport (фиксированные numeric endpoints), а состояние TUN/tun2proxy проверяется отдельным signal. Только оба слоя вместе могут дать PROTECTED.
+
+### Bundled Android transport
+
+Pinned official sing-box `1.14.1`:
+
+- Android arm64 archive SHA-256: `34e2373cfcdd17ef3a0cac13d7f9f971e206257413a9f7b1da63ea02bcf88aab`;
+- Android amd64 archive SHA-256: `43d1b49a3086ad12092f028cbe3efb28422c2a6114d0dfb0ea18d0c2427573dc`;
+- Windows amd64 archive SHA-256: `5197f16d492d93202dc623622149a6ed040f8eca263128f91d603f2b901baa89`.
+
+CI/release download official archives, verify exact SHA-256, then stage Android executables as extracted ABI runtime `libsing_box.so` under `arm64-v8a` and `x86_64`. Android runtime launches it from `applicationInfo.nativeLibraryDir`.
+
+`THIRD_PARTY_NOTICES.md` records GPLv3+ source/license obligations and exact pins.
+
+### Android service lifecycle
+
+`AmriVpnService` now:
+
+1. initializes native runtime and network observation;
+2. creates control-only TUN;
+3. enters SERVICE_READY;
+4. on background transport executor loads the selected encrypted node;
+5. starts bundled transport and requires RUNNING;
+6. activates public forwarding;
+7. enters PROTECTED only after complete readiness;
+8. watchdog requires both transport RUNNING and forwarding protected readiness.
+
+Stop/failure uses generation cancellation and reverse ownership teardown. Raw node URI is not carried in service Intent.
+
+### Encrypted Android node pool + real selector
+
+`AndroidNodeStore.kt` stores the credential-bearing URI list as encrypted JSON in `AndroidKeystoreSecretStore`, slot `android-node-pool:v1`.
+
+- ordinary UI prefs store only selected index;
+- raw URI is not logged or placed in Intent/process args;
+- import supports production materialized schemes;
+- UI shows safe protocol/name/fingerprint only;
+- users can import multiple node links, select a real node and delete a selected node;
+- node-management UI is localized EN/RU/ES/PT/FR/DE/ZH-CN/HI/AR.
+
+### Android verification evidence
+
+CI #242, run `35053060341`, head `8ef1fec0f3b8e5150dda19c8ea8e22d9d20ec179` was fully green:
+
+- Windows fmt/theme/workspace tests/check — success;
+- Android canonical assets — success;
+- official Android sing-box SHA checks — success;
+- Rust NDK build arm64-v8a + x86_64 — success;
+- JVM tests + APK assemble — success;
+- APK contains Rust JNI for both ABIs — success;
+- APK contains bundled sing-box runtime for both ABIs — success.
+
+После этого добавлены 9-language node-management resources, resource wiring, manifest warning cleanup и developer visual guide. Финальный current-head CI всё равно обязателен перед merge.
+
+## Developer-only visual editing
+
+Canonical editable source:
+
+`design/amri-ui-theme.json`
+
+Local source tool:
+
+`tools/amri-ui-studio/index.html`
+
+Guide:
+
+`docs/VISUAL_EDITING_GUIDE_RU.md`
+
+UI Studio позволяет визуально менять colors/radii/sizes/spacing и переключать phone/Windows preview. Square→circle делается радиусом около половины размера control. JSON экспорт затем генерирует platform constants через `scripts/generate_ui_theme.py`.
+
+Инструмент не включается в пользовательские artifacts. Для полностью свободного drag/drop макета подходят Penpot/Figma; runtime остаётся responsive, чтобы не ломать разные экраны, длинные переводы и арабский RTL.
+
+Если исходный GitHub repository публичный, source/editor технически видим другим людям. Буквально owner-only source access требует private repository или отдельного private development repository. Это отдельное решение владельца; приложение само developer editor не содержит.
+
+## Installers / release packaging
+
+`.github/workflows/installers.yml` собирает:
+
+- `AMRI-VPN-Windows-Setup.exe`;
+- `AMRI-VPN-Android.apk`.
+
+Windows package:
+
+- official sing-box 1.14.1 exact hash;
+- official signed Wintun 0.14.1 archive SHA-256 `07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51`;
+- NSIS setup requests elevation and installs runtime beside app.
+
+Android package:
+
+- Rust JNI arm64-v8a + x86_64;
+- official pinned sing-box arm64/amd64;
+- current CI artifact is debug-signed unless a private production keystore is supplied outside git.
+
+Previous installer workflow run `35007731400` successfully built both artifacts, but it predates the completed Android production owner and therefore is not the final release artifact. After PR #32 merge, installer workflow must be green again and those artifacts become the release candidates.
 
 ## CURRENT STATE
 
-- Windows: external transport + DPAPI node persistence + system Wintun/TUN/DNS forwarding + readiness/watchdog интегрированы в PR #31; merge только после финального green CI.
-- Windows ON semantics теперь соответствуют реальному Protected generation.
-- Windows persistent WFP/firewall kill switch ещё не реализован; current protection действует для живой generation и корректно teardown-ится владельцем.
-- Android: public TUN/tun2proxy/readiness/adaptive-MTU готовы, но normal app flow всё ещё не имеет production transport owner, создающего real local SOCKS и защищённые underlying sockets; поэтому Android нельзя пока честно называть end-to-end user-ready VPN.
-- Android route selector пока показывает только честный AMRI Automatic, без фиктивных серверов; import/persistence + production route owner ещё надо подключить.
-- Два installable preview artifact уже поддерживаются workflow; Android пока debug-signed.
+- Windows end-to-end active-generation VPN path implemented and merged.
+- Android production transport + encrypted pool + real selection + public forwarding path implemented in PR #32 and already proven green on a production-owner head; final current-head CI pending after documentation/localization cleanup.
+- Approved artwork remains unchanged and byte-locked.
+- Developer-only visual editing source exists and is not shipped in apps.
+- Installer pipeline exists and has previously produced both artifacts.
 
-## NEXT PRIORITIES
+## Remaining release/hardening work
 
-1. Довести PR #31 до полного green CI, слить в свежий main, закрыть stale PR #26 как superseded.
-2. На merged main запустить/проверить installer workflow; скачать и проверить Windows Setup + Android APK artifacts.
-3. Реализовать Android production transport owner. Перед выбором способа проверить Android self-UID VPN bypass (`addDisallowedApplication`) и ограничения запуска bundled transport; не использовать архитектуру, которая не может гарантировать bypass/protect реальных transport sockets.
-4. Подключить Android encrypted imported-node pool + реальный route selector только вместе с production owner.
-5. Закончить typed WireGuard и VMess WS/gRPC.
-6. Добавить Windows WFP persistent kill switch и E2E leak/failover tests; не называть текущий active TUN WFP lockdown.
-7. Production Android release signing выполняется через secret keystore вне git.
-8. После стабильного single-path — optional warm Wi-Fi+cellular failover; bandwidth bonding только отдельным opt-in AMRI Bond с cooperating relay.
-
-## KNOWN ISSUES / RISKS
-
-- Android production transport owner — главный блокер полноценного Android VPN.
-- Android APK пока debug-signed.
-- Windows WFP crash-persistent kill switch отсутствует.
-- PMTU signal classification ещё должен приходить от реального forwarding/transport telemetry; generic loss использовать запрещено.
-- `ImportedNode.raw_uri` в runtime model всё ещё `String`, хотя Windows persistence encrypted; plaintext lifetime надо сокращать дальше.
-- WireGuard и VMess WS/gRPC incomplete.
-- Mobile bonding требует cooperating relay и может расходовать extra cellular data/battery.
-- Android CI пока использует runner NDK; supply-chain hardening отдельным pinned LTS NDK остаётся будущей задачей.
+1. Final current-head PR #32 CI; fix only real failures.
+2. Fresh compare against newest parallel `main`; preserve unrelated exact-power/UI commits; merge #32 only when mergeable/green.
+3. Verify post-merge main CI and `Build installable packages`; inspect/download both final artifacts.
+4. Create release/prerelease packaging including a separate developer visual-source bundle, not embedded in apps.
+5. Production signing:
+   - Android needs owner-controlled release keystore secret outside git;
+   - Windows public-trust signing needs owner-controlled code-signing certificate.
+   Without these secrets, builds can be installable/testable but should not be described as production-signed.
+6. Real-device E2E with real VPN nodes still requires non-public test credentials/hardware; CI can prove compile/package/lifecycle units but cannot invent private production server access.
+7. Windows WFP crash-persistent kill switch is still not implemented; current active-generation protection must not be called WFP lockdown.
+8. WireGuard and VMess WS/gRPC remain unsupported/fail-closed until complete typed descriptors/renderers exist.
+9. PMTU telemetry should eventually feed classified evidence from actual forwarding/transport path; generic loss remains forbidden.
 
 ## Постоянный протокол разработки
 
-- Перед крупным этапом: fresh `main` + PR/branch compare; не повторять полный аудит без необходимости.
-- После этапа: записать WHAT / WHY / alternatives/tradeoffs / verification / current state / next / known issues.
-- При параллельной работе сначала сохранить чужие изменения; не force-overwrite branch/main.
-- В журнал не писать скрытый chain-of-thought; только проверяемые инженерные решения и результаты.
-- Журнал можно конденсировать, если факты/решения не теряются.
+- Перед крупным этапом: fresh `main` + PR/branch compare.
+- При параллельной работе: сохранить чужие изменения, не force-overwrite.
+- После этапа: WHAT / WHY / trade-offs / verification / current state / next / known issues.
+- Не писать скрытый chain-of-thought; только проверяемые инженерные решения.
+- Не утверждать релизную готовность до зелёного CI и фактической сборки artifacts.

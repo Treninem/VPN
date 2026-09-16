@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_vpn_links">Importer des liens VPN</string>
+    <string name="delete_selected_server">Supprimer le serveur sélectionné</string>
+    <string name="encrypted_local_pool">Pool local chiffré · %1$d · %2$s</string>
+    <string name="import_vpn_links_hint">Collez un lien de nœud pris en charge par ligne. Les identifiants sont chiffrés avec Android Keystore.</string>
+    <string name="import_action">Importer</string>
+    <string name="delete_server_title">Supprimer %1$s ?</string>
+    <string name="delete_server_message">Le nœud chiffré contenant les identifiants sera supprimé de cet appareil.</string>
+    <string name="delete_action">Supprimer</string>
+</resources>
