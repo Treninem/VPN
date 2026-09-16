@@ -144,7 +144,8 @@ fn parse_vmess(
         .unwrap_or(false);
     options.insert("tls".into(), tls_enabled.to_string());
     if tls_enabled {
-        if let Some(server_name) = json_text(&document, "sni").or_else(|| json_text(&document, "host"))
+        if let Some(server_name) =
+            json_text(&document, "sni").or_else(|| json_text(&document, "host"))
         {
             options.insert("server_name".into(), server_name.to_string());
         }
@@ -474,11 +475,9 @@ fn copy_v2ray_transport(
         }
         "grpc" => {
             options.insert("transport".into(), "grpc".into());
-            if let Some(service) = query_value(
-                query,
-                &["servicename", "service_name", "service", "path"],
-            )
-            .filter(|value| !value.is_empty())
+            if let Some(service) =
+                query_value(query, &["servicename", "service_name", "service", "path"])
+                    .filter(|value| !value.is_empty())
             {
                 options.insert("transport_service_name".into(), service.to_string());
             }
@@ -636,7 +635,9 @@ fn copy_reality_options(
         .unwrap_or("");
     if short_id.len() > 16
         || short_id.len() % 2 != 0
-        || !short_id.chars().all(|character| character.is_ascii_hexdigit())
+        || !short_id
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
     {
         return Err(NodeConfigError::InvalidOption("reality_short_id"));
     }
@@ -802,7 +803,10 @@ mod tests {
         let request =
             materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
 
-        assert_eq!(request.options.get("transport").map(String::as_str), Some("ws"));
+        assert_eq!(
+            request.options.get("transport").map(String::as_str),
+            Some("ws")
+        );
         assert_eq!(
             request.options.get("transport_path").map(String::as_str),
             Some("/ws")
@@ -950,7 +954,10 @@ mod tests {
         let request =
             materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
 
-        assert_eq!(request.options.get("transport").map(String::as_str), Some("ws"));
+        assert_eq!(
+            request.options.get("transport").map(String::as_str),
+            Some("ws")
+        );
         assert_eq!(
             request.options.get("transport_path").map(String::as_str),
             Some("/socket")
