@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   SING_BOX_VERSION: "1.14.1"
   SING_BOX_ANDROID_ARM64_SHA256: "34e2373cfcdd17ef3a0cac13d7f9f971e206257413a9f7b1da63ea02bcf88aab"
@@ -42,13 +46,43 @@ jobs:
       - name: Launch Windows executable smoke test
         shell: pwsh
         run: |
-          $exe = Resolve-Path "target/release/amri-windows.exe"
-          $process = Start-Process -FilePath $exe -PassThru
+          $releaseExe = Resolve-Path "target/release/amri-windows.exe"
+          $releaseProcess = Start-Process -FilePath $releaseExe -PassThru
           Start-Sleep -Seconds 8
-          if ($process.HasExited) {
-            throw "AMRI Windows executable exited during startup smoke test with code $($process.ExitCode)"
+          if (-not $releaseProcess.HasExited) {
+            Stop-Process -Id $releaseProcess.Id -Force
+            exit 0
           }
-          Stop-Process -Id $process.Id -Force
+
+          $releaseExitCode = $releaseProcess.ExitCode
+          Write-Host "Release GUI exited during startup with code $releaseExitCode; collecting console diagnostic."
+
+          cargo build -p amri-windows
+          if ($LASTEXITCODE -ne 0) { throw "failed to build diagnostic Windows executable" }
+
+          $debugExe = Resolve-Path "target/debug/amri-windows.exe"
+          $stdout = Join-Path $env:RUNNER_TEMP "amri-startup-stdout.txt"
+          $stderr = Join-Path $env:RUNNER_TEMP "amri-startup-stderr.txt"
+          $debugProcess = Start-Process -FilePath $debugExe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          Start-Sleep -Seconds 8
+
+          if (-not $debugProcess.HasExited) {
+            Stop-Process -Id $debugProcess.Id -Force
+            Write-Host "Diagnostic build remained alive; release-only startup path failed."
+          } else {
+            Write-Host "Diagnostic build exited with code $($debugProcess.ExitCode)."
+          }
+
+          if (Test-Path $stdout) {
+            Write-Host "--- diagnostic stdout ---"
+            Get-Content $stdout
+          }
+          if (Test-Path $stderr) {
+            Write-Host "--- diagnostic stderr ---"
+            Get-Content $stderr
+          }
+
+          throw "AMRI Windows release executable exited during startup smoke test with code $releaseExitCode"
 
   test-android:
     runs-on: ubuntu-latest
