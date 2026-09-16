@@ -32,9 +32,10 @@ Section "AMRI VPN" SecMain
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "Publisher" "${PRODUCT_PUBLISHER}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMRI VPN" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-  ; Wintun route/DNS setup requires an elevated process. Force the installed executable to request
-  ; the normal Windows UAC prompt instead of failing only after the user presses Connect.
-  WriteRegStr HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe" "RUNASADMIN"
+
+  ; Older preview installers used the AppCompat RUNASADMIN compatibility layer. The executable now
+  ; carries a proper requireAdministrator manifest, so remove that legacy override on upgrade.
+  DeleteRegValue HKLM "Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers" "$INSTDIR\AMRI-VPN.exe"
 
   CreateDirectory "$SMPROGRAMS\AMRI VPN"
   CreateShortcut "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
