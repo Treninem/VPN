@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_vpn_links">Import VPN links</string>
+    <string name="delete_selected_server">Delete selected server</string>
+    <string name="encrypted_local_pool">Encrypted local pool · %1$d · %2$s</string>
+    <string name="import_vpn_links_hint">Paste one supported node link per line. Credentials are encrypted with Android Keystore.</string>
+    <string name="import_action">Import</string>
+    <string name="delete_server_title">Delete %1$s?</string>
+    <string name="delete_server_message">The encrypted credential-bearing node will be removed from this device.</string>
+    <string name="delete_action">Delete</string>
+</resources>
