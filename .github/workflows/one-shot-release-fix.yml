@@ -11,6 +11,7 @@ concurrency:
   group: one-shot-release-fix
   cancel-in-progress: true
 
+# Temporary branch-local formatter/patch job. Remove after the bot commit lands.
 jobs:
   patch:
     if: github.actor != 'github-actions[bot]'
@@ -36,7 +37,6 @@ jobs:
               self.selected_node = 0;
           }
           '''
-          # Match the actual rustfmt indentation if the compact form above is absent.
           if old not in text:
               old = '''        } else {
             self.imported_nodes = parsed;
