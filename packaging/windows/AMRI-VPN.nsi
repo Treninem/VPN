@@ -8,8 +8,6 @@ SetCompressor /SOLID lzma
 
 Name "${PRODUCT_NAME}"
 OutFile "..\..\dist\AMRI-VPN-Windows-Setup.exe"
-Icon "..\..\dist\windows\amri-vpn.ico"
-UninstallIcon "..\..\dist\windows\amri-vpn.ico"
 InstallDir "$PROGRAMFILES64\AMRI VPN"
 InstallDirRegKey HKLM "Software\AMRI VPN" "InstallDir"
 
