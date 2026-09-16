@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -33,6 +34,18 @@ impl NodeProtocol {
             "http" | "https" => Self::Http,
             _ => Self::Unknown,
         }
+    }
+
+    pub fn is_production_importable(self) -> bool {
+        matches!(
+            self,
+            Self::Vless
+                | Self::Vmess
+                | Self::Trojan
+                | Self::Shadowsocks
+                | Self::Hysteria2
+                | Self::Tuic
+        )
     }
 }
 
@@ -163,7 +176,8 @@ pub fn parse_node_uri(subscription_id: &str, raw: &str) -> Result<ImportedNode, 
     // vmess links are often base64 payloads after the scheme and may not be RFC URL compliant.
     let scheme = raw.split_once("://").map(|(s, _)| s).unwrap_or_default();
     let protocol = NodeProtocol::from_scheme(scheme);
-    if protocol == NodeProtocol::Unknown {
+    if !protocol.is_production_importable() {
+        // In particular, never mistake an https:// subscription URL for a VPN transport node.
         return Err(SubscriptionError::InvalidNodeUri);
     }
 
@@ -196,6 +210,41 @@ pub fn parse_subscription_text(subscription_id: &str, text: &str) -> Vec<Importe
     text.lines()
         .filter_map(|line| parse_node_uri(subscription_id, line).ok())
         .collect()
+}
+
+/// Parses a provider response without ever treating the credential-bearing subscription URL itself
+/// as a node. Plain newline-delimited node links are accepted first; if none are present, the whole
+/// response is decoded using the common base64 variants used by subscription providers.
+pub fn parse_subscription_payload(subscription_id: &str, payload: &str) -> Vec<ImportedNode> {
+    let direct = parse_subscription_text(subscription_id, payload);
+    if !direct.is_empty() {
+        return direct;
+    }
+
+    let compact: String = payload.chars().filter(|character| !character.is_whitespace()).collect();
+    if compact.is_empty() || compact.len() > 8 * 1024 * 1024 {
+        return Vec::new();
+    }
+
+    for engine in [
+        &general_purpose::STANDARD,
+        &general_purpose::STANDARD_NO_PAD,
+        &general_purpose::URL_SAFE,
+        &general_purpose::URL_SAFE_NO_PAD,
+    ] {
+        let Ok(decoded) = engine.decode(compact.as_bytes()) else {
+            continue;
+        };
+        let Ok(text) = String::from_utf8(decoded) else {
+            continue;
+        };
+        let parsed = parse_subscription_text(subscription_id, &text);
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
+
+    Vec::new()
 }
 
 pub fn build_unified_pool(nodes: impl IntoIterator<Item = ImportedNode>) -> Vec<PooledNode> {
@@ -251,6 +300,35 @@ mod tests {
             .find(|node| node.raw_uri.starts_with("vless://"))
             .unwrap();
         assert_eq!(duplicated.source_subscription_ids.len(), 2);
+    }
+
+    #[test]
+    fn https_subscription_url_is_not_misclassified_as_transport_node() {
+        assert!(parse_node_uri(
+            "provider",
+            "https://provider.example/subscription?token=private"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn base64_provider_payload_is_decoded() {
+        let plain = "vless://id@example.com:443?security=tls#Amsterdam\ntrojan://pw@de.example.com:443#Berlin";
+        let encoded = general_purpose::STANDARD.encode(plain);
+        let parsed = parse_subscription_payload("provider", &encoded);
+        assert_eq!(parsed.len(), 2);
+        assert!(parsed.iter().any(|node| node.protocol == NodeProtocol::Vless));
+        assert!(parsed.iter().any(|node| node.protocol == NodeProtocol::Trojan));
+    }
+
+    #[test]
+    fn direct_payload_still_wins_without_base64_roundtrip() {
+        let parsed = parse_subscription_payload(
+            "provider",
+            "hysteria2://pw@fi.example.com:443#Helsinki",
+        );
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].protocol, NodeProtocol::Hysteria2);
     }
 
     #[test]
