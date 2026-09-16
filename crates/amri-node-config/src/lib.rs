@@ -106,14 +106,7 @@ fn parse_vmess(
     let document: serde_json::Value =
         serde_json::from_str(&decoded).map_err(|_| NodeConfigError::InvalidVmess)?;
 
-    let text = |key: &str| {
-        document
-            .get(key)
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-    };
-    let host = text("add").ok_or(NodeConfigError::MissingHost)?;
+    let host = json_text(&document, "add").ok_or(NodeConfigError::MissingHost)?;
     let port = document
         .get("port")
         .and_then(|value| {
@@ -124,14 +117,15 @@ fn parse_vmess(
         })
         .filter(|port| *port != 0)
         .ok_or(NodeConfigError::MissingPort)?;
-    let uuid = text("id").ok_or(NodeConfigError::MissingCredential)?;
-    let transport = text("net").unwrap_or("tcp");
-    if !transport.eq_ignore_ascii_case("tcp") {
-        return Err(NodeConfigError::UnsupportedTransport(transport.to_string()));
-    }
+    let uuid = json_text(&document, "id").ok_or(NodeConfigError::MissingCredential)?;
+    let transport = json_text(&document, "net").unwrap_or("tcp");
 
     let mut options = base_options(materialize);
-    let security = text("scy").unwrap_or("auto").to_ascii_lowercase();
+    copy_vmess_transport(&document, transport, &mut options)?;
+
+    let security = json_text(&document, "scy")
+        .unwrap_or("auto")
+        .to_ascii_lowercase();
     if !matches!(
         security.as_str(),
         "auto" | "aes-128-gcm" | "chacha20-poly1305" | "none" | "zero"
@@ -145,14 +139,16 @@ fn parse_vmess(
     {
         options.insert("alter_id".into(), alter_id.to_string());
     }
-    let tls_enabled = text("tls")
+    let tls_enabled = json_text(&document, "tls")
         .map(|value| value.eq_ignore_ascii_case("tls"))
         .unwrap_or(false);
     options.insert("tls".into(), tls_enabled.to_string());
     if tls_enabled {
-        if let Some(server_name) = text("sni").or_else(|| text("host")) {
+        if let Some(server_name) = json_text(&document, "sni").or_else(|| json_text(&document, "host"))
+        {
             options.insert("server_name".into(), server_name.to_string());
         }
+        copy_json_tls_extras(&document, &mut options)?;
     }
 
     Ok(MaterializedNode {
@@ -171,9 +167,10 @@ fn parse_vless(
 ) -> Result<MaterializedNode, NodeConfigError> {
     let url = Url::parse(raw_uri).map_err(|_| NodeConfigError::InvalidUri)?;
     let query = query_map(&url);
-    require_tcp_transport(&query)?;
 
     let mut options = base_options(materialize);
+    copy_v2ray_transport(&query, &mut options)?;
+
     let security = query.get("security").map(String::as_str).unwrap_or("none");
     match security.to_ascii_lowercase().as_str() {
         "none" | "" => {
@@ -181,8 +178,12 @@ fn parse_vless(
         }
         "tls" => {
             options.insert("tls".into(), "true".into());
-            copy_server_name(&query, &mut options);
-            copy_insecure(&query, &mut options)?;
+            copy_tls_query_options(&query, &mut options)?;
+        }
+        "reality" => {
+            options.insert("tls".into(), "true".into());
+            copy_tls_query_options(&query, &mut options)?;
+            copy_reality_options(&query, &mut options)?;
         }
         other => return Err(NodeConfigError::UnsupportedSecurity(other.to_string())),
     }
@@ -204,7 +205,6 @@ fn parse_trojan(
 ) -> Result<MaterializedNode, NodeConfigError> {
     let url = Url::parse(raw_uri).map_err(|_| NodeConfigError::InvalidUri)?;
     let query = query_map(&url);
-    require_tcp_transport(&query)?;
 
     if let Some(security) = query.get("security") {
         if !security.eq_ignore_ascii_case("tls") {
@@ -213,9 +213,9 @@ fn parse_trojan(
     }
 
     let mut options = base_options(materialize);
+    copy_v2ray_transport(&query, &mut options)?;
     options.insert("tls".into(), "true".into());
-    copy_server_name(&query, &mut options);
-    copy_insecure(&query, &mut options)?;
+    copy_tls_query_options(&query, &mut options)?;
 
     Ok(MaterializedNode {
         endpoint: endpoint_from_url(&url)?,
@@ -232,8 +232,7 @@ fn parse_hysteria2(
     let query = query_map(&url);
     let mut options = base_options(materialize);
     options.insert("tls".into(), "true".into());
-    copy_server_name(&query, &mut options);
-    copy_insecure(&query, &mut options)?;
+    copy_tls_query_options(&query, &mut options)?;
 
     if let Some(up) = query_value(&query, &["upmbps", "up_mbps"]) {
         validate_positive_u64(up, "up_mbps")?;
@@ -264,8 +263,7 @@ fn parse_tuic(
     let query = query_map(&url);
     let mut options = base_options(materialize);
     options.insert("tls".into(), "true".into());
-    copy_server_name(&query, &mut options);
-    copy_insecure(&query, &mut options)?;
+    copy_tls_query_options(&query, &mut options)?;
 
     if let Some(congestion) = query_value(&query, &["congestion_control", "congestion"]) {
         let normalized = congestion.to_ascii_lowercase();
@@ -421,6 +419,14 @@ fn decode_component(value: &str) -> Result<String, NodeConfigError> {
     Ok(decoded.into_owned())
 }
 
+fn json_text<'a>(document: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    document
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
 fn query_map(url: &Url) -> HashMap<String, String> {
     url.query_pairs()
         .map(|(key, value)| (key.to_ascii_lowercase(), value.into_owned()))
@@ -432,14 +438,126 @@ fn query_value<'a>(query: &'a HashMap<String, String>, keys: &[&str]) -> Option<
         .find_map(|key| query.get(*key).map(String::as_str))
 }
 
-fn require_tcp_transport(query: &HashMap<String, String>) -> Result<(), NodeConfigError> {
-    let Some(transport) = query.get("type") else {
-        return Ok(());
-    };
-    if transport.is_empty() || transport.eq_ignore_ascii_case("tcp") {
-        Ok(())
-    } else {
-        Err(NodeConfigError::UnsupportedTransport(transport.clone()))
+fn copy_v2ray_transport(
+    query: &HashMap<String, String>,
+    options: &mut BTreeMap<String, String>,
+) -> Result<(), NodeConfigError> {
+    let transport = query
+        .get("type")
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| "tcp".into());
+
+    match transport.as_str() {
+        "" | "tcp" => Ok(()),
+        "ws" => {
+            options.insert("transport".into(), "ws".into());
+            copy_transport_path_and_host(query, options);
+            if let Some(raw) = query_value(query, &["ed", "maxearlydata", "max_early_data"])
+                .filter(|value| !value.is_empty())
+            {
+                let value = raw
+                    .parse::<u32>()
+                    .map_err(|_| NodeConfigError::InvalidOption("transport_max_early_data"))?;
+                if value > 0 {
+                    options.insert("transport_max_early_data".into(), value.to_string());
+                }
+            }
+            if let Some(header) = query_value(
+                query,
+                &["eh", "earlydataheadername", "early_data_header_name"],
+            )
+            .filter(|value| !value.is_empty())
+            {
+                options.insert("transport_early_data_header".into(), header.to_string());
+            }
+            Ok(())
+        }
+        "grpc" => {
+            options.insert("transport".into(), "grpc".into());
+            if let Some(service) = query_value(
+                query,
+                &["servicename", "service_name", "service", "path"],
+            )
+            .filter(|value| !value.is_empty())
+            {
+                options.insert("transport_service_name".into(), service.to_string());
+            }
+            Ok(())
+        }
+        "http" | "h2" => {
+            options.insert("transport".into(), "http".into());
+            copy_transport_path_and_host(query, options);
+            Ok(())
+        }
+        "httpupgrade" => {
+            options.insert("transport".into(), "httpupgrade".into());
+            copy_transport_path_and_host(query, options);
+            Ok(())
+        }
+        other => Err(NodeConfigError::UnsupportedTransport(other.to_string())),
+    }
+}
+
+fn copy_transport_path_and_host(
+    query: &HashMap<String, String>,
+    options: &mut BTreeMap<String, String>,
+) {
+    if let Some(path) = query_value(query, &["path"]).filter(|value| !value.is_empty()) {
+        options.insert("transport_path".into(), path.to_string());
+    }
+    if let Some(host) = query_value(query, &["host"]).filter(|value| !value.is_empty()) {
+        options.insert("transport_host".into(), host.to_string());
+    }
+}
+
+fn copy_vmess_transport(
+    document: &serde_json::Value,
+    transport: &str,
+    options: &mut BTreeMap<String, String>,
+) -> Result<(), NodeConfigError> {
+    match transport.trim().to_ascii_lowercase().as_str() {
+        "" | "tcp" => Ok(()),
+        "ws" => {
+            options.insert("transport".into(), "ws".into());
+            if let Some(path) = json_text(document, "path") {
+                options.insert("transport_path".into(), path.to_string());
+            }
+            if let Some(host) = json_text(document, "host") {
+                options.insert("transport_host".into(), host.to_string());
+            }
+            Ok(())
+        }
+        "grpc" => {
+            options.insert("transport".into(), "grpc".into());
+            if let Some(service) = json_text(document, "serviceName")
+                .or_else(|| json_text(document, "service_name"))
+                .or_else(|| json_text(document, "path"))
+            {
+                options.insert("transport_service_name".into(), service.to_string());
+            }
+            Ok(())
+        }
+        "http" | "h2" => {
+            options.insert("transport".into(), "http".into());
+            if let Some(path) = json_text(document, "path") {
+                options.insert("transport_path".into(), path.to_string());
+            }
+            if let Some(host) = json_text(document, "host") {
+                options.insert("transport_host".into(), host.to_string());
+            }
+            Ok(())
+        }
+        "httpupgrade" => {
+            options.insert("transport".into(), "httpupgrade".into());
+            if let Some(path) = json_text(document, "path") {
+                options.insert("transport_path".into(), path.to_string());
+            }
+            if let Some(host) = json_text(document, "host") {
+                options.insert("transport_host".into(), host.to_string());
+            }
+            Ok(())
+        }
+        other => Err(NodeConfigError::UnsupportedTransport(other.to_string())),
     }
 }
 
@@ -457,6 +575,75 @@ fn copy_server_name(query: &HashMap<String, String>, options: &mut BTreeMap<Stri
     {
         options.insert("server_name".into(), server_name.to_string());
     }
+}
+
+fn copy_tls_query_options(
+    query: &HashMap<String, String>,
+    options: &mut BTreeMap<String, String>,
+) -> Result<(), NodeConfigError> {
+    copy_server_name(query, options);
+    copy_insecure(query, options)?;
+
+    if let Some(fingerprint) = query_value(query, &["fp", "fingerprint"])
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("none"))
+    {
+        validate_safe_text(fingerprint, 32, "tls_utls_fingerprint")?;
+        options.insert("tls_utls_fingerprint".into(), fingerprint.to_string());
+    }
+
+    if let Some(alpn) = query_value(query, &["alpn"])
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        validate_safe_text(alpn, 128, "tls_alpn")?;
+        options.insert("tls_alpn".into(), alpn.to_string());
+    }
+
+    Ok(())
+}
+
+fn copy_json_tls_extras(
+    document: &serde_json::Value,
+    options: &mut BTreeMap<String, String>,
+) -> Result<(), NodeConfigError> {
+    if let Some(fingerprint) = json_text(document, "fp")
+        .or_else(|| json_text(document, "fingerprint"))
+        .filter(|value| !value.eq_ignore_ascii_case("none"))
+    {
+        validate_safe_text(fingerprint, 32, "tls_utls_fingerprint")?;
+        options.insert("tls_utls_fingerprint".into(), fingerprint.to_string());
+    }
+    if let Some(alpn) = json_text(document, "alpn") {
+        validate_safe_text(alpn, 128, "tls_alpn")?;
+        options.insert("tls_alpn".into(), alpn.to_string());
+    }
+    Ok(())
+}
+
+fn copy_reality_options(
+    query: &HashMap<String, String>,
+    options: &mut BTreeMap<String, String>,
+) -> Result<(), NodeConfigError> {
+    let public_key = query_value(query, &["pbk", "publickey", "public_key"])
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(NodeConfigError::InvalidOption("reality_public_key"))?;
+    validate_safe_text(public_key, 128, "reality_public_key")?;
+
+    let short_id = query_value(query, &["sid", "shortid", "short_id"])
+        .map(str::trim)
+        .unwrap_or("");
+    if short_id.len() > 16
+        || short_id.len() % 2 != 0
+        || !short_id.chars().all(|character| character.is_ascii_hexdigit())
+    {
+        return Err(NodeConfigError::InvalidOption("reality_short_id"));
+    }
+
+    options.insert("tls_reality_public_key".into(), public_key.to_string());
+    options.insert("tls_reality_short_id".into(), short_id.to_string());
+    Ok(())
 }
 
 fn copy_insecure(
@@ -477,6 +664,21 @@ fn parse_bool(value: &str, key: &'static str) -> Result<bool, NodeConfigError> {
         "0" | "false" | "no" | "" => Ok(false),
         _ => Err(NodeConfigError::InvalidOption(key)),
     }
+}
+
+fn validate_safe_text(
+    value: &str,
+    max_len: usize,
+    key: &'static str,
+) -> Result<(), NodeConfigError> {
+    if value.len() > max_len
+        || value
+            .chars()
+            .any(|character| character.is_control() || character == '\0')
+    {
+        return Err(NodeConfigError::InvalidOption(key));
+    }
+    Ok(())
 }
 
 fn validate_positive_u64(value: &str, key: &'static str) -> Result<u64, NodeConfigError> {
@@ -591,16 +793,81 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_vless_websocket_is_rejected_instead_of_silently_misconfigured() {
+    fn vless_websocket_materializes_transport_options() {
         let node = parse_node_uri(
             "a",
-            "vless://id@vpn.example:443?security=tls&type=ws&path=%2Fws#WS",
+            "vless://id@vpn.example:443?security=tls&type=ws&path=%2Fws&host=cdn.example&sni=edge.example&fp=chrome#WS",
         )
         .unwrap();
-        let error =
-            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err();
+        let request =
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
 
-        assert_eq!(error, NodeConfigError::UnsupportedTransport("ws".into()));
+        assert_eq!(request.options.get("transport").map(String::as_str), Some("ws"));
+        assert_eq!(
+            request.options.get("transport_path").map(String::as_str),
+            Some("/ws")
+        );
+        assert_eq!(
+            request.options.get("transport_host").map(String::as_str),
+            Some("cdn.example")
+        );
+        assert_eq!(
+            request
+                .options
+                .get("tls_utls_fingerprint")
+                .map(String::as_str),
+            Some("chrome")
+        );
+    }
+
+    #[test]
+    fn vless_grpc_reality_materializes_public_parameters() {
+        let node = parse_node_uri(
+            "a",
+            "vless://id@vpn.example:443?security=reality&type=grpc&serviceName=amri&sni=www.example.com&fp=chrome&pbk=public-key_value&sid=0123456789abcdef#Reality",
+        )
+        .unwrap();
+        let request =
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
+
+        assert_eq!(
+            request.options.get("transport").map(String::as_str),
+            Some("grpc")
+        );
+        assert_eq!(
+            request
+                .options
+                .get("transport_service_name")
+                .map(String::as_str),
+            Some("amri")
+        );
+        assert_eq!(
+            request
+                .options
+                .get("tls_reality_public_key")
+                .map(String::as_str),
+            Some("public-key_value")
+        );
+        assert_eq!(
+            request
+                .options
+                .get("tls_reality_short_id")
+                .map(String::as_str),
+            Some("0123456789abcdef")
+        );
+    }
+
+    #[test]
+    fn malformed_reality_short_id_fails_closed() {
+        let node = parse_node_uri(
+            "a",
+            "vless://id@vpn.example:443?security=reality&sni=www.example.com&pbk=public-key&sid=xyz#Reality",
+        )
+        .unwrap();
+        assert_eq!(
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err(),
+            NodeConfigError::InvalidOption("reality_short_id")
+        );
     }
 
     #[test]
@@ -669,19 +936,28 @@ mod tests {
     }
 
     #[test]
-    fn vmess_websocket_is_rejected_fail_closed() {
+    fn vmess_websocket_materializes_path_and_host() {
         let document = serde_json::json!({
             "add": "vmess.example", "port": 443,
-            "id": "123e4567-e89b-12d3-a456-426614174000", "net": "ws"
+            "id": "123e4567-e89b-12d3-a456-426614174000", "net": "ws",
+            "path": "/socket", "host": "cdn.example", "tls": "tls", "sni": "edge.example"
         });
         let raw = format!(
             "vmess://{}",
             general_purpose::STANDARD.encode(document.to_string())
         );
         let node = parse_node_uri("a", &raw).unwrap();
+        let request =
+            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap();
+
+        assert_eq!(request.options.get("transport").map(String::as_str), Some("ws"));
         assert_eq!(
-            materialize_connect_request(node, "web", MaterializeOptions::default()).unwrap_err(),
-            NodeConfigError::UnsupportedTransport("ws".into())
+            request.options.get("transport_path").map(String::as_str),
+            Some("/socket")
+        );
+        assert_eq!(
+            request.options.get("transport_host").map(String::as_str),
+            Some("cdn.example")
         );
     }
 }
