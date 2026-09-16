@@ -1,5 +1,6 @@
-use amri_external_core::{sing_box_process_spec, SingBoxRenderer, SupervisedProcessAdapter};
+use amri_external_core::{sing_box_process_spec, SupervisedProcessAdapter};
 use amri_node_config::{materialize_connect_request, MaterializeOptions};
+use amri_singbox_renderer::ProductionSingBoxRenderer;
 use amri_subscriptions::parse_node_uri;
 use amri_transport::{SessionState, TransportManager, TransportSession};
 use std::path::PathBuf;
@@ -96,7 +97,7 @@ pub fn start(raw_uri: String, executable: String, local_port: i32) -> i32 {
     if manager
         .register(SupervisedProcessAdapter::new(
             sing_box_process_spec(PathBuf::from(executable)),
-            SingBoxRenderer,
+            ProductionSingBoxRenderer,
         ))
         .is_err()
     {
