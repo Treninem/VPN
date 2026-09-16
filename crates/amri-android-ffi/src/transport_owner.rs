@@ -62,7 +62,10 @@ pub fn start(raw_uri: String, executable: String, local_port: i32) -> i32 {
         return START_FAILED;
     };
     if guard.active.is_some()
-        || matches!(guard.state, TRANSPORT_STARTING | TRANSPORT_RUNNING | TRANSPORT_STOPPING)
+        || matches!(
+            guard.state,
+            TRANSPORT_STARTING | TRANSPORT_RUNNING | TRANSPORT_STOPPING
+        )
     {
         return START_BUSY;
     }
@@ -119,9 +122,10 @@ pub fn stop() {
         return;
     };
     guard.state = TRANSPORT_STOPPING;
-    let result = guard.active.take().map(|mut active| {
-        active.manager.disconnect(&active.session.route_id)
-    });
+    let result = guard
+        .active
+        .take()
+        .map(|mut active| active.manager.disconnect(&active.session.route_id));
     guard.state = match result {
         Some(Err(_)) => TRANSPORT_FAILED,
         _ => TRANSPORT_STOPPED,
@@ -157,7 +161,10 @@ mod tests {
 
     #[test]
     fn invalid_start_inputs_fail_before_process_spawn() {
-        assert_eq!(start(String::new(), "sing-box".into(), 20800), START_INVALID_URI);
+        assert_eq!(
+            start(String::new(), "sing-box".into(), 20800),
+            START_INVALID_URI
+        );
         assert_eq!(
             start("vless://x@example.com:443".into(), String::new(), 20800),
             START_INVALID_EXECUTABLE
