@@ -1,0 +1,84 @@
+name: One-shot release branch fix
+
+on:
+  push:
+    branches: [work/release-critical-fixes]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-release-fix
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/release-critical-fixes
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Merge imported Windows subscriptions instead of replacing them
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/windows/src/main.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''        } else {
+              self.imported_nodes = parsed;
+              self.selected_node = 0;
+          }
+          '''
+          # Match the actual rustfmt indentation if the compact form above is absent.
+          if old not in text:
+              old = '''        } else {
+            self.imported_nodes = parsed;
+            self.selected_node = 0;
+        }
+'''
+          new = '''        } else {
+            let mut first_new = None;
+            for node in parsed {
+                if self
+                    .imported_nodes
+                    .iter()
+                    .any(|existing| existing.fingerprint == node.fingerprint)
+                {
+                    continue;
+                }
+                if first_new.is_none() {
+                    first_new = Some(self.imported_nodes.len());
+                }
+                self.imported_nodes.push(node);
+            }
+            if let Some(index) = first_new {
+                self.selected_node = index;
+            } else if !self.imported_nodes.is_empty() {
+                self.selected_node = self.selected_node.min(self.imported_nodes.len() - 1);
+            }
+        }
+'''
+          if old not in text:
+              raise SystemExit('expected Windows import replacement block was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+      - name: Commit fix
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/windows/src/main.rs
+          git commit -m "Merge Windows subscription imports"
+          git push origin HEAD:work/release-critical-fixes
