@@ -37,8 +37,8 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
-      - name: Check workspace
-        run: cargo check --workspace
+      - name: Check workspace all targets
+        run: cargo check --workspace --all-targets
 
       - name: Build Windows release executable
         run: cargo build --release -p amri-windows
