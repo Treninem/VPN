@@ -5,19 +5,19 @@
     <string name="notification_ready">VPN service is ready</string>
     <string name="product_subtitle">Adaptive multi-route VPN</string>
     <string name="mode">Mode</string>
-    <string name="smart_routing">Smart Routing</string>
-    <string name="smart_routing_description">Choose a separate best route for every destination</string>
-    <string name="dns_protection">DNS protection</string>
-    <string name="dns_protection_description">Route DNS through the selected protected path</string>
-    <string name="kill_switch">Kill Switch</string>
-    <string name="kill_switch_description">Block protected traffic if its VPN route is lost</string>
-    <string name="local_learning">Local learning</string>
-    <string name="local_learning_description">Decision history stays only on this device</string>
-    <string name="federated_learning">Anonymous shared learning</string>
-    <string name="federated_learning_description">Disabled by default</string>
+    <string name="smart_routing">Smart failover</string>
+    <string name="smart_routing_description">In Smart mode, rank imported nodes and fail over when the preferred route cannot start</string>
+    <string name="dns_protection">DNS path</string>
+    <string name="dns_protection_description">DNS follows the active Android VPN tunnel; this switch is reserved for a future independent DNS policy</string>
+    <string name="kill_switch">Android lockdown</string>
+    <string name="kill_switch_description">Use Android Always-on VPN + Block connections without VPN for a system-enforced kill switch; this switch is not a separate firewall</string>
+    <string name="local_learning">Local learning (not active)</string>
+    <string name="local_learning_description">No adaptive learning is running in this build; this preference is reserved for a future local-only implementation</string>
+    <string name="federated_learning">Anonymous shared learning (not active)</string>
+    <string name="federated_learning_description">No learning data is uploaded in this build</string>
     <string name="route_selection">Route selection</string>
     <string name="automatic_route">AMRI automatic</string>
-    <string name="no_imported_servers">No imported servers yet; AMRI will use the unified pool when available</string>
+    <string name="no_imported_servers">No imported servers yet; import one or more VPN links to connect</string>
     <string name="choose_server">Choose server</string>
     <string name="status_protected">Protection is on</string>
     <string name="detail_protected">Transport, packet forwarding, DNS path and public egress are verified for this tunnel</string>
@@ -28,18 +28,13 @@
     <string name="detail_preparing">Android is creating a protected system interface</string>
     <string name="wait">Please wait</string>
     <string name="status_failed">VPN preparation failed</string>
-    <string name="detail_failed">The system interface was not created; normal networking is unchanged</string>
+    <string name="detail_failed">The protected route could not be created; normal networking is unchanged unless Android lockdown is enabled</string>
     <string name="retry">Retry</string>
     <string name="status_off">Protection is off</string>
     <string name="detail_off">Prepare Android VpnService for the AMRI transport</string>
     <string name="prepare_vpn">Prepare VPN</string>
     <string-array name="vpn_modes">
         <item>Smart</item>
-        <item>Speed</item>
-        <item>Ping</item>
-        <item>Privacy</item>
-        <item>Streaming</item>
-        <item>Gaming</item>
         <item>Manual</item>
     </string-array>
 </resources>
