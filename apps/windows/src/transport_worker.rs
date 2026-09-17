@@ -12,7 +12,7 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use system_forwarding::{
     resolve_server_ips, WindowsForwardingState, WindowsSystemForwarder,
     WindowsSystemForwardingConfig, DEFAULT_WINDOWS_MTU,
@@ -20,15 +20,19 @@ use system_forwarding::{
 
 const BOOTSTRAP_ROUTE_ID: &str = "windows-bootstrap";
 const WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
+const RECOVERY_RETRY_DELAY: Duration = Duration::from_secs(5);
+
+#[derive(Clone)]
+struct ConnectionPlan {
+    nodes: Vec<ImportedNode>,
+    preferred_index: usize,
+    smart_routing: bool,
+    executable: PathBuf,
+    local_port: u16,
+}
 
 enum WorkerCommand {
-    Connect {
-        nodes: Vec<ImportedNode>,
-        preferred_index: usize,
-        smart_routing: bool,
-        executable: PathBuf,
-        local_port: u16,
-    },
+    Connect(ConnectionPlan),
     Disconnect,
     Shutdown,
 }
@@ -56,6 +60,7 @@ struct ActiveTransport {
     manager: TransportManager,
     session: TransportSession,
     forwarder: WindowsSystemForwarder,
+    node_index: usize,
 }
 
 pub struct TransportWorker {
@@ -77,13 +82,30 @@ impl TransportWorker {
         }
     }
 
+    /// Compatibility entrypoint used by the current desktop UI.
+    ///
+    /// The selected node remains the preferred route, but when secure storage contains additional
+    /// imported nodes we pass the complete pool to the worker. This makes the existing Connect
+    /// button use AMRI's bounded bootstrap race and gives recovery a real fallback set without
+    /// exposing credential-bearing URIs outside the process.
     pub fn connect(
         &self,
         node: ImportedNode,
         executable: impl Into<PathBuf>,
         local_port: u16,
     ) -> Result<(), String> {
-        self.connect_candidates(vec![node], 0, false, executable, local_port)
+        let mut nodes = crate::secure_nodes::load().unwrap_or_default();
+        let preferred_index = match nodes
+            .iter()
+            .position(|candidate| candidate.fingerprint == node.fingerprint)
+        {
+            Some(index) => index,
+            None => {
+                nodes.push(node);
+                nodes.len() - 1
+            }
+        };
+        self.connect_candidates(nodes, preferred_index, true, executable, local_port)
     }
 
     pub fn connect_candidates(
@@ -101,13 +123,13 @@ impl TransportWorker {
             return Err("VPN node pool must not be empty".into());
         }
         self.commands
-            .send(WorkerCommand::Connect {
+            .send(WorkerCommand::Connect(ConnectionPlan {
                 nodes,
                 preferred_index,
                 smart_routing,
                 executable: executable.into(),
                 local_port,
-            })
+            }))
             .map_err(|_| "transport worker is unavailable".into())
     }
 
@@ -137,16 +159,12 @@ impl Drop for TransportWorker {
 
 fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
     let mut active: Option<ActiveTransport> = None;
+    let mut desired: Option<ConnectionPlan> = None;
+    let mut retry_at: Option<Instant> = None;
 
     loop {
         match commands.recv_timeout(WATCHDOG_INTERVAL) {
-            Ok(WorkerCommand::Connect {
-                nodes,
-                preferred_index,
-                smart_routing,
-                executable,
-                local_port,
-            }) => {
+            Ok(WorkerCommand::Connect(plan)) => {
                 if active.is_some() {
                     send_state(
                         &events,
@@ -155,31 +173,27 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
                     continue;
                 }
 
+                desired = Some(plan);
+                retry_at = None;
                 send_state(&events, TransportUiState::Connecting);
-                let selected_index = if smart_routing {
-                    smart_bootstrap::select_node_index(&nodes, preferred_index, local_port)
-                } else {
-                    preferred_index.min(nodes.len() - 1)
-                };
-                let node = nodes
-                    .get(selected_index)
-                    .cloned()
-                    .expect("validated non-empty node pool must contain selected index");
-                let node_name = node.display_name.clone();
-                match connect_node(node, executable, local_port) {
-                    Ok(transport) => {
-                        let state = TransportUiState::Ready {
-                            node_name,
-                            node_fingerprint: transport.session.node_fingerprint.clone(),
-                            local_port,
-                        };
+                match desired
+                    .as_ref()
+                    .expect("connection plan was just stored")
+                    .connect(None)
+                {
+                    Ok((transport, state)) => {
                         active = Some(transport);
                         send_state(&events, state);
                     }
-                    Err(error) => send_state(&events, TransportUiState::Failed(error)),
+                    Err(error) => {
+                        retry_at = Some(Instant::now() + RECOVERY_RETRY_DELAY);
+                        send_state(&events, TransportUiState::Failed(error));
+                    }
                 }
             }
             Ok(WorkerCommand::Disconnect) => {
+                desired = None;
+                retry_at = None;
                 let result = active.take().map(disconnect_active).unwrap_or(Ok(()));
                 match result {
                     Ok(()) => send_state(&events, TransportUiState::Idle),
@@ -187,6 +201,7 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
                 }
             }
             Ok(WorkerCommand::Shutdown) => {
+                desired = None;
                 if let Some(transport) = active.take() {
                     let _ = disconnect_active(transport);
                 }
@@ -197,20 +212,69 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
                     .as_ref()
                     .map(|transport| !transport.forwarder.is_running())
                     .unwrap_or(false);
+
                 if protection_lost {
+                    let failed_index = active.as_ref().map(|transport| transport.node_index);
                     if let Some(transport) = active.take() {
                         let _ = disconnect_active(transport);
                     }
-                    send_state(
-                        &events,
-                        TransportUiState::Failed(
-                            "Windows protected path stopped; VPN transport was closed fail-closed"
-                                .into(),
-                        ),
-                    );
+                    send_state(&events, TransportUiState::Connecting);
+
+                    if let Some(plan) = desired.as_ref() {
+                        match plan.connect(failed_index) {
+                            Ok((transport, state)) => {
+                                active = Some(transport);
+                                retry_at = None;
+                                send_state(&events, state);
+                            }
+                            Err(error) => {
+                                retry_at = Some(Instant::now() + RECOVERY_RETRY_DELAY);
+                                send_state(
+                                    &events,
+                                    TransportUiState::Failed(format!(
+                                        "Windows protected path stopped; failover did not recover: {error}"
+                                    )),
+                                );
+                            }
+                        }
+                    } else {
+                        send_state(
+                            &events,
+                            TransportUiState::Failed(
+                                "Windows protected path stopped; VPN transport was closed fail-closed"
+                                    .into(),
+                            ),
+                        );
+                    }
+                    continue;
+                }
+
+                let should_retry = active.is_none()
+                    && desired.is_some()
+                    && retry_at
+                        .map(|deadline| Instant::now() >= deadline)
+                        .unwrap_or(false);
+                if should_retry {
+                    send_state(&events, TransportUiState::Connecting);
+                    match desired
+                        .as_ref()
+                        .expect("retry requires a stored connection plan")
+                        .connect(None)
+                    {
+                        Ok((transport, state)) => {
+                            active = Some(transport);
+                            retry_at = None;
+                            send_state(&events, state);
+                        }
+                        Err(error) => {
+                            retry_at = Some(Instant::now() + RECOVERY_RETRY_DELAY);
+                            send_state(&events, TransportUiState::Failed(error));
+                        }
+                    }
                 }
             }
             Err(RecvTimeoutError::Disconnected) => {
+                desired = None;
                 if let Some(transport) = active.take() {
                     let _ = disconnect_active(transport);
                 }
@@ -220,10 +284,89 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
     }
 }
 
+impl ConnectionPlan {
+    fn connect(
+        &self,
+        excluded_index: Option<usize>,
+    ) -> Result<(ActiveTransport, TransportUiState), String> {
+        let preferred_index = self.preferred_index.min(self.nodes.len() - 1);
+        let selected_index = if self.smart_routing {
+            smart_bootstrap::select_node_index(&self.nodes, preferred_index, self.local_port)
+        } else {
+            preferred_index
+        };
+        let order = candidate_order(
+            self.nodes.len(),
+            preferred_index,
+            selected_index,
+            self.smart_routing,
+        );
+
+        let mut attempts = 0usize;
+        let mut last_error = None;
+        for index in order {
+            if excluded_index == Some(index) {
+                continue;
+            }
+            attempts += 1;
+            let node = self.nodes[index].clone();
+            let node_name = node.display_name.clone();
+            match connect_node(node, self.executable.clone(), self.local_port, index) {
+                Ok(transport) => {
+                    let state = TransportUiState::Ready {
+                        node_name,
+                        node_fingerprint: transport.session.node_fingerprint.clone(),
+                        local_port: self.local_port,
+                    };
+                    return Ok((transport, state));
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+
+        if attempts == 0 {
+            return Err("no alternate VPN route is available for this recovery attempt".into());
+        }
+        Err(format!(
+            "all {attempts} candidate VPN routes failed; last error: {}",
+            last_error.unwrap_or_else(|| "unknown route failure".into())
+        ))
+    }
+}
+
+fn candidate_order(
+    node_count: usize,
+    preferred_index: usize,
+    selected_index: usize,
+    smart_routing: bool,
+) -> Vec<usize> {
+    if node_count == 0 {
+        return Vec::new();
+    }
+    let preferred_index = preferred_index.min(node_count - 1);
+    let selected_index = selected_index.min(node_count - 1);
+    if !smart_routing {
+        return vec![preferred_index];
+    }
+
+    let mut order = Vec::with_capacity(node_count);
+    order.push(selected_index);
+    if preferred_index != selected_index {
+        order.push(preferred_index);
+    }
+    for index in 0..node_count {
+        if !order.contains(&index) {
+            order.push(index);
+        }
+    }
+    order
+}
+
 fn connect_node(
     node: ImportedNode,
     executable: PathBuf,
     local_port: u16,
+    node_index: usize,
 ) -> Result<ActiveTransport, String> {
     let mut request = materialize_connect_request(
         node,
@@ -274,6 +417,7 @@ fn connect_node(
         manager,
         session,
         forwarder,
+        node_index,
     })
 }
 
@@ -356,6 +500,21 @@ mod tests {
     }
 
     #[test]
+    fn smart_candidate_order_tries_winner_then_preferred_then_remaining() {
+        assert_eq!(candidate_order(5, 3, 1, true), vec![1, 3, 0, 2, 4]);
+    }
+
+    #[test]
+    fn manual_candidate_order_never_silently_switches_nodes() {
+        assert_eq!(candidate_order(5, 3, 1, false), vec![3]);
+    }
+
+    #[test]
+    fn candidate_order_clamps_stale_indices() {
+        assert_eq!(candidate_order(2, 99, 88, true), vec![1, 0]);
+    }
+
+    #[test]
     fn missing_core_returns_a_redacted_failure() {
         let node = parse_node_uri(
             "test",
@@ -363,9 +522,14 @@ mod tests {
         )
         .unwrap();
 
-        let error = connect_node(node, PathBuf::from("definitely-missing-sing-box"), 20800)
-            .err()
-            .unwrap();
+        let error = connect_node(
+            node,
+            PathBuf::from("definitely-missing-sing-box"),
+            20800,
+            0,
+        )
+        .err()
+        .unwrap();
 
         assert!(!error.contains("private-password"));
         assert!(error.contains("failed to start"));
