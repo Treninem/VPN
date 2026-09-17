@@ -25,8 +25,11 @@ class AmriVpnService : VpnService() {
     private var controlInterface: ParcelFileDescriptor? = null
     private var networkObserver: AndroidNetworkObserver? = null
     private val networkLease = AndroidNetworkLease()
+    private val networkRecoveryGate = AndroidNetworkRecoveryGate()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lifecycleGeneration = AtomicInteger(0)
+    @Volatile
+    private var restartWhenNetworkReady = false
     private val transportExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "amri-android-transport").apply { isDaemon = true }
     }
@@ -54,19 +57,32 @@ class AmriVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> stopController()
-            ACTION_START -> startController()
+            ACTION_STOP -> {
+                setDesiredActive(false)
+                restartWhenNetworkReady = false
+                stopController()
+            }
+            ACTION_START -> {
+                setDesiredActive(true)
+                startController()
+            }
+            null -> {
+                if (desiredActive()) startController()
+            }
         }
         return START_STICKY
     }
 
     override fun onRevoke() {
+        setDesiredActive(false)
+        restartWhenNetworkReady = false
         stopController()
         super.onRevoke()
     }
 
     override fun onDestroy() {
         lifecycleGeneration.incrementAndGet()
+        restartWhenNetworkReady = false
         stopProtectionWatchdog()
         stopPublicForwarding()
         closeInterface()
@@ -95,8 +111,10 @@ class AmriVpnService : VpnService() {
         try {
             check(runtimeOwner.initialize()) { "AMRI native runtime initialization failed" }
             startNetworkObservation()
-            controlInterface = establishControlInterface()
-                ?: error("Android refused to establish the VPN interface")
+            if (controlInterface == null) {
+                controlInterface = establishControlInterface()
+                    ?: error("Android refused to establish the VPN interface")
+            }
             STATE.serviceReady()
             transportExecutor.execute { startProtectedGeneration(generation) }
         } catch (_: Exception) {
@@ -136,6 +154,7 @@ class AmriVpnService : VpnService() {
 
     private fun stopController() {
         val generation = lifecycleGeneration.incrementAndGet()
+        restartWhenNetworkReady = false
         stopProtectionWatchdog()
         stopPublicForwarding()
         closeInterface()
@@ -154,6 +173,7 @@ class AmriVpnService : VpnService() {
 
     private fun failStartup(generation: Int) {
         if (generation != lifecycleGeneration.get()) return
+        restartWhenNetworkReady = false
         stopProtectionWatchdog()
         stopPublicForwarding()
         closeInterface()
@@ -224,7 +244,42 @@ class AmriVpnService : VpnService() {
         restoreControlInterfaceOrFail()
         transportExecutor.execute {
             runCatching { AmriNativeBridge.stopExternalTransport() }
-            if (generation == lifecycleGeneration.get()) STATE.fail()
+            if (generation == lifecycleGeneration.get()) {
+                STATE.fail()
+                maybeRestartAfterNetworkChange()
+            }
+        }
+    }
+
+    private fun maybeRestartAfterNetworkChange() {
+        if (!restartWhenNetworkReady || !desiredActive()) return
+        mainHandler.post {
+            if (
+                restartWhenNetworkReady &&
+                desiredActive() &&
+                STATE.state == VpnControllerState.FAILED
+            ) {
+                restartWhenNetworkReady = false
+                startController()
+            }
+        }
+    }
+
+    private fun handleNetworkRecovery(action: NetworkRecoveryAction) {
+        when (action) {
+            NetworkRecoveryAction.NONE -> Unit
+            NetworkRecoveryAction.CUT_PROTECTED_PATH -> {
+                restartWhenNetworkReady = false
+                if (STATE.state == VpnControllerState.PROTECTED) failProtectedGeneration()
+            }
+            NetworkRecoveryAction.RESTART_PROTECTED_PATH -> {
+                restartWhenNetworkReady = true
+                when (STATE.state) {
+                    VpnControllerState.PROTECTED -> failProtectedGeneration()
+                    VpnControllerState.FAILED -> maybeRestartAfterNetworkChange()
+                    else -> Unit
+                }
+            }
         }
     }
 
@@ -277,6 +332,9 @@ class AmriVpnService : VpnService() {
         networkObserver = AndroidNetworkObserver(applicationContext) { network, snapshot ->
             networkLease.update(network)
             mobilePolicyOwner.update(snapshot)
+            handleNetworkRecovery(
+                networkRecoveryGate.observe(network?.networkHandle, STATE.state),
+            )
         }.also { it.start() }
     }
 
@@ -284,6 +342,17 @@ class AmriVpnService : VpnService() {
         networkObserver?.close()
         networkObserver = null
         networkLease.clear()
+        networkRecoveryGate.reset()
+    }
+
+    private fun desiredActive(): Boolean =
+        getSharedPreferences(SERVICE_PREFS, MODE_PRIVATE).getBoolean(KEY_DESIRED_ACTIVE, false)
+
+    private fun setDesiredActive(value: Boolean) {
+        getSharedPreferences(SERVICE_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_DESIRED_ACTIVE, value)
+            .apply()
     }
 
     /** In-process transport adapters must reject and close a socket when this returns false. */
@@ -333,5 +402,7 @@ class AmriVpnService : VpnService() {
         private const val TRANSPORT_LIBRARY_NAME = "libsing_box.so"
         private const val UI_PREFS = "amri_ui"
         private const val KEY_SELECTED_NODE = "selected_node"
+        private const val SERVICE_PREFS = "amri_service"
+        private const val KEY_DESIRED_ACTIVE = "desired_active"
     }
 }
