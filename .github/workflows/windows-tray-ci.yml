@@ -1,0 +1,52 @@
+name: Windows tray companion gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tray-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build launcher
+        run: cargo build --release -p amri-windows --bin amri-vpn-launcher
+      - name: Verify resident tray lifecycle and single-instance handoff
+        shell: pwsh
+        run: |
+          $launcher = Resolve-Path "target/release/amri-vpn-launcher.exe"
+          $env:AMRI_TRAY_ONLY = "1"
+          try {
+            $first = Start-Process -FilePath $launcher -PassThru
+            Start-Sleep -Seconds 3
+            if ($first.HasExited) {
+              throw "AMRI tray launcher exited instead of remaining resident (code $($first.ExitCode))"
+            }
+
+            $second = Start-Process -FilePath $launcher -PassThru
+            if (-not $second.WaitForExit(5000)) {
+              Stop-Process -Id $second.Id -Force -ErrorAction SilentlyContinue
+              throw "second AMRI tray launcher did not deduplicate and exit"
+            }
+            if ($second.ExitCode -ne 0) {
+              throw "second AMRI tray launcher exited with code $($second.ExitCode)"
+            }
+
+            $resident = @(Get-Process -Name "amri-vpn-launcher" -ErrorAction SilentlyContinue)
+            if ($resident.Count -ne 1) {
+              throw "expected exactly one resident AMRI tray launcher, found $($resident.Count)"
+            }
+          }
+          finally {
+            Remove-Item Env:AMRI_TRAY_ONLY -ErrorAction SilentlyContinue
+            Get-Process -Name "amri-vpn-launcher" -ErrorAction SilentlyContinue |
+              Stop-Process -Force -ErrorAction SilentlyContinue
+          }
