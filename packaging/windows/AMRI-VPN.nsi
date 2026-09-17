@@ -2,6 +2,9 @@ Unicode true
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 
+!include "FileFunc.nsh"
+!include "Sections.nsh"
+
 !define PRODUCT_NAME "AMRI VPN"
 !define PRODUCT_VERSION "0.1.0"
 !define PRODUCT_PUBLISHER "AMRI"
@@ -12,12 +15,15 @@ InstallDir "$PROGRAMFILES64\AMRI VPN"
 InstallDirRegKey HKLM "Software\AMRI VPN" "InstallDir"
 
 Page directory
+Page components
 Page instfiles
 UninstPage uninstConfirm
 UninstPage instfiles
 
 Section "AMRI VPN" SecMain
+  SectionIn RO
   SetRegView 64
+  SetShellVarContext current
   SetOutPath "$INSTDIR"
   File "..\..\dist\windows\AMRI-VPN.exe"
   File "..\..\dist\windows\AMRI-VPN-Launcher.exe"
@@ -44,8 +50,29 @@ Section "AMRI VPN" SecMain
   CreateShortcut "$DESKTOP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
 SectionEnd
 
+Section /o "Start AMRI VPN with Windows" SecAutostart
+  SetShellVarContext current
+  CreateShortcut "$SMSTARTUP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
+SectionEnd
+
+Function .onInit
+  ; Interactive installs leave autostart unchecked. `/AUTOSTART` exists so unattended installs and
+  ; CI can explicitly opt in and exercise the same optional component without changing the default.
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/AUTOSTART" $R1
+  IfErrors autostart_done
+  SectionGetFlags ${SecAutostart} $R2
+  IntOp $R2 $R2 | ${SF_SELECTED}
+  SectionSetFlags ${SecAutostart} $R2
+
+autostart_done:
+FunctionEnd
+
 Section "Uninstall"
   SetRegView 64
+  SetShellVarContext current
+  Delete "$SMSTARTUP\AMRI VPN.lnk"
   Delete "$DESKTOP\AMRI VPN.lnk"
   Delete "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk"
   RMDir "$SMPROGRAMS\AMRI VPN"

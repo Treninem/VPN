@@ -56,6 +56,22 @@ jobs:
           Copy-Item $dll.FullName dist/windows/wintun.dll
           $wintunLicense = Get-ChildItem $wintunExpanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($wintunLicense) { Copy-Item $wintunLicense.FullName dist/windows/wintun-LICENSE.txt }
+      - name: Build and verify portable archive
+        shell: pwsh
+        run: |
+          $portable = "dist/AMRI-VPN-Windows-Portable.zip"
+          if (Test-Path $portable) { Remove-Item $portable -Force }
+          Compress-Archive -Path dist/windows/* -DestinationPath $portable -CompressionLevel Optimal
+          if (-not (Test-Path $portable)) { throw "portable archive was not created" }
+          $verifyDir = Join-Path $env:RUNNER_TEMP "amri-portable-release-verify"
+          if (Test-Path $verifyDir) { Remove-Item $verifyDir -Recurse -Force }
+          Expand-Archive $portable -DestinationPath $verifyDir
+          foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll")) {
+            if (-not (Test-Path (Join-Path $verifyDir $file))) { throw "portable archive is missing $file" }
+          }
+          $stagedHash = (Get-FileHash "dist/windows/AMRI-VPN.exe" -Algorithm SHA256).Hash
+          $portableHash = (Get-FileHash (Join-Path $verifyDir "AMRI-VPN.exe") -Algorithm SHA256).Hash
+          if ($stagedHash -ne $portableHash) { throw "portable AMRI executable does not match staged release executable" }
       - name: Build NSIS installer
         shell: pwsh
         run: |
@@ -65,7 +81,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: dist/AMRI-VPN-Windows-Setup.exe
+          path: |
+            dist/AMRI-VPN-Windows-Setup.exe
+            dist/AMRI-VPN-Windows-Portable.zip
           if-no-files-found: error
 
   android:
@@ -176,7 +194,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd release-dist
-          sha256sum AMRI-VPN-Windows-Setup.exe AMRI-VPN-Android.apk AMRI-VPN-Visual-Source.zip > SHA256SUMS.txt
+          sha256sum AMRI-VPN-Windows-Setup.exe AMRI-VPN-Windows-Portable.zip AMRI-VPN-Android.apk AMRI-VPN-Visual-Source.zip > SHA256SUMS.txt
       - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -185,6 +203,7 @@ jobs:
           set -euo pipefail
           gh release create "$TAG" \
             release-dist/AMRI-VPN-Windows-Setup.exe \
+            release-dist/AMRI-VPN-Windows-Portable.zip \
             release-dist/AMRI-VPN-Android.apk \
             release-dist/AMRI-VPN-Visual-Source.zip \
             release-dist/SHA256SUMS.txt \
@@ -192,4 +211,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "AMRI VPN $TAG" \
             --prerelease \
-            --notes "AMRI VPN release candidate. Windows and Android VPN paths are packaged with pinned verified runtimes. Android APK is currently debug-signed and Windows Setup is not Authenticode-signed unless owner signing secrets are added. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
+            --notes "AMRI VPN release candidate. Windows installer and portable package plus Android APK are built with pinned verified runtimes. Android APK is currently debug-signed and Windows binaries are not Authenticode-signed unless owner signing secrets are added. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
