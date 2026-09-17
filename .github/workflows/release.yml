@@ -1,6 +1,8 @@
 name: Publish AMRI release candidate
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - "release/v*"
@@ -25,6 +27,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: python scripts/generate_ui_theme.py --check
+      - run: python scripts/verify_visual_assets.py
       - run: cargo test --workspace
       - run: cargo build --release -p amri-windows
       - name: Stage verified Windows runtime
@@ -122,6 +125,7 @@ jobs:
             local expanded="$RUNNER_TEMP/sing-box-${upstream_arch}"
             curl --fail --location --retry 3 "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-android-${upstream_arch}.tar.gz" --output "$archive"
             echo "${expected_sha}  ${archive}" | sha256sum --check --strict
+            rm -rf "$expanded"
             mkdir -p "$expanded"
             tar -xzf "$archive" -C "$expanded"
             local binary
@@ -132,19 +136,79 @@ jobs:
           }
           stage_transport arm64 arm64-v8a "$SING_BOX_ANDROID_ARM64_SHA256"
           stage_transport amd64 x86_64 "$SING_BOX_ANDROID_AMD64_SHA256"
-      - name: Build verified APK
+      - name: Create ephemeral PR signing key
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/amri-pr-release.jks"
+          keytool -genkeypair \
+            -storetype JKS \
+            -keystore "$KEYSTORE" \
+            -storepass pr-store-password \
+            -alias amri-pr \
+            -keypass pr-key-password \
+            -dname "CN=AMRI PR,O=AMRI,C=BE" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 2 \
+            -noprompt
+          echo "AMRI_ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEYSTORE_PASSWORD=pr-store-password" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEY_ALIAS=amri-pr" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEY_PASSWORD=pr-key-password" >> "$GITHUB_ENV"
+      - name: Materialize owner production signing key
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AMRI_ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.AMRI_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.AMRI_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.AMRI_ANDROID_KEY_PASSWORD }}
+          CERT_SHA256: ${{ secrets.AMRI_ANDROID_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "AMRI_ANDROID_KEYSTORE_BASE64 is required" >&2; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "AMRI_ANDROID_KEYSTORE_PASSWORD is required" >&2; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "AMRI_ANDROID_KEY_ALIAS is required" >&2; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "AMRI_ANDROID_KEY_PASSWORD is required" >&2; exit 1; }
+          test -n "$CERT_SHA256" || { echo "AMRI_ANDROID_CERT_SHA256 is required" >&2; exit 1; }
+          KEYSTORE="$RUNNER_TEMP/amri-production-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
+          echo "AMRI_ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEYSTORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_CERT_SHA256=$CERT_SHA256" >> "$GITHUB_ENV"
+      - name: Build signed release APK
         env:
           AMRI_BUILD_NATIVE: "1"
         run: |
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME"
           export ANDROID_NDK="$ANDROID_NDK_LATEST_HOME"
-          gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
-          cp app/build/outputs/apk/debug/app-debug.apk ../../AMRI-VPN-Android.apk
+          gradle :app:testDebugUnitTest :app:assembleRelease --stacktrace
+          test -f app/build/outputs/apk/release/app-release.apk
+          cp app/build/outputs/apk/release/app-release.apk ../../AMRI-VPN-Android.apk
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/arm64-v8a/libamri_android_ffi.so"
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libamri_android_ffi.so"
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/arm64-v8a/libsing_box.so"
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libsing_box.so"
+      - name: Verify APK signature and production certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          VERIFY_OUTPUT="$($APKSIGNER verify --verbose --print-certs ../../AMRI-VPN-Android.apk)"
+          printf '%s\n' "$VERIFY_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            EXPECTED="$(printf '%s' "$AMRI_ANDROID_CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+            ACTUAL="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+            test -n "$ACTUAL"
+            test "$ACTUAL" = "$EXPECTED" || { echo "Android release certificate fingerprint mismatch" >&2; exit 1; }
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: release-android
@@ -166,6 +230,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: github.event_name != 'pull_request'
     needs: [windows, android, visual-source]
     runs-on: ubuntu-latest
     steps:
@@ -211,4 +276,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "AMRI VPN $TAG" \
             --prerelease \
-            --notes "AMRI VPN release candidate. Windows installer and portable package plus Android APK are built with pinned verified runtimes. Android APK is currently debug-signed and Windows binaries are not Authenticode-signed unless owner signing secrets are added. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
+            --notes "AMRI VPN release candidate. Windows installer and portable package plus an owner-signed Android release APK are built with pinned verified runtimes. The Android certificate fingerprint is verified against AMRI_ANDROID_CERT_SHA256 before publishing. Windows AMRI binaries are not Authenticode-signed unless an owner code-signing stage is added. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
