@@ -79,7 +79,7 @@ internal object AndroidSmartBootstrapSelector {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(OVERALL_TIMEOUT_MS)
         return try {
             targets.forEach { target ->
-                completion.submit<Pair<AndroidBootstrapProbeTarget, Long?>> {
+                completion.submit {
                     target to probe(target.host, target.port, PER_TARGET_TIMEOUT_MS)
                 }
             }
