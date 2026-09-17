@@ -5,9 +5,9 @@ import java.net.Socket
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 internal data class AndroidBootstrapProbeTarget(
     val index: Int,
@@ -41,7 +41,7 @@ internal object AndroidSmartBootstrapSelector {
         val targets = buildProbeTargets(nodes, preferred)
         val preferredIsProbeable = targets.any { it.index == preferred }
         val winner = if (preferredIsProbeable && targets.size >= 2) {
-            fastestReachable(targets, probe)?.index
+            firstReachable(targets, probe)?.index
         } else {
             null
         }
@@ -69,37 +69,29 @@ internal object AndroidSmartBootstrapSelector {
             .toList()
     }
 
-    private fun fastestReachable(
+    private fun firstReachable(
         targets: List<AndroidBootstrapProbeTarget>,
         probe: (String, Int, Int) -> Long?,
     ): AndroidBootstrapProbeTarget? {
         if (targets.isEmpty()) return null
         val executor = Executors.newFixedThreadPool(targets.size)
+        val completion = ExecutorCompletionService<Pair<AndroidBootstrapProbeTarget, Long?>>(executor)
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(OVERALL_TIMEOUT_MS)
         return try {
-            val futures = targets.map { target ->
-                target to executor.submit<Long?> {
-                    probe(target.host, target.port, PER_TARGET_TIMEOUT_MS)
+            targets.forEach { target ->
+                completion.submit<Pair<AndroidBootstrapProbeTarget, Long?>> {
+                    target to probe(target.host, target.port, PER_TARGET_TIMEOUT_MS)
                 }
             }
-            var winner: AndroidBootstrapProbeTarget? = null
-            var winnerLatency = Long.MAX_VALUE
-            for ((target, future) in futures) {
+
+            repeat(targets.size) {
                 val remaining = deadline - System.nanoTime()
-                if (remaining <= 0L) break
-                val latency = try {
-                    future.get(remaining, TimeUnit.NANOSECONDS)
-                } catch (_: TimeoutException) {
-                    null
-                } catch (_: Exception) {
-                    null
-                }
-                if (latency != null && latency < winnerLatency) {
-                    winner = target
-                    winnerLatency = latency
-                }
+                if (remaining <= 0L) return@repeat
+                val future = completion.poll(remaining, TimeUnit.NANOSECONDS) ?: return@repeat
+                val result = runCatching { future.get() }.getOrNull() ?: return@repeat
+                if (result.second != null) return result.first
             }
-            winner
+            null
         } finally {
             executor.shutdownNow()
         }
