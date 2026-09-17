@@ -12,12 +12,15 @@ InstallDir "$PROGRAMFILES64\AMRI VPN"
 InstallDirRegKey HKLM "Software\AMRI VPN" "InstallDir"
 
 Page directory
+Page components
 Page instfiles
 UninstPage uninstConfirm
 UninstPage instfiles
 
 Section "AMRI VPN" SecMain
+  SectionIn RO
   SetRegView 64
+  SetShellVarContext current
   SetOutPath "$INSTDIR"
   File "..\..\dist\windows\AMRI-VPN.exe"
   File "..\..\dist\windows\AMRI-VPN-Launcher.exe"
@@ -44,8 +47,15 @@ Section "AMRI VPN" SecMain
   CreateShortcut "$DESKTOP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
 SectionEnd
 
+Section /o "Start AMRI VPN with Windows" SecAutostart
+  SetShellVarContext current
+  CreateShortcut "$SMSTARTUP\AMRI VPN.lnk" "$INSTDIR\AMRI-VPN-Launcher.exe" "" "$INSTDIR\AMRI-VPN.exe" 0 SW_SHOWNORMAL "" "$INSTDIR"
+SectionEnd
+
 Section "Uninstall"
   SetRegView 64
+  SetShellVarContext current
+  Delete "$SMSTARTUP\AMRI VPN.lnk"
   Delete "$DESKTOP\AMRI VPN.lnk"
   Delete "$SMPROGRAMS\AMRI VPN\AMRI VPN.lnk"
   RMDir "$SMPROGRAMS\AMRI VPN"
