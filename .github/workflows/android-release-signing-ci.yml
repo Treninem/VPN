@@ -71,6 +71,7 @@ jobs:
           set -euo pipefail
           KEYSTORE="$RUNNER_TEMP/amri-ci-release.jks"
           keytool -genkeypair \
+            -storetype JKS \
             -keystore "$KEYSTORE" \
             -storepass ci-store-password \
             -alias amri-ci \
