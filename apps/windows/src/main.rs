@@ -115,10 +115,6 @@ struct AmriApp {
     core_path: String,
     local_port: String,
     smart_routing: bool,
-    kill_switch: bool,
-    learning: bool,
-    federated_learning: bool,
-    background_probing: bool,
 }
 
 impl AmriApp {
@@ -170,10 +166,6 @@ impl AmriApp {
             core_path: default_sing_box_path(),
             local_port: "20800".into(),
             smart_routing: true,
-            kill_switch: true,
-            learning: true,
-            federated_learning: false,
-            background_probing: true,
         }
     }
 
@@ -313,10 +305,10 @@ impl AmriApp {
     }
 
     fn start_transport(&mut self) {
-        let Some(node) = self.imported_nodes.get(self.selected_node).cloned() else {
+        if self.imported_nodes.is_empty() {
             self.navigate_to(Page::Subscriptions);
             return;
-        };
+        }
         let port = match self.local_port.trim().parse::<u16>() {
             Ok(port) if port != 0 => port,
             _ => {
@@ -326,10 +318,13 @@ impl AmriApp {
             }
         };
 
-        match self
-            .transport
-            .connect(node, PathBuf::from(self.core_path.trim()), port)
-        {
+        match self.transport.connect_candidates(
+            self.imported_nodes.clone(),
+            self.selected_node,
+            self.smart_routing,
+            PathBuf::from(self.core_path.trim()),
+            port,
+        ) {
             Ok(()) => self.transport_state = TransportUiState::Connecting,
             Err(error) => self.transport_state = TransportUiState::Failed(error),
         }
@@ -470,6 +465,41 @@ impl AmriApp {
             });
     }
 
+    fn capability_row(ui: &mut egui::Ui, label: &str, description: &str, status: &str) {
+        egui::Frame::new()
+            .fill(Color32::from_rgb(22, 27, 36))
+            .corner_radius(16)
+            .inner_margin(16)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(label).size(15.0).strong());
+                        ui.label(
+                            RichText::new(description)
+                                .size(12.0)
+                                .color(Color32::from_gray(145)),
+                        );
+                    });
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(status)
+                                .size(12.0)
+                                .strong()
+                                .color(Color32::from_rgb(232, 184, 92)),
+                        );
+                    });
+                });
+            });
+    }
+
+    fn sync_smart_mode(&mut self) {
+        self.routing_mode = if self.smart_routing {
+            RoutingMode::Smart
+        } else {
+            RoutingMode::Manual
+        };
+    }
+
     fn metric_card(ui: &mut egui::Ui, title: &str, value: &str, subtitle: &str) {
         egui::Frame::new()
             .fill(theme::SURFACE)
@@ -506,8 +536,6 @@ impl AmriApp {
             .corner_radius(theme::HERO_RADIUS)
             .inner_margin(theme::HERO_MARGIN)
             .show(ui, |ui| {
-                // The worker emits Ready only after transport + system TUN + DNS/leak capture +
-                // public egress pass the shared protection gate for this connection generation.
                 let protected = self.transport_ready();
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
@@ -587,8 +615,9 @@ impl AmriApp {
                 .strong(),
         );
         ui.add_space(8.0);
+        let previous_mode = self.routing_mode;
         ui.horizontal_wrapped(|ui| {
-            for mode in RoutingMode::ALL {
+            for mode in [RoutingMode::Smart, RoutingMode::Manual] {
                 ui.selectable_value(
                     &mut self.routing_mode,
                     mode,
@@ -596,6 +625,9 @@ impl AmriApp {
                 );
             }
         });
+        if self.routing_mode != previous_mode {
+            self.smart_routing = self.routing_mode == RoutingMode::Smart;
+        }
 
         ui.add_space(18.0);
         let mut open_subscriptions = false;
@@ -685,35 +717,39 @@ impl AmriApp {
         );
         ui.add_space(8.0);
 
+        let previous_smart = self.smart_routing;
         Self::toggle_row(
             ui,
             ui_text(self.language, UiMessage::SmartRouting),
-            ui_text(self.language, UiMessage::SmartRoutingDescription),
+            "Probe a bounded set of compatible nodes at connect time and choose a reachable route",
             &mut self.smart_routing,
         );
-        Self::toggle_row(
+        if self.smart_routing != previous_smart {
+            self.sync_smart_mode();
+        }
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::LocalLearning),
             ui_text(self.language, UiMessage::LocalLearningDescription),
-            &mut self.learning,
+            "NOT ENABLED",
         );
-        Self::toggle_row(
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::FederatedLearning),
             ui_text(self.language, UiMessage::FederatedDescription),
-            &mut self.federated_learning,
+            "NOT ENABLED",
         );
-        Self::toggle_row(
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::BackgroundTesting),
             ui_text(self.language, UiMessage::BackgroundDescription),
-            &mut self.background_probing,
+            "NOT ENABLED",
         );
-        Self::toggle_row(
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            ui_text(self.language, UiMessage::KillSwitchDescription),
-            &mut self.kill_switch,
+            "Protected TUN/DNS path is fail-closed while connected; persistent WFP kill switch is not enabled",
+            "PARTIAL",
         );
     }
 
@@ -765,7 +801,7 @@ impl AmriApp {
         ui.add(
             egui::TextEdit::multiline(&mut self.subscription_input)
                 .desired_rows(7)
-                .hint_text("vless://…\ntrojan://…\nss://…\nhysteria2://…"),
+                .hint_text("https://provider.example/subscription\nvless://…\ntrojan://…\nss://…\nhysteria2://…"),
         );
 
         ui.horizontal(|ui| {
@@ -993,35 +1029,39 @@ impl AmriApp {
     fn settings(&mut self, ui: &mut egui::Ui) {
         ui.heading(RichText::new(ui_text(self.language, UiMessage::Settings)).size(30.0));
         ui.add_space(12.0);
+        let previous_smart = self.smart_routing;
         Self::toggle_row(
             ui,
             ui_text(self.language, UiMessage::SmartRouting),
-            ui_text(self.language, UiMessage::SmartRoutingDescription),
+            "Probe a bounded set of compatible nodes at connect time and choose a reachable route",
             &mut self.smart_routing,
         );
-        Self::toggle_row(
+        if self.smart_routing != previous_smart {
+            self.sync_smart_mode();
+        }
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            ui_text(self.language, UiMessage::KillSwitchDescription),
-            &mut self.kill_switch,
+            "Protected TUN/DNS path is fail-closed while connected; persistent WFP kill switch is not enabled",
+            "PARTIAL",
         );
-        Self::toggle_row(
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::LocalLearning),
             ui_text(self.language, UiMessage::LocalLearningDescription),
-            &mut self.learning,
+            "NOT ENABLED",
         );
-        Self::toggle_row(
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::FederatedLearning),
             ui_text(self.language, UiMessage::FederatedDescription),
-            &mut self.federated_learning,
+            "NOT ENABLED",
         );
-        Self::toggle_row(
+        Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::BackgroundTesting),
             ui_text(self.language, UiMessage::BackgroundDescription),
-            &mut self.background_probing,
+            "NOT ENABLED",
         );
         ui.add_space(16.0);
         ui.label(ui_text(self.language, UiMessage::CoreExecutable));
