@@ -123,32 +123,54 @@ class AmriVpnService : VpnService() {
     }
 
     private fun startProtectedGeneration(generation: Int) {
-        var transportStarted = false
         try {
-            val rawUri = selectedNodeUri() ?: error("no selected Android VPN node")
+            val candidates = selectedNodeCandidates()
+            check(candidates.isNotEmpty()) { "no selected Android VPN node" }
             val executable = File(applicationInfo.nativeLibraryDir, TRANSPORT_LIBRARY_NAME)
             check(executable.isFile) { "bundled Android VPN transport is unavailable" }
-            val localPort = reserveLoopbackPort()
 
-            AmriNativeBridge.startExternalTransport(rawUri, executable.absolutePath, localPort)
-            transportStarted = true
-            check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
-            check(AmriNativeBridge.externalTransportState() == ExternalTransportState.RUNNING) {
-                "VPN transport did not remain ready"
+            var lastFailure: Exception? = null
+            for ((index, rawUri) in candidates) {
+                check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
+                var transportStarted = false
+                try {
+                    val localPort = reserveLoopbackPort()
+                    AmriNativeBridge.startExternalTransport(rawUri, executable.absolutePath, localPort)
+                    transportStarted = true
+                    check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
+                    check(AmriNativeBridge.externalTransportState() == ExternalTransportState.RUNNING) {
+                        "VPN transport did not remain ready"
+                    }
+                    check(activatePublicForwarding(localPort, SAFE_INITIAL_MTU)) {
+                        "public forwarding readiness failed"
+                    }
+                    check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
+                    rememberSelectedNode(index)
+                    return
+                } catch (error: Exception) {
+                    lastFailure = error
+                    stopProtectionWatchdog()
+                    if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
+                    stopPublicForwarding()
+                    val controlReady = restoreControlInterfaceOrFail()
+                    if (transportStarted) runCatching { AmriNativeBridge.stopExternalTransport() }
+                    if (generation != lifecycleGeneration.get()) throw error
+                    if (!controlReady || STATE.state != VpnControllerState.SERVICE_READY) {
+                        throw error("Android protected path could not be restored for failover")
+                    }
+                }
             }
-            check(activatePublicForwarding(localPort, SAFE_INITIAL_MTU)) {
-                "public forwarding readiness failed"
-            }
-            check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
+            throw lastFailure ?: error("no Android VPN candidate could be activated")
         } catch (_: Exception) {
             if (generation == lifecycleGeneration.get()) {
                 stopProtectionWatchdog()
+                if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
                 stopPublicForwarding()
                 restoreControlInterfaceOrFail()
                 STATE.fail()
                 stopForeground(STOP_FOREGROUND_REMOVE)
             }
-            if (transportStarted) runCatching { AmriNativeBridge.stopExternalTransport() }
+            runCatching { AmriNativeBridge.stopExternalTransport() }
         }
     }
 
@@ -305,13 +327,22 @@ class AmriVpnService : VpnService() {
         null
     }
 
-    private fun selectedNodeUri(): String? {
+    private fun selectedNodeCandidates(): List<Pair<Int, String>> {
         val nodes = AndroidNodeStore(this).load()
-        if (nodes.isEmpty()) return null
-        val selected = getSharedPreferences(UI_PREFS, MODE_PRIVATE)
-            .getInt(KEY_SELECTED_NODE, 0)
-            .coerceIn(nodes.indices)
-        return nodes[selected]
+        if (nodes.isEmpty()) return emptyList()
+        val preferences = getSharedPreferences(UI_PREFS, MODE_PRIVATE)
+        val selected = preferences.getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
+        val smartRouting = preferences.getBoolean(KEY_SMART_ROUTING, true)
+        return AndroidSmartBootstrapSelector
+            .candidateOrder(nodes, selected, smartRouting)
+            .map { index -> index to nodes[index] }
+    }
+
+    private fun rememberSelectedNode(index: Int) {
+        getSharedPreferences(UI_PREFS, MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_SELECTED_NODE, index)
+            .apply()
     }
 
     private fun reserveLoopbackPort(): Int = ServerSocket(0, 1).use { socket ->
@@ -402,6 +433,7 @@ class AmriVpnService : VpnService() {
         private const val TRANSPORT_LIBRARY_NAME = "libsing_box.so"
         private const val UI_PREFS = "amri_ui"
         private const val KEY_SELECTED_NODE = "selected_node"
+        private const val KEY_SMART_ROUTING = "smart_routing"
         private const val SERVICE_PREFS = "amri_service"
         private const val KEY_DESIRED_ACTIVE = "desired_active"
     }
