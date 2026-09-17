@@ -200,7 +200,9 @@ impl WindowsSystemForwarder {
             Ok(kill_switch) => kill_switch,
             Err(error) => {
                 forwarder.stop();
-                return Err(format!("failed to activate Windows WFP kill switch: {error}"));
+                return Err(format!(
+                    "failed to activate Windows WFP kill switch: {error}"
+                ));
             }
         };
         forwarder.kill_switch = Some(kill_switch);
