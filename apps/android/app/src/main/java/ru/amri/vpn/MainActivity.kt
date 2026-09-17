@@ -28,7 +28,6 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import com.caverock.androidsvg.SVG
 import java.util.Locale
@@ -38,7 +37,6 @@ class MainActivity : Activity() {
     private lateinit var detail: TextView
     private lateinit var actionButton: ImageButton
     private lateinit var actionLabel: TextView
-    private lateinit var settingsContainer: LinearLayout
     private lateinit var routePrimary: TextView
     private lateinit var routeSecondary: TextView
     private val stateHandler = Handler(Looper.getMainLooper())
@@ -133,7 +131,7 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)),
         )
         val settingsButton = svgIconButton(R.raw.amri_settings_button, "Settings / Настройки").apply {
-            setOnClickListener { toggleSettingsPanel() }
+            setOnClickListener { showRuntimeSettingsDialog() }
         }
         header.addView(
             settingsButton,
@@ -177,22 +175,7 @@ class MainActivity : Activity() {
         content.addView(modeSelector())
         content.addView(space(AmriTheme.sectionGap))
         content.addView(routeSelectionCard())
-        content.addView(space(AmriTheme.sectionGap))
 
-        settingsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            addView(toggleCard(getString(R.string.smart_routing), getString(R.string.smart_routing_description), KEY_SMART_ROUTING, true))
-            addView(space(10))
-            addView(toggleCard(getString(R.string.dns_protection), getString(R.string.dns_protection_description), KEY_DNS_PROTECTION, true))
-            addView(space(10))
-            addView(toggleCard(getString(R.string.kill_switch), getString(R.string.kill_switch_description), KEY_KILL_SWITCH, true))
-            addView(space(10))
-            addView(toggleCard(getString(R.string.local_learning), getString(R.string.local_learning_description), KEY_LOCAL_LEARNING, true))
-            addView(space(10))
-            addView(toggleCard(getString(R.string.federated_learning), getString(R.string.federated_learning_description), KEY_FEDERATED_LEARNING, false))
-        }
-        content.addView(settingsContainer)
         scroll.addView(content)
         foreground.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(foreground, FrameLayout.LayoutParams(-1, -1))
@@ -202,7 +185,14 @@ class MainActivity : Activity() {
     private fun modeSelector(): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val labels = resources.getStringArray(R.array.vpn_modes)
-        val selected = uiPreferences().getInt(KEY_ROUTING_MODE, 0).coerceIn(labels.indices)
+        val preferences = uiPreferences()
+        val routingMode = preferences.getInt(KEY_ROUTING_MODE, AndroidRoutingModePolicy.SMART)
+        val smartRoutingToggle = preferences.getBoolean(KEY_SMART_ROUTING, true)
+        val selected = if (AndroidRoutingModePolicy.smartRoutingEnabled(routingMode, smartRoutingToggle)) {
+            AndroidRoutingModePolicy.SMART
+        } else {
+            AndroidRoutingModePolicy.MANUAL
+        }.coerceIn(labels.indices)
         val buttons = mutableListOf<Button>()
         fun refreshButtons(active: Int) {
             buttons.forEachIndexed { index, button ->
@@ -217,8 +207,13 @@ class MainActivity : Activity() {
                 isAllCaps = false
                 setTextColor(Color.WHITE)
                 setOnClickListener {
-                    uiPreferences().edit().putInt(KEY_ROUTING_MODE, index).apply()
+                    val smart = index == AndroidRoutingModePolicy.SMART
+                    uiPreferences().edit()
+                        .putInt(KEY_ROUTING_MODE, index)
+                        .putBoolean(KEY_SMART_ROUTING, smart)
+                        .apply()
                     refreshButtons(index)
+                    refreshRouteSummary()
                 }
             }
             buttons += button
@@ -265,16 +260,48 @@ class MainActivity : Activity() {
             routeSecondary.text = getString(R.string.no_imported_servers)
             return
         }
-        val selected = uiPreferences().getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
-        if (selected != uiPreferences().getInt(KEY_SELECTED_NODE, 0)) {
-            uiPreferences().edit().putInt(KEY_SELECTED_NODE, selected).apply()
+        val preferences = uiPreferences()
+        val selected = preferences.getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
+        if (selected != preferences.getInt(KEY_SELECTED_NODE, 0)) {
+            preferences.edit().putInt(KEY_SELECTED_NODE, selected).apply()
         }
-        routePrimary.text = AndroidNodeStore.safeLabel(nodes[selected], selected)
+        val smart = AndroidRoutingModePolicy.smartRoutingEnabled(
+            preferences.getInt(KEY_ROUTING_MODE, AndroidRoutingModePolicy.SMART),
+            preferences.getBoolean(KEY_SMART_ROUTING, true),
+        )
+        routePrimary.text = if (smart) {
+            getString(R.string.automatic_route)
+        } else {
+            AndroidNodeStore.safeLabel(nodes[selected], selected)
+        }
         routeSecondary.text = getString(
             R.string.encrypted_local_pool,
             nodes.size,
             AndroidNodeStore.safeFingerprint(nodes[selected]),
         )
+    }
+
+    private fun showRuntimeSettingsDialog() {
+        val preferences = uiPreferences()
+        val smart = AndroidRoutingModePolicy.smartRoutingEnabled(
+            preferences.getInt(KEY_ROUTING_MODE, AndroidRoutingModePolicy.SMART),
+            preferences.getBoolean(KEY_SMART_ROUTING, true),
+        )
+        val labels = resources.getStringArray(R.array.vpn_modes)
+        val modeIndex = if (smart) AndroidRoutingModePolicy.SMART else AndroidRoutingModePolicy.MANUAL
+        val modeLabel = labels.getOrElse(modeIndex) { if (smart) "Smart" else "Manual" }
+        val message = listOf(
+            "${getString(R.string.mode)}: $modeLabel",
+            getString(R.string.dns_protection_description),
+            getString(R.string.kill_switch_description),
+            getString(R.string.local_learning_description),
+            getString(R.string.federated_learning_description),
+        ).joinToString("\n\n")
+        AlertDialog.Builder(this)
+            .setTitle("AMRI VPN")
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun showServerDialog() {
@@ -359,36 +386,6 @@ class MainActivity : Activity() {
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
-    }
-
-    private fun toggleCard(
-        title: String,
-        subtitle: String,
-        preferenceKey: String,
-        defaultValue: Boolean,
-    ): View = card(16).apply {
-        val row = LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val labels = LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(text(title, 16f, Color.WHITE, true))
-            addView(text(subtitle, 12f, AmriTheme.mutedTextColor, false))
-        }
-        row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
-        row.addView(Switch(this@MainActivity).apply {
-            isChecked = uiPreferences().getBoolean(preferenceKey, defaultValue)
-            setOnCheckedChangeListener { _, checked ->
-                uiPreferences().edit().putBoolean(preferenceKey, checked).apply()
-            }
-        })
-        addView(row)
-    }
-
-    private fun toggleSettingsPanel() {
-        if (!::settingsContainer.isInitialized) return
-        settingsContainer.visibility = if (settingsContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 
     private fun showLanguageDialog() {
@@ -523,10 +520,6 @@ class MainActivity : Activity() {
         private const val KEY_ROUTING_MODE = "routing_mode"
         private const val KEY_SELECTED_NODE = "selected_node"
         private const val KEY_SMART_ROUTING = "smart_routing"
-        private const val KEY_DNS_PROTECTION = "dns_protection"
-        private const val KEY_KILL_SWITCH = "kill_switch"
-        private const val KEY_LOCAL_LEARNING = "local_learning"
-        private const val KEY_FEDERATED_LEARNING = "federated_learning"
         private val LANGUAGE_TAGS = arrayOf("en", "ru", "es", "pt", "fr", "de", "zh-CN", "hi", "ar")
         private val LANGUAGE_NAMES = arrayOf(
             "English", "Русский", "Español", "Português", "Français", "Deutsch", "简体中文", "हिन्दी", "العربية",
