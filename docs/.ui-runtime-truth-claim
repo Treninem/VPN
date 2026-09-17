@@ -1,0 +1,1 @@
+Windows UI runtime truth stage: Smart/Manual maps to actual bootstrap selector; non-wired capabilities are displayed as unavailable/partial rather than interactive toggles.
