@@ -748,8 +748,8 @@ impl AmriApp {
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            "Protected TUN/DNS path is fail-closed while connected; persistent WFP kill switch is not enabled",
-            "PARTIAL",
+            "Dynamic WFP kill switch is required before a protected Windows route can become Ready",
+            "ENABLED",
         );
     }
 
@@ -1042,8 +1042,8 @@ impl AmriApp {
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            "Protected TUN/DNS path is fail-closed while connected; persistent WFP kill switch is not enabled",
-            "PARTIAL",
+            "Dynamic WFP kill switch is required before a protected Windows route can become Ready",
+            "ENABLED",
         );
         Self::capability_row(
             ui,

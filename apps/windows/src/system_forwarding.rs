@@ -1,4 +1,7 @@
 use amri_core::{evaluate_protection, ProtectionSignals, ProtectionState};
+#[path = "wfp_kill_switch.rs"]
+mod wfp_kill_switch;
+use self::wfp_kill_switch::WfpKillSwitch;
 use std::collections::BTreeSet;
 use std::mem::{size_of, zeroed};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
@@ -123,6 +126,7 @@ impl WindowsForwardingReadiness {
 
 pub(crate) struct WindowsSystemForwarder {
     shutdown: CancellationToken,
+    kill_switch: Option<WfpKillSwitch>,
     state: Arc<AtomicU8>,
     join: Option<JoinHandle<()>>,
     readiness: WindowsForwardingReadiness,
@@ -132,6 +136,7 @@ impl WindowsSystemForwarder {
     pub(crate) fn start(config: WindowsSystemForwardingConfig) -> Result<Self, String> {
         preflight_runtime()?;
 
+        let wfp_bypass_ips = config.bypass_ips.clone();
         let shutdown = CancellationToken::new();
         let thread_shutdown = shutdown.clone();
         let state = Arc::new(AtomicU8::new(WindowsForwardingState::Starting.code()));
@@ -168,6 +173,7 @@ impl WindowsSystemForwarder {
 
         let mut forwarder = Self {
             shutdown,
+            kill_switch: None,
             state,
             join: Some(join),
             readiness: WindowsForwardingReadiness {
@@ -190,6 +196,15 @@ impl WindowsSystemForwarder {
             }
         };
 
+        let kill_switch = match WfpKillSwitch::activate(tun_index, &wfp_bypass_ips) {
+            Ok(kill_switch) => kill_switch,
+            Err(error) => {
+                forwarder.stop();
+                return Err(format!("failed to activate Windows WFP kill switch: {error}"));
+            }
+        };
+        forwarder.kill_switch = Some(kill_switch);
+
         let readiness = verify_readiness(forwarder.state(), tun_index);
         if !readiness.protected() {
             forwarder.stop();
@@ -208,7 +223,9 @@ impl WindowsSystemForwarder {
     }
 
     pub(crate) fn is_running(&self) -> bool {
-        self.state() == WindowsForwardingState::Running && self.readiness.protected()
+        self.state() == WindowsForwardingState::Running
+            && self.kill_switch.is_some()
+            && self.readiness.protected()
     }
 
     pub(crate) fn stop(&mut self) {
@@ -224,6 +241,7 @@ impl WindowsSystemForwarder {
         if let Some(join) = self.join.take() {
             let _ = join.join();
         }
+        let _ = self.kill_switch.take();
         if self.state() != WindowsForwardingState::Failed {
             self.state
                 .store(WindowsForwardingState::Stopped.code(), Ordering::Release);
