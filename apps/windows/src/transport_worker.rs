@@ -1,3 +1,5 @@
+#[path = "smart_bootstrap.rs"]
+mod smart_bootstrap;
 #[path = "system_forwarding.rs"]
 mod system_forwarding;
 
@@ -21,7 +23,9 @@ const WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
 enum WorkerCommand {
     Connect {
-        node: ImportedNode,
+        nodes: Vec<ImportedNode>,
+        preferred_index: usize,
+        smart_routing: bool,
         executable: PathBuf,
         local_port: u16,
     },
@@ -79,12 +83,28 @@ impl TransportWorker {
         executable: impl Into<PathBuf>,
         local_port: u16,
     ) -> Result<(), String> {
+        self.connect_candidates(vec![node], 0, false, executable, local_port)
+    }
+
+    pub fn connect_candidates(
+        &self,
+        nodes: Vec<ImportedNode>,
+        preferred_index: usize,
+        smart_routing: bool,
+        executable: impl Into<PathBuf>,
+        local_port: u16,
+    ) -> Result<(), String> {
         if local_port == 0 {
             return Err("local port must be non-zero".into());
         }
+        if nodes.is_empty() {
+            return Err("VPN node pool must not be empty".into());
+        }
         self.commands
             .send(WorkerCommand::Connect {
-                node,
+                nodes,
+                preferred_index,
+                smart_routing,
                 executable: executable.into(),
                 local_port,
             })
@@ -121,7 +141,9 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
     loop {
         match commands.recv_timeout(WATCHDOG_INTERVAL) {
             Ok(WorkerCommand::Connect {
-                node,
+                nodes,
+                preferred_index,
+                smart_routing,
                 executable,
                 local_port,
             }) => {
@@ -134,6 +156,15 @@ fn run_worker(commands: Receiver<WorkerCommand>, events: Sender<WorkerEvent>) {
                 }
 
                 send_state(&events, TransportUiState::Connecting);
+                let selected_index = if smart_routing {
+                    smart_bootstrap::select_node_index(&nodes, preferred_index, local_port)
+                } else {
+                    preferred_index.min(nodes.len() - 1)
+                };
+                let node = nodes
+                    .get(selected_index)
+                    .cloned()
+                    .expect("validated non-empty node pool must contain selected index");
                 let node_name = node.display_name.clone();
                 match connect_node(node, executable, local_port) {
                     Ok(transport) => {
@@ -205,8 +236,7 @@ fn connect_node(
 
     // Resolve every currently advertised server address before installing the default-route TUN.
     // Then pin the actual transport to one of those resolved IPs. This avoids a post-capture DNS
-    // dependency (and sing-box 1.14 domain-resolver requirements) while preserving the original
-    // hostname as TLS SNI when certificate verification needs it.
+    // dependency while preserving the original hostname as TLS SNI when verification needs it.
     let original_host = request.endpoint.host.clone();
     let bypass_ips = resolve_server_ips(&original_host, request.endpoint.port)?;
     pin_transport_endpoint(&mut request, &original_host, &bypass_ips)?;
@@ -274,9 +304,8 @@ fn pin_transport_endpoint(
 }
 
 fn disconnect_active(mut transport: ActiveTransport) -> Result<(), String> {
-    // Make-before-break teardown in reverse ownership order: remove system route/DNS capture first,
-    // then stop the underlying encrypted transport. This avoids leaving a live default-route TUN
-    // pointed at a dead local SOCKS endpoint.
+    // Teardown in reverse ownership order: remove system route/DNS capture first, then stop the
+    // encrypted transport. This avoids leaving a live default-route TUN pointed at a dead SOCKS.
     transport.forwarder.stop();
     let forwarding_restore_failed = transport.forwarder.state() == WindowsForwardingState::Failed;
 
@@ -316,6 +345,14 @@ mod tests {
         .unwrap();
 
         assert!(worker.connect(node, "sing-box", 0).is_err());
+    }
+
+    #[test]
+    fn empty_candidate_pool_is_rejected_before_worker_handoff() {
+        let worker = TransportWorker::new();
+        assert!(worker
+            .connect_candidates(Vec::new(), 0, true, "sing-box", 20800)
+            .is_err());
     }
 
     #[test]
