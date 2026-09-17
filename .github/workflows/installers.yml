@@ -86,17 +86,21 @@ jobs:
           choco install nsis --yes --no-progress
           & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" packaging/windows/AMRI-VPN.nsi
           if (-not (Test-Path dist/AMRI-VPN-Windows-Setup.exe)) { throw "installer was not created" }
-      - name: Install and launch packaged Windows application
+      - name: Install, launch, verify autostart, and uninstall packaged Windows application
         shell: pwsh
         run: |
           $installDir = "C:\amri-vpn-ci-test"
           if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
+          $startupLink = Join-Path ([Environment]::GetFolderPath("Startup")) "AMRI VPN.lnk"
+          Remove-Item $startupLink -Force -ErrorAction SilentlyContinue
+
           $installer = Resolve-Path "dist/AMRI-VPN-Windows-Setup.exe"
-          $install = Start-Process -FilePath $installer -ArgumentList "/S", "/D=$installDir" -PassThru -Wait
+          $install = Start-Process -FilePath $installer -ArgumentList "/S", "/AUTOSTART", "/D=$installDir" -PassThru -Wait
           if ($install.ExitCode -ne 0) { throw "AMRI installer failed with code $($install.ExitCode)" }
           foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll")) {
             if (-not (Test-Path (Join-Path $installDir $file))) { throw "installed package is missing $file" }
           }
+          if (-not (Test-Path $startupLink)) { throw "optional AMRI startup shortcut was not created" }
 
           $stagedHash = (Get-FileHash "dist/windows/AMRI-VPN.exe" -Algorithm SHA256).Hash
           $installedExe = Join-Path $installDir "AMRI-VPN.exe"
@@ -115,9 +119,10 @@ jobs:
           }
 
           $uninstaller = Join-Path $installDir "Uninstall.exe"
-          if (Test-Path $uninstaller) {
-            Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
-          }
+          if (-not (Test-Path $uninstaller)) { throw "uninstaller was not installed" }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/S" -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw "AMRI uninstaller failed with code $($uninstall.ExitCode)" }
+          if (Test-Path $startupLink) { throw "AMRI startup shortcut remained after uninstall" }
       - uses: actions/upload-artifact@v4
         with:
           name: AMRI-VPN-Windows-Installer
