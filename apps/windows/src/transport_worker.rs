@@ -522,14 +522,9 @@ mod tests {
         )
         .unwrap();
 
-        let error = connect_node(
-            node,
-            PathBuf::from("definitely-missing-sing-box"),
-            20800,
-            0,
-        )
-        .err()
-        .unwrap();
+        let error = connect_node(node, PathBuf::from("definitely-missing-sing-box"), 20800, 0)
+            .err()
+            .unwrap();
 
         assert!(!error.contains("private-password"));
         assert!(error.contains("failed to start"));
