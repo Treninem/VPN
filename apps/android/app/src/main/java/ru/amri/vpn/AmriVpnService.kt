@@ -332,7 +332,11 @@ class AmriVpnService : VpnService() {
         if (nodes.isEmpty()) return emptyList()
         val preferences = getSharedPreferences(UI_PREFS, MODE_PRIVATE)
         val selected = preferences.getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
-        val smartRouting = preferences.getBoolean(KEY_SMART_ROUTING, true)
+        val routingMode = preferences.getInt(KEY_ROUTING_MODE, AndroidRoutingModePolicy.SMART)
+        val smartRouting = AndroidRoutingModePolicy.smartRoutingEnabled(
+            routingMode,
+            preferences.getBoolean(KEY_SMART_ROUTING, true),
+        )
         return AndroidSmartBootstrapSelector
             .candidateOrder(nodes, selected, smartRouting)
             .map { index -> index to nodes[index] }
@@ -432,6 +436,7 @@ class AmriVpnService : VpnService() {
         private const val SAFE_INITIAL_MTU = 1420
         private const val TRANSPORT_LIBRARY_NAME = "libsing_box.so"
         private const val UI_PREFS = "amri_ui"
+        private const val KEY_ROUTING_MODE = "routing_mode"
         private const val KEY_SELECTED_NODE = "selected_node"
         private const val KEY_SMART_ROUTING = "smart_routing"
         private const val SERVICE_PREFS = "amri_service"
