@@ -85,15 +85,8 @@ fn run_tray_companion() -> Result<(), String> {
         .map_err(|error| format!("failed to locate AMRI launcher: {error}"))?;
     let launcher_wide = wide_os(launcher.as_os_str());
     let mut tray_icon = null_mut();
-    let extracted = unsafe {
-        ExtractIconExW(
-            launcher_wide.as_ptr(),
-            0,
-            null_mut(),
-            &mut tray_icon,
-            1,
-        )
-    };
+    let extracted =
+        unsafe { ExtractIconExW(launcher_wide.as_ptr(), 0, null_mut(), &mut tray_icon, 1) };
     if extracted == 0 || tray_icon.is_null() {
         return Err("failed to load the AMRI application icon for the system tray".into());
     }
@@ -195,8 +188,9 @@ unsafe fn show_tray_menu(hwnd: windows_sys::Win32::Foundation::HWND) {
     use std::ptr::null;
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreatePopupMenu, DestroyMenu, DestroyWindow, GetCursorPos, SetForegroundWindow,
-        TrackPopupMenu, MF_SEPARATOR, MF_STRING, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+        AppendMenuW, CreatePopupMenu, DestroyMenu, DestroyWindow, GetCursorPos,
+        SetForegroundWindow, TrackPopupMenu, MF_SEPARATOR, MF_STRING, TPM_RETURNCMD,
+        TPM_RIGHTBUTTON,
     };
 
     let menu = CreatePopupMenu();
@@ -207,12 +201,7 @@ unsafe fn show_tray_menu(hwnd: windows_sys::Win32::Foundation::HWND) {
     let exit_text = wide("Exit tray");
     AppendMenuW(menu, MF_STRING, MENU_OPEN as usize, open_text.as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
-    AppendMenuW(
-        menu,
-        MF_STRING,
-        MENU_EXIT_TRAY as usize,
-        exit_text.as_ptr(),
-    );
+    AppendMenuW(menu, MF_STRING, MENU_EXIT_TRAY as usize, exit_text.as_ptr());
 
     let mut point = POINT { x: 0, y: 0 };
     if GetCursorPos(&mut point) != 0 {
@@ -303,11 +292,7 @@ fn launch_elevated() -> Result<(), String> {
 #[cfg(target_os = "windows")]
 fn copy_wide<const N: usize>(target: &mut [u16; N], value: &str) {
     let encoded = value.encode_utf16();
-    for (slot, unit) in target
-        .iter_mut()
-        .take(N.saturating_sub(1))
-        .zip(encoded)
-    {
+    for (slot, unit) in target.iter_mut().take(N.saturating_sub(1)).zip(encoded) {
         *slot = unit;
     }
 }
