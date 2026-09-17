@@ -168,7 +168,7 @@ fn add_sublayer(engine: HANDLE) -> Result<(), String> {
     sublayer.displayData.description = description.as_mut_ptr();
     sublayer.weight = AMRI_WFP_SUBLAYER_WEIGHT;
 
-    let status = unsafe { FwpmSubLayerAdd0(engine, &sublayer, null()) };
+    let status = unsafe { FwpmSubLayerAdd0(engine, &sublayer, null_mut()) };
     if status == 0 {
         Ok(())
     } else {
@@ -304,7 +304,7 @@ fn add_filter(
         conditions.as_mut_ptr()
     };
 
-    let status = unsafe { FwpmFilterAdd0(engine, &filter, null(), null_mut()) };
+    let status = unsafe { FwpmFilterAdd0(engine, &filter, null_mut(), null_mut()) };
     if status == 0 {
         Ok(())
     } else {
@@ -312,7 +312,7 @@ fn add_filter(
     }
 }
 
-fn uint8_condition(field: GUID, match_type: u32, value: u8) -> FWPM_FILTER_CONDITION0 {
+fn uint8_condition(field: GUID, match_type: i32, value: u8) -> FWPM_FILTER_CONDITION0 {
     FWPM_FILTER_CONDITION0 {
         fieldKey: field,
         matchType: match_type,
@@ -323,7 +323,7 @@ fn uint8_condition(field: GUID, match_type: u32, value: u8) -> FWPM_FILTER_CONDI
     }
 }
 
-fn uint16_condition(field: GUID, match_type: u32, value: u16) -> FWPM_FILTER_CONDITION0 {
+fn uint16_condition(field: GUID, match_type: i32, value: u16) -> FWPM_FILTER_CONDITION0 {
     FWPM_FILTER_CONDITION0 {
         fieldKey: field,
         matchType: match_type,
@@ -334,7 +334,7 @@ fn uint16_condition(field: GUID, match_type: u32, value: u16) -> FWPM_FILTER_CON
     }
 }
 
-fn uint32_condition(field: GUID, match_type: u32, value: u32) -> FWPM_FILTER_CONDITION0 {
+fn uint32_condition(field: GUID, match_type: i32, value: u32) -> FWPM_FILTER_CONDITION0 {
     FWPM_FILTER_CONDITION0 {
         fieldKey: field,
         matchType: match_type,
