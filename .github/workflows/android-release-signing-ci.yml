@@ -1,0 +1,107 @@
+name: Android release signing gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SING_BOX_VERSION: "1.14.1"
+  SING_BOX_ANDROID_ARM64_SHA256: "34e2373cfcdd17ef3a0cac13d7f9f971e206257413a9f7b1da63ea02bcf88aab"
+  SING_BOX_ANDROID_AMD64_SHA256: "43d1b49a3086ad12092f028cbe3efb28422c2a6114d0dfb0ea18d0c2427573dc"
+
+jobs:
+  signed-release-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Install pinned cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Verify visual assets
+        run: |
+          python3 ../../scripts/verify_visual_assets.py
+          python3 ../../scripts/generate_ui_theme.py --check
+      - name: Stage pinned official Android transport binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="../../dist/android-transport-jni"
+          rm -rf "$OUT"
+          mkdir -p "$OUT/arm64-v8a" "$OUT/x86_64"
+          stage_transport() {
+            local upstream_arch="$1"
+            local android_abi="$2"
+            local expected_sha="$3"
+            local archive="$RUNNER_TEMP/sing-box-${upstream_arch}.tar.gz"
+            local expanded="$RUNNER_TEMP/sing-box-${upstream_arch}"
+            local url="https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-android-${upstream_arch}.tar.gz"
+            curl --fail --location --retry 3 "$url" --output "$archive"
+            echo "${expected_sha}  ${archive}" | sha256sum --check --strict
+            rm -rf "$expanded"
+            mkdir -p "$expanded"
+            tar -xzf "$archive" -C "$expanded"
+            local binary
+            binary="$(find "$expanded" -type f -name sing-box -print -quit)"
+            test -n "$binary"
+            cp "$binary" "$OUT/$android_abi/libsing_box.so"
+            chmod 0755 "$OUT/$android_abi/libsing_box.so"
+          }
+          stage_transport arm64 arm64-v8a "$SING_BOX_ANDROID_ARM64_SHA256"
+          stage_transport amd64 x86_64 "$SING_BOX_ANDROID_AMD64_SHA256"
+      - name: Create ephemeral CI release key
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/amri-ci-release.jks"
+          keytool -genkeypair \
+            -storetype JKS \
+            -keystore "$KEYSTORE" \
+            -storepass ci-store-password \
+            -alias amri-ci \
+            -keypass ci-key-password \
+            -dname "CN=AMRI CI,O=AMRI,C=BE" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 2 \
+            -noprompt
+          echo "AMRI_ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEYSTORE_PASSWORD=ci-store-password" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEY_ALIAS=amri-ci" >> "$GITHUB_ENV"
+          echo "AMRI_ANDROID_KEY_PASSWORD=ci-key-password" >> "$GITHUB_ENV"
+      - name: Build signed release APK
+        env:
+          AMRI_BUILD_NATIVE: "1"
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME"
+          export ANDROID_NDK="$ANDROID_NDK_LATEST_HOME"
+          gradle :app:testDebugUnitTest :app:assembleRelease --stacktrace
+          test -f app/build/outputs/apk/release/app-release.apk
+          unzip -l app/build/outputs/apk/release/app-release.apk | grep -F "lib/arm64-v8a/libamri_android_ffi.so"
+          unzip -l app/build/outputs/apk/release/app-release.apk | grep -F "lib/x86_64/libamri_android_ffi.so"
+          unzip -l app/build/outputs/apk/release/app-release.apk | grep -F "lib/arm64-v8a/libsing_box.so"
+          unzip -l app/build/outputs/apk/release/app-release.apk | grep -F "lib/x86_64/libsing_box.so"
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk

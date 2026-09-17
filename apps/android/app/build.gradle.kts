@@ -67,6 +67,17 @@ val buildAmriRustNative by tasks.registering(org.gradle.api.tasks.Exec::class) {
     }
 }
 
+val amriReleaseStorePath = providers.environmentVariable("AMRI_ANDROID_KEYSTORE_PATH").orNull
+val amriReleaseStorePassword = providers.environmentVariable("AMRI_ANDROID_KEYSTORE_PASSWORD").orNull
+val amriReleaseKeyAlias = providers.environmentVariable("AMRI_ANDROID_KEY_ALIAS").orNull
+val amriReleaseKeyPassword = providers.environmentVariable("AMRI_ANDROID_KEY_PASSWORD").orNull
+val amriReleaseSigningConfigured = listOf(
+    amriReleaseStorePath,
+    amriReleaseStorePassword,
+    amriReleaseKeyAlias,
+    amriReleaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "ru.amri.vpn"
     compileSdk = 37
@@ -79,6 +90,26 @@ android {
         versionName = "0.1.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        if (amriReleaseSigningConfigured) {
+            create("release") {
+                storeFile = file(amriReleaseStorePath!!)
+                storePassword = amriReleaseStorePassword
+                keyAlias = amriReleaseKeyAlias
+                keyPassword = amriReleaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (amriReleaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
