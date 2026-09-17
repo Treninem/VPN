@@ -54,7 +54,6 @@ class MainActivity : Activity() {
             super.attachBaseContext(newBase)
             return
         }
-
         val locale = Locale.forLanguageTag(storedTag)
         Locale.setDefault(locale)
         val configuration = Configuration(newBase.resources.configuration).apply {
@@ -112,7 +111,6 @@ class MainActivity : Activity() {
                 dp(AmriTheme.screenPaddingBottom),
             )
         }
-
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -129,6 +127,14 @@ class MainActivity : Activity() {
             },
             LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)),
         )
+        header.addView(
+            svgIconButton(R.raw.amri_settings_button, "Settings / Настройки").apply {
+                setOnClickListener { showRuntimeSettingsDialog() }
+            },
+            LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)).apply {
+                marginStart = dp(8)
+            },
+        )
         foreground.addView(header)
         foreground.addView(space(24))
 
@@ -137,14 +143,11 @@ class MainActivity : Activity() {
             isVerticalScrollBarEnabled = false
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-
         val protectionCard = card().apply {
             status = text("", 25f, Color.WHITE, true)
             detail = text("", 14f, AmriTheme.detailTextColor, false)
             actionButton = svgPowerButton()
-            actionLabel = text("", 14f, AmriTheme.actionTextColor, true).apply {
-                gravity = Gravity.CENTER
-            }
+            actionLabel = text("", 14f, AmriTheme.actionTextColor, true).apply { gravity = Gravity.CENTER }
             addView(status)
             addView(space(6))
             addView(detail)
@@ -161,7 +164,6 @@ class MainActivity : Activity() {
         }
         content.addView(protectionCard)
         content.addView(space(AmriTheme.sectionGap))
-
         content.addView(text(getString(R.string.mode), 19f, Color.WHITE, true))
         content.addView(space(10))
         content.addView(modeSelector())
@@ -174,12 +176,6 @@ class MainActivity : Activity() {
         return root
     }
 
-    /**
-     * The Android runtime currently has two real route-selection modes only:
-     * Smart uses the bounded bootstrap/failover selector; Manual keeps the selected node fixed.
-     * The UI writes the exact preference consumed by AmriVpnService instead of a presentation-only
-     * routing-mode integer.
-     */
     private fun modeSelector(): View = card(12).apply {
         val labels = resources.getStringArray(R.array.vpn_modes)
         val smartLabel = labels.firstOrNull() ?: "Smart"
@@ -190,7 +186,6 @@ class MainActivity : Activity() {
         }
         val smartButton = modeButton(smartLabel)
         val manualButton = modeButton(manualLabel)
-
         fun refreshButtons(smart: Boolean) {
             smartButton.backgroundTintList = ColorStateList.valueOf(
                 if (smart) AmriTheme.accentColor else AmriTheme.inactiveControlColor,
@@ -199,7 +194,6 @@ class MainActivity : Activity() {
                 if (!smart) AmriTheme.accentColor else AmriTheme.inactiveControlColor,
             )
         }
-
         val initialSmart = uiPreferences().getBoolean(KEY_SMART_ROUTING, true)
         smartButton.setOnClickListener {
             uiPreferences().edit().putBoolean(KEY_SMART_ROUTING, true).apply()
@@ -212,19 +206,11 @@ class MainActivity : Activity() {
             refreshRouteSummary()
         }
         refreshButtons(initialSmart)
-
         row.addView(smartButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) })
         row.addView(manualButton, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(6) })
         addView(row)
         addView(space(8))
-        addView(
-            text(
-                getString(R.string.smart_routing_description),
-                12f,
-                AmriTheme.mutedTextColor,
-                false,
-            ),
-        )
+        addView(text(getString(R.string.smart_routing_description), 12f, AmriTheme.mutedTextColor, false))
     }
 
     private fun modeButton(label: String): Button = Button(this).apply {
@@ -251,10 +237,7 @@ class MainActivity : Activity() {
             svgIconButton(R.raw.amri_more_button, getString(R.string.choose_server)).apply {
                 setOnClickListener { showServerDialog() }
             },
-            LinearLayout.LayoutParams(
-                dp(AmriTheme.iconButtonSize),
-                dp(AmriTheme.iconButtonSize),
-            ),
+            LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)),
         )
         addView(row)
     }
@@ -267,7 +250,6 @@ class MainActivity : Activity() {
             routeSecondary.text = getString(R.string.no_imported_servers)
             return
         }
-
         val selected = uiPreferences().getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
         if (selected != uiPreferences().getInt(KEY_SELECTED_NODE, 0)) {
             uiPreferences().edit().putInt(KEY_SELECTED_NODE, selected).apply()
@@ -285,18 +267,27 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun showRuntimeSettingsDialog() {
+        val smart = uiPreferences().getBoolean(KEY_SMART_ROUTING, true)
+        val mode = if (smart) "Smart" else "Manual"
+        AlertDialog.Builder(this)
+            .setTitle("AMRI VPN")
+            .setMessage("Active routing mode: $mode. Only settings backed by the VPN runtime are exposed in this build.")
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
     private fun showServerDialog() {
         val nodes = runCatching { AndroidNodeStore(this).load() }.getOrDefault(mutableListOf())
         val selected = if (nodes.isEmpty()) -1 else uiPreferences()
             .getInt(KEY_SELECTED_NODE, 0)
             .coerceIn(nodes.indices)
-        val items = nodes.mapIndexed { index, raw ->
-            AndroidNodeStore.safeLabel(raw, index)
-        }.toMutableList().apply {
-            add("＋ ${getString(R.string.import_vpn_links)}")
-            if (nodes.isNotEmpty()) add(getString(R.string.delete_selected_server))
-        }
-
+        val items = nodes.mapIndexed { index, raw -> AndroidNodeStore.safeLabel(raw, index) }
+            .toMutableList()
+            .apply {
+                add("＋ ${getString(R.string.import_vpn_links)}")
+                if (nodes.isNotEmpty()) add(getString(R.string.delete_selected_server))
+            }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.choose_server))
             .setSingleChoiceItems(items.toTypedArray(), selected) { dialog, which ->
@@ -340,9 +331,7 @@ class MainActivity : Activity() {
                         val selected = uiPreferences().getInt(KEY_SELECTED_NODE, 0).coerceIn(nodes.indices)
                         uiPreferences().edit().putInt(KEY_SELECTED_NODE, selected).apply()
                     }
-                }.onFailure {
-                    AmriVpnService.STATE.fail()
-                }
+                }.onFailure { AmriVpnService.STATE.fail() }
                 refreshRouteSummary()
                 refreshState()
             }
