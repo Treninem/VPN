@@ -80,6 +80,23 @@ jobs:
           finally {
             Remove-Item $diagnosticExe -Force -ErrorAction SilentlyContinue
           }
+      - name: Build and verify Windows portable archive
+        shell: pwsh
+        run: |
+          $portable = "dist/AMRI-VPN-Windows-Portable.zip"
+          if (Test-Path $portable) { Remove-Item $portable -Force }
+          Compress-Archive -Path dist/windows/* -DestinationPath $portable -CompressionLevel Optimal
+          if (-not (Test-Path $portable)) { throw "portable archive was not created" }
+
+          $verifyDir = Join-Path $env:RUNNER_TEMP "amri-portable-verify"
+          if (Test-Path $verifyDir) { Remove-Item $verifyDir -Recurse -Force }
+          Expand-Archive $portable -DestinationPath $verifyDir
+          foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll")) {
+            if (-not (Test-Path (Join-Path $verifyDir $file))) { throw "portable archive is missing $file" }
+          }
+          $stagedHash = (Get-FileHash "dist/windows/AMRI-VPN.exe" -Algorithm SHA256).Hash
+          $portableHash = (Get-FileHash (Join-Path $verifyDir "AMRI-VPN.exe") -Algorithm SHA256).Hash
+          if ($stagedHash -ne $portableHash) { throw "portable AMRI executable does not match staged release executable" }
       - name: Build Windows installer
         shell: pwsh
         run: |
@@ -122,6 +139,11 @@ jobs:
         with:
           name: AMRI-VPN-Windows-Installer
           path: dist/AMRI-VPN-Windows-Setup.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AMRI-VPN-Windows-Portable
+          path: dist/AMRI-VPN-Windows-Portable.zip
           if-no-files-found: error
 
   android-apk:
