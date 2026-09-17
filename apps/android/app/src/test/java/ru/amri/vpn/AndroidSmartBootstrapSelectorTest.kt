@@ -33,11 +33,36 @@ class AndroidSmartBootstrapSelectorTest {
         )
 
         val order = AndroidSmartBootstrapSelector.candidateOrder(nodes, 0, true) { host, _, _ ->
-            latency[host]
+            val delay = latency.getValue(host)
+            Thread.sleep(delay)
+            delay
         }
 
         assertEquals(1, order.first())
         assertEquals(3, order.distinct().size)
+    }
+
+    @Test
+    fun slowPreferredProbeDoesNotBlockAlreadyReachableAlternative() {
+        val nodes = listOf(
+            "vless://id@203.0.113.10:443?security=tls#slow",
+            "trojan://pw@203.0.113.11:443#fast",
+        )
+        val started = System.nanoTime()
+
+        val order = AndroidSmartBootstrapSelector.candidateOrder(nodes, 0, true) { host, _, _ ->
+            if (host == "203.0.113.10") {
+                Thread.sleep(1_500)
+                1_500L
+            } else {
+                Thread.sleep(15)
+                15L
+            }
+        }
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+        assertEquals(1, order.first())
+        assertTrue("selector should not wait for slow preferred probe", elapsedMs < 700)
     }
 
     @Test
