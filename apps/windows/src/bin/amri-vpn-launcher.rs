@@ -36,11 +36,14 @@ fn run_tray_companion() -> Result<(), String> {
         RegisterClassW, TranslateMessage, MSG, WNDCLASSW,
     };
 
+    let tray_only = std::env::var("AMRI_TRAY_ONLY").ok().as_deref() == Some("1");
     let class_name = wide("AMRI_VPN_TRAY_COMPANION_V1");
     let existing = unsafe { FindWindowW(class_name.as_ptr(), null()) };
     if !existing.is_null() {
-        unsafe {
-            PostMessageW(existing, WM_OPEN_AMRI, 0, 0);
+        if !tray_only {
+            unsafe {
+                PostMessageW(existing, WM_OPEN_AMRI, 0, 0);
+            }
         }
         return Ok(());
     }
@@ -117,8 +120,10 @@ fn run_tray_companion() -> Result<(), String> {
         return Err("Windows refused to add the AMRI VPN tray icon".into());
     }
 
-    if let Err(error) = open_or_launch_main() {
-        show_error(&error);
+    if !tray_only {
+        if let Err(error) = open_or_launch_main() {
+            show_error(&error);
+        }
     }
 
     let mut message: MSG = unsafe { zeroed() };
@@ -155,7 +160,7 @@ unsafe extern "system" fn tray_window_proc(
     lparam: isize,
 ) -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, DestroyWindow, PostQuitMessage, WM_DESTROY, WM_LBUTTONUP, WM_RBUTTONUP,
+        DefWindowProcW, PostQuitMessage, WM_DESTROY, WM_LBUTTONUP, WM_RBUTTONUP,
     };
 
     match message {
