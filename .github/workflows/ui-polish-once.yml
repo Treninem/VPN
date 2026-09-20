@@ -1,0 +1,36 @@
+name: Apply Windows UI polish
+
+on:
+  push:
+    branches:
+      - work/ui-polish-avatar-final
+    paths:
+      - scripts/apply_windows_ui_polish.py
+      - .github/workflows/ui-polish-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/ui-polish-avatar-final
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply layout correction and canonical formatting
+        shell: bash
+        run: |
+          python3 scripts/apply_windows_ui_polish.py
+          cargo fmt --all
+          git rm scripts/apply_windows_ui_polish.py .github/workflows/ui-polish-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix Windows responsive layout and brand presentation"
+          git push origin HEAD:work/ui-polish-avatar-final
