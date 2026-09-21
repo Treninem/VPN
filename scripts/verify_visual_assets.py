@@ -192,6 +192,8 @@ def main() -> None:
     for reference in sorted(android_runtime_refs):
         if reference not in activity:
             errors.append(f"Android UI no longer uses generated canonical resource {reference}")
+    if "R.drawable.amri_app_icon" not in activity:
+        errors.append("Android header no longer uses generated canonical AMRI app icon")
     if "ImageView.ScaleType.CENTER_CROP" not in activity:
         errors.append("Android mobile background is no longer rendered with cover-style CENTER_CROP")
 
