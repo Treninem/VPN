@@ -1112,7 +1112,6 @@ impl AmriApp {
         ui.label(ui_text(self.language, UiMessage::LocalPort));
         ui.text_edit_singleline(&mut self.local_port);
     }
-
 }
 
 impl eframe::App for AmriApp {
