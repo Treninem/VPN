@@ -732,7 +732,7 @@ impl AmriApp {
         Self::toggle_row(
             ui,
             ui_text(self.language, UiMessage::SmartRouting),
-            "Probe a bounded set of compatible nodes at connect time and choose a reachable route",
+            ui_text(self.language, UiMessage::SmartRoutingDescription),
             &mut self.smart_routing,
         );
         if self.smart_routing != previous_smart {
@@ -759,7 +759,7 @@ impl AmriApp {
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            "Dynamic WFP kill switch is required before a protected Windows route can become Ready",
+            ui_text(self.language, UiMessage::KillSwitchDescription),
             ui_text(self.language, UiMessage::EnabledStatus),
         );
     }
@@ -1076,7 +1076,7 @@ impl AmriApp {
         Self::toggle_row(
             ui,
             ui_text(self.language, UiMessage::SmartRouting),
-            "Probe a bounded set of compatible nodes at connect time and choose a reachable route",
+            ui_text(self.language, UiMessage::SmartRoutingDescription),
             &mut self.smart_routing,
         );
         if self.smart_routing != previous_smart {
@@ -1085,7 +1085,7 @@ impl AmriApp {
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            "Dynamic WFP kill switch is required before a protected Windows route can become Ready",
+            ui_text(self.language, UiMessage::KillSwitchDescription),
             ui_text(self.language, UiMessage::EnabledStatus),
         );
         Self::capability_row(
@@ -1113,13 +1113,6 @@ impl AmriApp {
         ui.text_edit_singleline(&mut self.local_port);
     }
 
-    fn placeholder(&self, ui: &mut egui::Ui, title: &str) {
-        ui.heading(RichText::new(title).size(30.0));
-        ui.label(
-            RichText::new(ui_text(self.language, UiMessage::NoActiveRoutes))
-                .color(Color32::from_gray(150)),
-        );
-    }
 }
 
 impl eframe::App for AmriApp {
