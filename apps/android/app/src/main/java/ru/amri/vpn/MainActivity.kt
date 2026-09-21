@@ -117,10 +117,22 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        val brandIcon = ImageView(this).apply {
+            setImageResource(R.drawable.amri_app_icon)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            contentDescription = "AMRI VPN"
+        }
+        header.addView(
+            brandIcon,
+            LinearLayout.LayoutParams(dp(56), dp(56)).apply {
+                marginEnd = dp(12)
+            },
+        )
         val brand = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(text("AMRI", 30f, Color.WHITE, true))
-            addView(text(getString(R.string.product_subtitle), 14f, AmriTheme.mutedTextColor, false))
+            addView(text("AMRI VPN", 27f, Color.WHITE, true))
+            addView(text(getString(R.string.product_subtitle), 13f, AmriTheme.mutedTextColor, false))
         }
         header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         val languageButton = svgIconButton(R.raw.amri_language_button, "Language / Язык").apply {
