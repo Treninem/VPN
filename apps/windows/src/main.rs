@@ -732,7 +732,7 @@ impl AmriApp {
         Self::toggle_row(
             ui,
             ui_text(self.language, UiMessage::SmartRouting),
-            "Probe a bounded set of compatible nodes at connect time and choose a reachable route",
+            ui_text(self.language, UiMessage::SmartRoutingDescription),
             &mut self.smart_routing,
         );
         if self.smart_routing != previous_smart {
@@ -742,25 +742,25 @@ impl AmriApp {
             ui,
             ui_text(self.language, UiMessage::LocalLearning),
             ui_text(self.language, UiMessage::LocalLearningDescription),
-            "NOT ENABLED",
+            ui_text(self.language, UiMessage::NotEnabledStatus),
         );
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::FederatedLearning),
             ui_text(self.language, UiMessage::FederatedDescription),
-            "NOT ENABLED",
+            ui_text(self.language, UiMessage::NotEnabledStatus),
         );
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::BackgroundTesting),
             ui_text(self.language, UiMessage::BackgroundDescription),
-            "NOT ENABLED",
+            ui_text(self.language, UiMessage::NotEnabledStatus),
         );
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            "Dynamic WFP kill switch is required before a protected Windows route can become Ready",
-            "ENABLED",
+            ui_text(self.language, UiMessage::KillSwitchDescription),
+            ui_text(self.language, UiMessage::EnabledStatus),
         );
     }
 
@@ -1037,6 +1037,38 @@ impl AmriApp {
         ui.text_edit_singleline(&mut self.local_port);
     }
 
+    fn rules(&self, ui: &mut egui::Ui) {
+        ui.heading(RichText::new(ui_text(self.language, UiMessage::Rules)).size(30.0));
+        ui.label(
+            RichText::new(ui_text(self.language, UiMessage::RulesDescription))
+                .color(Color32::from_gray(150)),
+        );
+        ui.add_space(18.0);
+
+        ui.horizontal_wrapped(|ui| {
+            Self::metric_card(
+                ui,
+                ui_text(self.language, UiMessage::Mode),
+                routing_mode_text(self.language, self.routing_mode),
+                "",
+            );
+            Self::metric_card(
+                ui,
+                ui_text(self.language, UiMessage::ActiveRoutes),
+                if self.transport_ready() { "1" } else { "0" },
+                "",
+            );
+        });
+
+        ui.add_space(20.0);
+        Self::capability_row(
+            ui,
+            ui_text(self.language, UiMessage::SplitRouting),
+            ui_text(self.language, UiMessage::SplitRoutingDescription),
+            ui_text(self.language, UiMessage::NotEnabledStatus),
+        );
+    }
+
     fn settings(&mut self, ui: &mut egui::Ui) {
         ui.heading(RichText::new(ui_text(self.language, UiMessage::Settings)).size(30.0));
         ui.add_space(12.0);
@@ -1044,7 +1076,7 @@ impl AmriApp {
         Self::toggle_row(
             ui,
             ui_text(self.language, UiMessage::SmartRouting),
-            "Probe a bounded set of compatible nodes at connect time and choose a reachable route",
+            ui_text(self.language, UiMessage::SmartRoutingDescription),
             &mut self.smart_routing,
         );
         if self.smart_routing != previous_smart {
@@ -1053,40 +1085,32 @@ impl AmriApp {
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
-            "Dynamic WFP kill switch is required before a protected Windows route can become Ready",
-            "ENABLED",
+            ui_text(self.language, UiMessage::KillSwitchDescription),
+            ui_text(self.language, UiMessage::EnabledStatus),
         );
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::LocalLearning),
             ui_text(self.language, UiMessage::LocalLearningDescription),
-            "NOT ENABLED",
+            ui_text(self.language, UiMessage::NotEnabledStatus),
         );
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::FederatedLearning),
             ui_text(self.language, UiMessage::FederatedDescription),
-            "NOT ENABLED",
+            ui_text(self.language, UiMessage::NotEnabledStatus),
         );
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::BackgroundTesting),
             ui_text(self.language, UiMessage::BackgroundDescription),
-            "NOT ENABLED",
+            ui_text(self.language, UiMessage::NotEnabledStatus),
         );
         ui.add_space(16.0);
         ui.label(ui_text(self.language, UiMessage::CoreExecutable));
         ui.text_edit_singleline(&mut self.core_path);
         ui.label(ui_text(self.language, UiMessage::LocalPort));
         ui.text_edit_singleline(&mut self.local_port);
-    }
-
-    fn placeholder(&self, ui: &mut egui::Ui, title: &str) {
-        ui.heading(RichText::new(title).size(30.0));
-        ui.label(
-            RichText::new(ui_text(self.language, UiMessage::NoActiveRoutes))
-                .color(Color32::from_gray(150)),
-        );
     }
 }
 
@@ -1158,10 +1182,7 @@ impl eframe::App for AmriApp {
                                             Page::Home => self.home(ui),
                                             Page::Routes => self.routes(ui),
                                             Page::Subscriptions => self.subscriptions(ui),
-                                            Page::Rules => self.placeholder(
-                                                ui,
-                                                ui_text(self.language, UiMessage::Rules),
-                                            ),
+                                            Page::Rules => self.rules(ui),
                                             Page::Settings => self.settings(ui),
                                         }
                                         ui.add_space(24.0);
