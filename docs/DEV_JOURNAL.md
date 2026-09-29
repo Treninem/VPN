@@ -220,6 +220,16 @@ Trade-off: compact layouts intentionally hide only the decorative Android subtit
 
 Verification at the local stage: canonical visual bytes/theme generation pass; standalone Windows responsive-policy tests pass 4/4. Full Windows target and Android Gradle verification remains mandatory in CI because the local Linux environment is not the release platform.
 
+PR #59 (`work/final-responsive-release`, code head `35f3243092c05534f5e99898b179d069af070d02`) completed the required remote verification on 2026-09-29:
+
+- CI run `36536872942`: Windows fmt/theme/tests/check/release build/diagnostic/smoke and Android JVM/NDK/APK — success;
+- installer run `36536872869`: Windows portable/NSIS install-launch-autostart-uninstall verification, Android APK and developer visual source — success;
+- tray run `36536872911`: resident tray lifecycle and single-instance handoff — success;
+- Android signing run `36536872891`: release APK build and signature verification — success;
+- release-candidate run `36536872914`: Windows and Android packages plus visual source — success; publish job was intentionally skipped for the pull-request event.
+
+Remote compare confirmed one commit ahead of `main`, zero commits behind, with exactly the eight reviewed responsive-stage files. PR #59 was reported mergeable and clean after all 11 check-runs completed (10 success, one expected publish skip).
+
 ## CURRENT STATE
 
 - Canonical `main` перед текущим визуальным этапом: `af26cc9579733a4a4fdc8c9ae46141c0d5fd3488`.
@@ -230,7 +240,7 @@ Verification at the local stage: canonical visual bytes/theme generation pass; s
 - Windows tray companion, optional autostart, installer/portable packaging и Android installable APK собираются CI.
 - Approved artwork remains unchanged and byte-locked.
 - Developer-only visual editing source exists and is not shipped in apps.
-- Responsive release stage adds a compact Windows shell at widths below 920 px, readable content cap for high-resolution screens, stacked narrow cards, and an Android policy for 320 dp phones, large text, landscape and tablets. Layout-policy tests are mandatory before merge.
+- Responsive release stage adds a compact Windows shell at widths below 920 px, readable content cap for high-resolution screens, stacked narrow cards, and an Android policy for 320 dp phones, large text, landscape and tablets. PR #59 remote Windows/Android/package/signing/tray verification is green; a fresh check of the final journal-only head remains required before merge.
 
 ## Remaining release/hardening work
 
