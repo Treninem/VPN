@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod responsive;
 mod secure_nodes;
 mod theme;
 mod transport_worker;
@@ -7,6 +8,7 @@ mod transport_worker;
 use amri_core::{routing_mode_text, ui_text, Language, RoutingMode, UiMessage};
 use amri_subscriptions::{parse_subscription_text, ImportedNode};
 use eframe::egui::{self, Align, Color32, Layout, RichText, Stroke, Vec2};
+use responsive::{desktop_layout, DesktopLayout};
 use std::path::PathBuf;
 use std::time::Duration;
 use transport_worker::{TransportUiState, TransportWorker};
@@ -76,7 +78,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("AMRI VPN")
             .with_inner_size([1180.0, 760.0])
-            .with_min_inner_size([980.0, 680.0])
+            .with_min_inner_size([responsive::MIN_WINDOW_WIDTH, responsive::MIN_WINDOW_HEIGHT])
             .with_icon(amri_window_icon()),
         ..Default::default()
     };
@@ -453,13 +455,92 @@ impl AmriApp {
         }
     }
 
+    fn compact_header(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.add(
+                egui::Image::new(egui::include_image!("../../../assets/brand/amri-icon.png"))
+                    .fit_to_exact_size(Vec2::splat(44.0))
+                    .alt_text("AMRI VPN"),
+            );
+            ui.vertical(|ui| {
+                ui.label(RichText::new("AMRI VPN").size(21.0).strong());
+                ui.label(
+                    RichText::new(ui_text(self.language, UiMessage::AdaptiveVpn))
+                        .size(10.0)
+                        .color(theme::TEXT_MUTED),
+                );
+            });
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if brand_button(
+                    ui,
+                    egui::include_image!("../../../assets/brand/settings-button.svg"),
+                    38.0,
+                    ui_text(self.language, UiMessage::Settings),
+                )
+                .clicked()
+                {
+                    self.navigate_to(Page::Settings);
+                }
+                if brand_button(
+                    ui,
+                    egui::include_image!("../../../assets/brand/language-button.svg"),
+                    38.0,
+                    ui_text(self.language, UiMessage::LanguageLabel),
+                )
+                .clicked()
+                {
+                    self.language_menu_open = !self.language_menu_open;
+                }
+            });
+        });
+
+        if self.language_menu_open {
+            ui.horizontal_wrapped(|ui| {
+                for language in Language::ALL {
+                    if ui
+                        .selectable_label(self.language == language, language.native_name())
+                        .clicked()
+                    {
+                        self.language = language;
+                        self.language_menu_open = false;
+                    }
+                }
+            });
+        }
+
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            let language = self.language;
+            self.compact_nav_button(ui, Page::Home, ui_text(language, UiMessage::Home));
+            self.compact_nav_button(ui, Page::Routes, ui_text(language, UiMessage::Routes));
+            self.compact_nav_button(
+                ui,
+                Page::Subscriptions,
+                ui_text(language, UiMessage::Subscriptions),
+            );
+            self.compact_nav_button(ui, Page::Rules, ui_text(language, UiMessage::Rules));
+        });
+    }
+
+    fn compact_nav_button(&mut self, ui: &mut egui::Ui, page: Page, text: &str) {
+        if ui
+            .add(
+                egui::Button::selectable(self.page == page, RichText::new(text).size(13.0))
+                    .min_size(Vec2::new(92.0, 36.0)),
+            )
+            .clicked()
+        {
+            self.navigate_to(page);
+        }
+    }
+
     fn toggle_row(ui: &mut egui::Ui, label: &str, description: &str, value: &mut bool) {
         egui::Frame::new()
             .fill(Color32::from_rgb(22, 27, 36))
             .corner_radius(16)
             .inner_margin(16)
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
+                let details = |ui: &mut egui::Ui| {
                     ui.vertical(|ui| {
                         ui.label(RichText::new(label).size(15.0).strong());
                         ui.label(
@@ -468,11 +549,21 @@ impl AmriApp {
                                 .color(Color32::from_gray(145)),
                         );
                     });
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let state_text = if *value { "ON" } else { "OFF" };
-                        ui.toggle_value(value, state_text);
+                };
+                if responsive::stacks_card_actions(ui.available_width()) {
+                    details(ui);
+                    ui.add_space(8.0);
+                    let state_text = if *value { "ON" } else { "OFF" };
+                    ui.toggle_value(value, state_text);
+                } else {
+                    ui.horizontal(|ui| {
+                        details(ui);
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            let state_text = if *value { "ON" } else { "OFF" };
+                            ui.toggle_value(value, state_text);
+                        });
                     });
-                });
+                }
             });
     }
 
@@ -482,7 +573,7 @@ impl AmriApp {
             .corner_radius(16)
             .inner_margin(16)
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
+                let details = |ui: &mut egui::Ui| {
                     ui.vertical(|ui| {
                         ui.label(RichText::new(label).size(15.0).strong());
                         ui.label(
@@ -491,15 +582,27 @@ impl AmriApp {
                                 .color(Color32::from_gray(145)),
                         );
                     });
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(status)
-                                .size(12.0)
-                                .strong()
-                                .color(Color32::from_rgb(232, 184, 92)),
-                        );
+                };
+                let badge = |ui: &mut egui::Ui| {
+                    ui.label(
+                        RichText::new(status)
+                            .size(12.0)
+                            .strong()
+                            .color(Color32::from_rgb(232, 184, 92)),
+                    );
+                };
+                if responsive::stacks_card_actions(ui.available_width()) {
+                    details(ui);
+                    ui.add_space(8.0);
+                    badge(ui);
+                } else {
+                    ui.horizontal(|ui| {
+                        details(ui);
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            badge(ui);
+                        });
                     });
-                });
+                }
             });
     }
 
@@ -548,26 +651,27 @@ impl AmriApp {
             .inner_margin(theme::HERO_MARGIN)
             .show(ui, |ui| {
                 let protected = self.transport_ready();
-                ui.horizontal(|ui| {
+                let stack_actions = responsive::stacks_card_actions(ui.available_width());
+                let content = |ui: &mut egui::Ui, app: &mut Self| {
                     ui.vertical(|ui| {
-                        let protection_message = if protected {
+                        let protection_message = if app.transport_ready() {
                             UiMessage::ProtectionOn
                         } else {
                             UiMessage::ProtectionOff
                         };
                         ui.label(
-                            RichText::new(ui_text(self.language, protection_message))
+                            RichText::new(ui_text(app.language, protection_message))
                                 .size(24.0)
                                 .strong(),
                         );
                         ui.add_space(4.0);
                         ui.label(
-                            RichText::new(match &self.transport_state {
+                            RichText::new(match &app.transport_state {
                                 TransportUiState::Idle => {
-                                    ui_text(self.language, UiMessage::AddSubscriptionFirst).into()
+                                    ui_text(app.language, UiMessage::AddSubscriptionFirst).into()
                                 }
                                 TransportUiState::Connecting => {
-                                    ui_text(self.language, UiMessage::TransportConnecting).into()
+                                    ui_text(app.language, UiMessage::TransportConnecting).into()
                                 }
                                 TransportUiState::Ready {
                                     node_name,
@@ -575,7 +679,7 @@ impl AmriApp {
                                     ..
                                 } => format!(
                                     "{} · {} · 127.0.0.1:{}",
-                                    ui_text(self.language, UiMessage::ProtectionOn),
+                                    ui_text(app.language, UiMessage::ProtectionOn),
                                     node_name,
                                     local_port
                                 ),
@@ -584,39 +688,47 @@ impl AmriApp {
                             .color(Color32::from_gray(155)),
                         );
                     });
-
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let label = if self.transport_ready() {
-                            ui_text(self.language, UiMessage::Disconnect)
+                };
+                let action = |ui: &mut egui::Ui, app: &mut Self| {
+                    let label = if app.transport_ready() {
+                        ui_text(app.language, UiMessage::Disconnect)
+                    } else {
+                        ui_text(app.language, UiMessage::Connect)
+                    };
+                    let enabled = !matches!(&app.transport_state, TransportUiState::Connecting);
+                    let source = if protected {
+                        egui::include_image!("../../../assets/brand/vpn-power-on.svg")
+                    } else {
+                        egui::include_image!("../../../assets/brand/vpn-power-off.svg")
+                    };
+                    let button = egui::Image::new(source)
+                        .fit_to_exact_size(Vec2::splat(104.0))
+                        .alt_text(label)
+                        .sense(egui::Sense::click());
+                    let response = ui
+                        .add_enabled(enabled, button)
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text(label);
+                    if response.clicked() {
+                        if app.transport_ready() {
+                            app.stop_transport();
+                        } else if app.imported_nodes.is_empty() {
+                            app.navigate_to(Page::Subscriptions);
                         } else {
-                            ui_text(self.language, UiMessage::Connect)
-                        };
-                        let enabled =
-                            !matches!(&self.transport_state, TransportUiState::Connecting);
-                        let source = if protected {
-                            egui::include_image!("../../../assets/brand/vpn-power-on.svg")
-                        } else {
-                            egui::include_image!("../../../assets/brand/vpn-power-off.svg")
-                        };
-                        let button = egui::Image::new(source)
-                            .fit_to_exact_size(Vec2::splat(104.0))
-                            .alt_text(label)
-                            .sense(egui::Sense::click());
-                        let response = ui
-                            .add_enabled(enabled, button)
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .on_hover_text(label);
-                        if response.clicked() {
-                            if self.transport_ready() {
-                                self.stop_transport();
-                            } else if self.imported_nodes.is_empty() {
-                                self.navigate_to(Page::Subscriptions);
-                            } else {
-                                self.start_transport();
-                            }
+                            app.start_transport();
                         }
+                    }
+                };
+                if stack_actions {
+                    content(ui, self);
+                    ui.add_space(10.0);
+                    ui.with_layout(Layout::top_down(Align::Center), |ui| action(ui, self));
+                } else {
+                    ui.horizontal(|ui| {
+                        content(ui, self);
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| action(ui, self));
                     });
-                });
+                }
             });
 
         ui.add_space(18.0);
@@ -1121,75 +1233,96 @@ impl eframe::App for AmriApp {
             .frame(egui::Frame::new().fill(Color32::from_rgb(3, 8, 18)))
             .show(ui, |ui| {
                 desktop_background(ui);
-
-                ui.horizontal_top(|ui| {
-                    egui::Frame::new()
-                        .fill(Color32::from_rgba_premultiplied(16, 20, 27, 242))
-                        .stroke(Stroke::new(
-                            1.0,
-                            Color32::from_rgba_premultiplied(67, 104, 255, 42),
-                        ))
-                        .corner_radius(22)
-                        .inner_margin(16)
-                        .show(ui, |ui| {
-                            ui.set_width(236.0);
-                            ui.set_min_height(ui.available_height());
-                            ui.vertical(|ui| {
-                                ui.set_width(220.0);
-                                self.sidebar(ui);
-                            });
-                        });
-
-                    ui.add_space(10.0);
-
-                    egui::Frame::new()
-                        .fill(Color32::from_rgba_premultiplied(13, 16, 22, 232))
-                        .stroke(Stroke::new(
-                            1.0,
-                            Color32::from_rgba_premultiplied(67, 104, 255, 34),
-                        ))
-                        .corner_radius(22)
-                        .inner_margin(24)
-                        .show(ui, |ui| {
-                            let content_width = ui.available_width().max(600.0);
-                            ui.set_min_width(content_width);
-                            ui.set_min_height(ui.available_height());
-
-                            ui.vertical(|ui| {
-                                if self.page != Page::Home {
-                                    ui.horizontal(|ui| {
-                                        if brand_button(
-                                            ui,
-                                            egui::include_image!(
-                                                "../../../assets/brand/back-button.svg"
-                                            ),
-                                            36.0,
-                                            "Back",
-                                        )
-                                        .clicked()
-                                        {
-                                            self.navigate_back();
-                                        }
-                                    });
-                                    ui.add_space(8.0);
-                                }
-
-                                egui::ScrollArea::vertical()
-                                    .auto_shrink([false, false])
-                                    .show(ui, |ui| {
-                                        ui.set_min_width(ui.available_width());
-                                        match self.page {
-                                            Page::Home => self.home(ui),
-                                            Page::Routes => self.routes(ui),
-                                            Page::Subscriptions => self.subscriptions(ui),
-                                            Page::Rules => self.rules(ui),
-                                            Page::Settings => self.settings(ui),
-                                        }
-                                        ui.add_space(24.0);
-                                    });
-                            });
-                        });
-                });
+                match desktop_layout(ui.available_width()) {
+                    DesktopLayout::Wide => self.wide_shell(ui),
+                    DesktopLayout::Compact => self.compact_shell(ui),
+                }
             });
+    }
+}
+
+impl AmriApp {
+    fn shell_frame() -> egui::Frame {
+        egui::Frame::new()
+            .fill(Color32::from_rgba_premultiplied(13, 16, 22, 232))
+            .stroke(Stroke::new(
+                1.0,
+                Color32::from_rgba_premultiplied(67, 104, 255, 34),
+            ))
+            .corner_radius(22)
+    }
+
+    fn wide_shell(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_top(|ui| {
+            egui::Frame::new()
+                .fill(Color32::from_rgba_premultiplied(16, 20, 27, 242))
+                .stroke(Stroke::new(
+                    1.0,
+                    Color32::from_rgba_premultiplied(67, 104, 255, 42),
+                ))
+                .corner_radius(22)
+                .inner_margin(16)
+                .show(ui, |ui| {
+                    ui.set_width(236.0);
+                    ui.set_min_height(ui.available_height());
+                    ui.vertical(|ui| {
+                        ui.set_width(220.0);
+                        self.sidebar(ui);
+                    });
+                });
+
+            ui.add_space(10.0);
+            Self::shell_frame()
+                .inner_margin(24)
+                .show(ui, |ui| self.page_shell(ui, false));
+        });
+    }
+
+    fn compact_shell(&mut self, ui: &mut egui::Ui) {
+        Self::shell_frame().inner_margin(16).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.set_min_height(ui.available_height());
+            self.compact_header(ui);
+            ui.separator();
+            ui.add_space(6.0);
+            self.page_shell(ui, true);
+        });
+    }
+
+    fn page_shell(&mut self, ui: &mut egui::Ui, compact: bool) {
+        let width = responsive::content_width(ui.available_width());
+        ui.allocate_ui_with_layout(
+            Vec2::new(width, ui.available_height()),
+            Layout::top_down(Align::Min),
+            |ui| {
+                if !compact && self.page != Page::Home {
+                    if brand_button(
+                        ui,
+                        egui::include_image!("../../../assets/brand/back-button.svg"),
+                        36.0,
+                        "Back",
+                    )
+                    .clicked()
+                    {
+                        self.navigate_back();
+                    }
+                    ui.add_space(8.0);
+                }
+
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        match self.page {
+                            Page::Home => self.home(ui),
+                            Page::Routes => self.routes(ui),
+                            Page::Subscriptions => self.subscriptions(ui),
+                            Page::Rules => self.rules(ui),
+                            Page::Settings => self.settings(ui),
+                        }
+                        ui.add_space(24.0);
+                    });
+            },
+        );
     }
 }

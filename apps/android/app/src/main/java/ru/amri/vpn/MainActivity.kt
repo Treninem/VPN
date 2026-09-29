@@ -96,6 +96,12 @@ class MainActivity : Activity() {
     }
 
     private fun buildContent(): View {
+        val configuration = resources.configuration
+        val responsive = ResponsiveLayoutPolicy.resolve(
+            widthDp = configuration.screenWidthDp,
+            heightDp = configuration.screenHeightDp,
+            fontScale = configuration.fontScale,
+        )
         val root = FrameLayout(this).apply { setBackgroundColor(AmriTheme.backgroundColor) }
         val background = svgImageView(R.raw.amri_background_mobile).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -107,9 +113,9 @@ class MainActivity : Activity() {
         val foreground = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
-                dp(AmriTheme.screenPaddingHorizontal),
+                dp(responsive.horizontalPaddingDp),
                 dp(AmriTheme.screenPaddingTop),
-                dp(AmriTheme.screenPaddingHorizontal),
+                dp(responsive.horizontalPaddingDp),
                 dp(AmriTheme.screenPaddingBottom),
             )
         }
@@ -123,16 +129,24 @@ class MainActivity : Activity() {
             adjustViewBounds = true
             contentDescription = "AMRI VPN"
         }
-        header.addView(
-            brandIcon,
-            LinearLayout.LayoutParams(dp(56), dp(56)).apply {
-                marginEnd = dp(12)
-            },
-        )
+        if (responsive.showBrandIcon) {
+            header.addView(
+                brandIcon,
+                LinearLayout.LayoutParams(dp(responsive.headerIconDp), dp(responsive.headerIconDp)).apply {
+                    marginEnd = dp(if (configuration.screenWidthDp < 400) 8 else 12)
+                },
+            )
+        }
         val brand = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(text("AMRI VPN", 27f, Color.WHITE, true))
-            addView(text(getString(R.string.product_subtitle), 13f, AmriTheme.mutedTextColor, false))
+            addView(text("AMRI VPN", if (configuration.screenWidthDp < 400) 23f else 27f, Color.WHITE, true).apply {
+                maxLines = 1
+            })
+            if (responsive.showSubtitle) {
+                addView(text(getString(R.string.product_subtitle), 13f, AmriTheme.mutedTextColor, false).apply {
+                    maxLines = 2
+                })
+            }
         }
         header.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         val languageButton = svgIconButton(R.raw.amri_language_button, "Language / Язык").apply {
@@ -140,15 +154,15 @@ class MainActivity : Activity() {
         }
         header.addView(
             languageButton,
-            LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)),
+            LinearLayout.LayoutParams(dp(responsive.iconButtonDp), dp(responsive.iconButtonDp)),
         )
         val settingsButton = svgIconButton(R.raw.amri_settings_button, "Settings / Настройки").apply {
             setOnClickListener { showRuntimeSettingsDialog() }
         }
         header.addView(
             settingsButton,
-            LinearLayout.LayoutParams(dp(AmriTheme.iconButtonSize), dp(AmriTheme.iconButtonSize)).apply {
-                marginStart = dp(8)
+            LinearLayout.LayoutParams(dp(responsive.iconButtonDp), dp(responsive.iconButtonDp)).apply {
+                marginStart = dp(if (configuration.screenWidthDp < 400) 4 else 8)
             },
         )
         foreground.addView(header)
@@ -173,8 +187,8 @@ class MainActivity : Activity() {
             addView(
                 actionButton,
                 LinearLayout.LayoutParams(
-                    dp(AmriTheme.powerButtonSize),
-                    dp(AmriTheme.powerButtonSize),
+                    dp(responsive.powerButtonDp),
+                    dp(responsive.powerButtonDp),
                 ).apply { gravity = Gravity.CENTER_HORIZONTAL },
             )
             addView(space(6))
@@ -190,7 +204,17 @@ class MainActivity : Activity() {
 
         scroll.addView(content)
         foreground.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(foreground, FrameLayout.LayoutParams(-1, -1))
+        val foregroundWidth = if (configuration.screenWidthDp > responsive.maxContentWidthDp) {
+            dp(responsive.maxContentWidthDp)
+        } else {
+            -1
+        }
+        root.addView(
+            foreground,
+            FrameLayout.LayoutParams(foregroundWidth, -1).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            },
+        )
         return root
     }
 
@@ -229,12 +253,13 @@ class MainActivity : Activity() {
                 }
             }
             buttons += button
-            row.addView(button)
+            row.addView(button, LinearLayout.LayoutParams(0, -2, 1f))
         }
         refreshButtons(selected)
         return HorizontalScrollView(this).apply {
+            isFillViewport = true
             isHorizontalScrollBarEnabled = false
-            addView(row)
+            addView(row, FrameLayout.LayoutParams(-1, -2))
         }
     }
 
@@ -257,8 +282,8 @@ class MainActivity : Activity() {
                 setOnClickListener { showServerDialog() }
             },
             LinearLayout.LayoutParams(
-                dp(AmriTheme.iconButtonSize),
-                dp(AmriTheme.iconButtonSize),
+                dp(maxOf(48, AmriTheme.iconButtonSize)),
+                dp(maxOf(48, AmriTheme.iconButtonSize)),
             ),
         )
         addView(row)
