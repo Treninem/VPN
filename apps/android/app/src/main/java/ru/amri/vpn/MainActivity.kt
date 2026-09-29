@@ -6,7 +6,6 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -20,10 +19,8 @@ import android.os.Looper
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -37,6 +34,8 @@ class MainActivity : Activity() {
     private lateinit var detail: TextView
     private lateinit var actionButton: ImageButton
     private lateinit var actionLabel: TextView
+    private lateinit var modePrimary: TextView
+    private lateinit var modeSecondary: TextView
     private lateinit var routePrimary: TextView
     private lateinit var routeSecondary: TextView
     private val stateHandler = Handler(Looper.getMainLooper())
@@ -68,12 +67,14 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildContent())
+        refreshModeSummary()
         refreshRouteSummary()
         refreshState()
     }
 
     override fun onResume() {
         super.onResume()
+        refreshModeSummary()
         refreshRouteSummary()
         stateHandler.removeCallbacks(stateRefresh)
         stateHandler.post(stateRefresh)
@@ -156,15 +157,6 @@ class MainActivity : Activity() {
             languageButton,
             LinearLayout.LayoutParams(dp(responsive.iconButtonDp), dp(responsive.iconButtonDp)),
         )
-        val settingsButton = svgIconButton(R.raw.amri_settings_button, "Settings / Настройки").apply {
-            setOnClickListener { showRuntimeSettingsDialog() }
-        }
-        header.addView(
-            settingsButton,
-            LinearLayout.LayoutParams(dp(responsive.iconButtonDp), dp(responsive.iconButtonDp)).apply {
-                marginStart = dp(if (configuration.screenWidthDp < 400) 4 else 8)
-            },
-        )
         foreground.addView(header)
         foreground.addView(space(24))
 
@@ -196,9 +188,7 @@ class MainActivity : Activity() {
         }
         content.addView(protectionCard)
         content.addView(space(AmriTheme.sectionGap))
-        content.addView(text(getString(R.string.mode), 19f, Color.WHITE, true))
-        content.addView(space(10))
-        content.addView(modeSelector())
+        content.addView(modeSelectionCard())
         content.addView(space(AmriTheme.sectionGap))
         content.addView(routeSelectionCard())
 
@@ -218,52 +208,93 @@ class MainActivity : Activity() {
         return root
     }
 
-    private fun modeSelector(): View {
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val labels = resources.getStringArray(R.array.vpn_modes)
-        val preferences = uiPreferences()
-        val routingMode = preferences.getInt(KEY_ROUTING_MODE, AndroidRoutingModePolicy.SMART)
-        val smartRoutingToggle = preferences.getBoolean(KEY_SMART_ROUTING, true)
-        val selected = if (AndroidRoutingModePolicy.smartRoutingEnabled(routingMode, smartRoutingToggle)) {
-            AndroidRoutingModePolicy.SMART
-        } else {
-            AndroidRoutingModePolicy.MANUAL
-        }.coerceIn(labels.indices)
-        val buttons = mutableListOf<Button>()
-        fun refreshButtons(active: Int) {
-            buttons.forEachIndexed { index, button ->
-                button.backgroundTintList = ColorStateList.valueOf(
-                    if (index == active) AmriTheme.accentColor else AmriTheme.inactiveControlColor,
-                )
-            }
+    private fun modeSelectionCard(): View = card(16).apply {
+        isClickable = true
+        isFocusable = true
+        contentDescription = getString(R.string.choose_mode)
+        setOnClickListener { showModeDialog() }
+        addView(text(getString(R.string.mode), 13f, AmriTheme.mutedTextColor, true))
+        val row = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
+        val copy = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            modePrimary = text("", 17f, Color.WHITE, true).apply { maxLines = 1 }
+            modeSecondary = text("", 12f, AmriTheme.detailTextColor, false).apply { maxLines = 3 }
+            addView(modePrimary)
+            addView(modeSecondary)
+        }
+        row.addView(copy, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(text("›", 28f, AmriTheme.actionTextColor, false).apply {
+            gravity = Gravity.CENTER
+        })
+        addView(row)
+    }
+
+    private fun currentMode(): Int = AndroidRoutingModePolicy.normalize(
+        uiPreferences().getInt(KEY_ROUTING_MODE, AndroidRoutingModePolicy.SMART),
+    )
+
+    private fun refreshModeSummary() {
+        if (!::modePrimary.isInitialized || !::modeSecondary.isInitialized) return
+        val labels = resources.getStringArray(R.array.vpn_modes)
+        val selected = currentMode().coerceIn(labels.indices)
+        modePrimary.text = labels[selected]
+        modeSecondary.text = if (selected == AndroidRoutingModePolicy.SMART) {
+            getString(R.string.mode_smart_summary)
+        } else {
+            getString(R.string.mode_manual_summary)
+        }
+    }
+
+    private fun showModeDialog() {
+        val selected = currentMode()
+        val labels = resources.getStringArray(R.array.vpn_modes)
+        val descriptions = intArrayOf(R.string.mode_smart_description, R.string.mode_manual_description)
+        val tradeoffs = intArrayOf(R.string.mode_smart_tradeoff, R.string.mode_manual_tradeoff)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+        }
+        lateinit var dialog: AlertDialog
         labels.forEachIndexed { index, label ->
-            val button = Button(this).apply {
-                text = label
-                isAllCaps = false
-                setTextColor(Color.WHITE)
+            val option = card(14).apply {
+                isClickable = true
+                isFocusable = true
+                addView(text(if (index == selected) "✓ $label" else label, 17f, Color.WHITE, true))
+                addView(space(4))
+                addView(text(getString(descriptions[index]), 13f, AmriTheme.detailTextColor, false))
+                addView(space(5))
+                addView(text(getString(tradeoffs[index]), 12f, AmriTheme.mutedTextColor, false))
                 setOnClickListener {
                     val smart = index == AndroidRoutingModePolicy.SMART
                     uiPreferences().edit()
                         .putInt(KEY_ROUTING_MODE, index)
                         .putBoolean(KEY_SMART_ROUTING, smart)
                         .apply()
-                    refreshButtons(index)
+                    refreshModeSummary()
                     refreshRouteSummary()
+                    dialog.dismiss()
                 }
             }
-            buttons += button
-            row.addView(button, LinearLayout.LayoutParams(0, -2, 1f))
+            container.addView(option, LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(8)
+            })
         }
-        refreshButtons(selected)
-        return HorizontalScrollView(this).apply {
-            isFillViewport = true
-            isHorizontalScrollBarEnabled = false
-            addView(row, FrameLayout.LayoutParams(-1, -2))
-        }
+        dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.choose_mode))
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dialog.show()
     }
 
     private fun routeSelectionCard(): View = card(16).apply {
+        isClickable = true
+        isFocusable = true
+        contentDescription = getString(R.string.choose_server)
+        setOnClickListener { showServerDialog() }
         val row = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -277,15 +308,9 @@ class MainActivity : Activity() {
             addView(routeSecondary)
         }
         row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
-        row.addView(
-            svgIconButton(R.raw.amri_more_button, getString(R.string.choose_server)).apply {
-                setOnClickListener { showServerDialog() }
-            },
-            LinearLayout.LayoutParams(
-                dp(maxOf(48, AmriTheme.iconButtonSize)),
-                dp(maxOf(48, AmriTheme.iconButtonSize)),
-            ),
-        )
+        row.addView(text("›", 28f, AmriTheme.actionTextColor, false).apply {
+            gravity = Gravity.CENTER
+        })
         addView(row)
     }
 
@@ -316,29 +341,6 @@ class MainActivity : Activity() {
             nodes.size,
             AndroidNodeStore.safeFingerprint(nodes[selected]),
         )
-    }
-
-    private fun showRuntimeSettingsDialog() {
-        val preferences = uiPreferences()
-        val smart = AndroidRoutingModePolicy.smartRoutingEnabled(
-            preferences.getInt(KEY_ROUTING_MODE, AndroidRoutingModePolicy.SMART),
-            preferences.getBoolean(KEY_SMART_ROUTING, true),
-        )
-        val labels = resources.getStringArray(R.array.vpn_modes)
-        val modeIndex = if (smart) AndroidRoutingModePolicy.SMART else AndroidRoutingModePolicy.MANUAL
-        val modeLabel = labels.getOrElse(modeIndex) { if (smart) "Smart" else "Manual" }
-        val message = listOf(
-            "${getString(R.string.mode)}: $modeLabel",
-            getString(R.string.dns_protection_description),
-            getString(R.string.kill_switch_description),
-            getString(R.string.local_learning_description),
-            getString(R.string.federated_learning_description),
-        ).joinToString("\n\n")
-        AlertDialog.Builder(this)
-            .setTitle("AMRI VPN")
-            .setMessage(message)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
     }
 
     private fun showServerDialog() {
@@ -378,15 +380,21 @@ class MainActivity : Activity() {
     private fun showNodeImportDialog() {
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = 5
-            maxLines = 12
+            minLines = 4
+            maxLines = 8
             hint = "vless://…\nvmess://…\ntrojan://…\nss://…"
-            setPadding(dp(16), dp(10), dp(16), dp(10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), 0, dp(20), 0)
+            addView(text(getString(R.string.import_vpn_links_hint), 13f, AmriTheme.detailTextColor, false))
+            addView(space(10))
+            addView(input, LinearLayout.LayoutParams(-1, -2))
         }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.import_vpn_links))
-            .setMessage(getString(R.string.import_vpn_links_hint))
-            .setView(input)
+            .setView(content)
             .setPositiveButton(getString(R.string.import_action)) { _, _ ->
                 runCatching {
                     val store = AndroidNodeStore(this)

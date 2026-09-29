@@ -3,6 +3,8 @@
     <string name="app_name">AMRI VPN</string>
     <string name="notification_channel">AMRI VPN</string>
     <string name="notification_ready">VPN-служба готова</string>
+    <string name="notification_connecting">Защищённое подключение…</string>
+    <string name="notification_protected">Защита включена</string>
     <string name="product_subtitle">Адаптивный многомаршрутный VPN</string>
     <string name="mode">Режим</string>
     <string name="smart_routing">Умная маршрутизация</string>
@@ -19,27 +21,30 @@
     <string name="automatic_route">AMRI автоматически</string>
     <string name="no_imported_servers">Импортированных серверов пока нет; AMRI использует единый пул, когда он доступен</string>
     <string name="choose_server">Выбрать сервер</string>
-    <string name="status_service_ready">VPN-служба готова</string>
-    <string name="detail_service_ready">Публичный трафик не перехватывается до подключения защищённого транспорта</string>
+    <string name="status_service_ready">Защищённое подключение…</string>
+    <string name="detail_service_ready">Проверяем выбранный сервер до передачи трафика Android в туннель</string>
     <string name="status_protected">Защита включена</string>
     <string name="detail_protected">Публичный трафик проходит через проверенный туннель AMRI</string>
     <string name="stop">Остановить</string>
-    <string name="status_preparing">Подготовка…</string>
-    <string name="detail_preparing">Android создаёт защищённый системный интерфейс</string>
+    <string name="cancel">Отменить</string>
+    <string name="status_preparing">Запуск…</string>
+    <string name="detail_preparing">Проверяем разрешение Android и физическую сеть</string>
     <string name="wait">Подождите</string>
-    <string name="status_failed">Не удалось подготовить VPN</string>
-    <string name="detail_failed">Системный интерфейс не создан; обычная сеть не затронута</string>
+    <string name="status_failed">Не удалось подключиться</string>
+    <string name="detail_failed">Сервер или защищённый туннель недоступен. Трафик остаётся вне AMRI.</string>
     <string name="retry">Повторить</string>
     <string name="status_off">Защита выключена</string>
     <string name="detail_off">Подготовить Android VpnService для транспорта AMRI</string>
     <string name="prepare_vpn">Подготовить VPN</string>
+    <string name="choose_mode">Выбрать режим</string>
+    <string name="mode_smart_summary">Автовыбор доступного сервера и переключение при сбое</string>
+    <string name="mode_manual_summary">Подключение только к выбранному серверу</string>
+    <string name="mode_smart_description">AMRI проверяет импортированные серверы, выбирает быстро отвечающий и пробует следующий, если подключение не удалось.</string>
+    <string name="mode_manual_description">AMRI использует только сервер, выбранный в разделе «Выбор маршрута».</string>
+    <string name="mode_smart_tradeoff">Плюс: автоматическое восстановление. Ограничение: короткие проверки серверов при подключении.</string>
+    <string name="mode_manual_tradeoff">Плюс: предсказуемый сервер. Ограничение: без автоматического переключения.</string>
     <string-array name="vpn_modes">
         <item>Smart</item>
-        <item>Скорость</item>
-        <item>Ping</item>
-        <item>Приватность</item>
-        <item>Стриминг</item>
-        <item>Игры</item>
         <item>Ручной</item>
     </string-array>
 </resources>

@@ -29,7 +29,7 @@ internal fun presentControllerState(state: VpnControllerState): MainScreenPresen
         VpnControllerState.SERVICE_READY -> MainScreenPresentation(
             R.string.status_service_ready,
             R.string.detail_service_ready,
-            R.string.stop,
+            R.string.cancel,
             powerOn = false,
             actionEnabled = true,
             action = MainScreenAction.STOP,

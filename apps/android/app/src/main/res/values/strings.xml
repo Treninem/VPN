@@ -3,6 +3,8 @@
     <string name="app_name">AMRI VPN</string>
     <string name="notification_channel">AMRI VPN</string>
     <string name="notification_ready">VPN service is ready</string>
+    <string name="notification_connecting">Connecting securely…</string>
+    <string name="notification_protected">Protection is on</string>
     <string name="product_subtitle">Adaptive multi-route VPN</string>
     <string name="mode">Mode</string>
     <string name="smart_routing">Smart failover</string>
@@ -21,18 +23,26 @@
     <string name="choose_server">Choose server</string>
     <string name="status_protected">Protection is on</string>
     <string name="detail_protected">Transport, packet forwarding, DNS path and public egress are verified for this tunnel</string>
-    <string name="status_service_ready">VPN service is ready</string>
-    <string name="detail_service_ready">Public traffic is not captured until a protected transport is connected</string>
+    <string name="status_service_ready">Connecting securely…</string>
+    <string name="detail_service_ready">Checking the selected server before Android routes traffic through it</string>
     <string name="stop">Stop</string>
-    <string name="status_preparing">Preparing…</string>
-    <string name="detail_preparing">Android is creating a protected system interface</string>
+    <string name="cancel">Cancel</string>
+    <string name="status_preparing">Starting…</string>
+    <string name="detail_preparing">Checking Android permission and the physical network</string>
     <string name="wait">Please wait</string>
-    <string name="status_failed">VPN preparation failed</string>
-    <string name="detail_failed">The protected route could not be created; normal networking is unchanged unless Android lockdown is enabled</string>
+    <string name="status_failed">Couldn’t connect</string>
+    <string name="detail_failed">The server or protected tunnel was unavailable. Traffic remains outside AMRI.</string>
     <string name="retry">Retry</string>
     <string name="status_off">Protection is off</string>
     <string name="detail_off">Prepare Android VpnService for the AMRI transport</string>
     <string name="prepare_vpn">Prepare VPN</string>
+    <string name="choose_mode">Choose mode</string>
+    <string name="mode_smart_summary">Automatically choose an available server and fail over</string>
+    <string name="mode_manual_summary">Connect only to the selected server</string>
+    <string name="mode_smart_description">AMRI checks imported servers, chooses a responsive one and tries the next if connection fails.</string>
+    <string name="mode_manual_description">AMRI uses only the server selected under Route selection.</string>
+    <string name="mode_smart_tradeoff">Benefit: automatic recovery. Trade-off: brief server checks while connecting.</string>
+    <string name="mode_manual_tradeoff">Benefit: predictable server. Trade-off: no automatic failover.</string>
     <string-array name="vpn_modes">
         <item>Smart</item>
         <item>Manual</item>

@@ -3,6 +3,8 @@
     <string name="app_name">AMRI VPN</string>
     <string name="notification_channel">AMRI VPN</string>
     <string name="notification_ready">O serviço VPN está pronto</string>
+    <string name="notification_connecting">Conexão segura…</string>
+    <string name="notification_protected">Proteção ativada</string>
     <string name="product_subtitle">VPN adaptativa de múltiplas rotas</string>
     <string name="mode">Modo</string>
     <string name="smart_routing">Roteamento inteligente</string>
@@ -19,27 +21,30 @@
     <string name="automatic_route">AMRI automático</string>
     <string name="no_imported_servers">Ainda não há servidores importados; o AMRI usará o pool unificado quando disponível</string>
     <string name="choose_server">Escolher servidor</string>
-    <string name="status_service_ready">O serviço VPN está pronto</string>
-    <string name="detail_service_ready">O tráfego público não é capturado até conectar um transporte protegido</string>
+    <string name="status_service_ready">Conexão segura…</string>
+    <string name="detail_service_ready">Verificando o servidor antes de direcionar o tráfego pelo túnel</string>
     <string name="status_protected">Proteção ativada</string>
     <string name="detail_protected">O tráfego público passa pelo túnel AMRI verificado</string>
     <string name="stop">Parar</string>
-    <string name="status_preparing">Preparando…</string>
-    <string name="detail_preparing">O Android está criando uma interface protegida</string>
+    <string name="cancel">Cancelar</string>
+    <string name="status_preparing">Iniciando…</string>
+    <string name="detail_preparing">Verificando a permissão do Android e a rede física</string>
     <string name="wait">Aguarde</string>
-    <string name="status_failed">Falha ao preparar a VPN</string>
-    <string name="detail_failed">A interface não foi criada; a rede normal não mudou</string>
+    <string name="status_failed">Não foi possível conectar</string>
+    <string name="detail_failed">O servidor ou túnel não estava disponível. O tráfego permanece fora do AMRI.</string>
     <string name="retry">Tentar novamente</string>
     <string name="status_off">Proteção desativada</string>
     <string name="detail_off">Preparar o VpnService para o transporte AMRI</string>
     <string name="prepare_vpn">Preparar VPN</string>
+    <string name="choose_mode">Escolher modo</string>
+    <string name="mode_smart_summary">Escolher um servidor disponível e alternar em caso de falha</string>
+    <string name="mode_manual_summary">Conectar apenas ao servidor selecionado</string>
+    <string name="mode_smart_description">O AMRI verifica os servidores importados, escolhe um responsivo e tenta o próximo se houver falha.</string>
+    <string name="mode_manual_description">O AMRI usa apenas o servidor escolhido em Seleção de rota.</string>
+    <string name="mode_smart_tradeoff">Vantagem: recuperação automática. Limite: verificações rápidas ao conectar.</string>
+    <string name="mode_manual_tradeoff">Vantagem: servidor previsível. Limite: sem alternância automática.</string>
     <string-array name="vpn_modes">
         <item>Smart</item>
-        <item>Velocidade</item>
-        <item>Ping</item>
-        <item>Privacidade</item>
-        <item>Streaming</item>
-        <item>Jogos</item>
         <item>Manual</item>
     </string-array>
 </resources>

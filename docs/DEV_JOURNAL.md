@@ -230,6 +230,27 @@ PR #59 (`work/final-responsive-release`, code head `35f3243092c05534f5e99898b179
 
 Remote compare confirmed one commit ahead of `main`, zero commits behind, with exactly the eight reviewed responsive-stage files. PR #59 was reported mergeable and clean after all 11 check-runs completed (10 success, one expected publish skip).
 
+## Android real-device UX and connection stabilization
+
+Owner screenshots and a real-device public-IP check established two separate facts: the protected tunnel did change public egress, but the UI exposed misleading intermediate state and mode controls. No device address or imported credential is recorded in the repository.
+
+What changed:
+
+- Android now exposes only the two routing behaviors that exist in runtime code: Smart failover and Manual selection. Legacy stored mode values normalize fail-closed to Manual.
+- One compact mode card replaces the four-to-seven button strip. Its dialog explains behavior, benefit and limitation for each mode in all nine supported languages.
+- The informational settings button and separate ellipsis button were removed. The route card itself is the single server-management affordance.
+- Import UI uses a compact custom body rather than an oversized message-plus-editor dialog.
+- Connecting, protected, failed and cancel states now describe the real controller state instead of claiming that a control-only VPN interface is protection.
+- Encrypted SOCKS egress is verified before installing Android's default-route TUN, so failed Smart candidates do not repeatedly raise and tear down the system VPN indicator.
+- Physical upstream observation explicitly requests `NOT_VPN` networks and retains the chosen Wi-Fi/cellular network while it remains available. AMRI's own VPN can no longer be mistaken for an upstream change and trigger a restart loop.
+- Foreground notification text distinguishes connecting from verified protection.
+
+Why: the previous UI showed Speed, Ping, Privacy, Streaming and Gaming as distinct modes even though every non-Smart value executed the same Manual policy. The service also established a temporary control TUN before verifying a server and observed Android's default network, which becomes the VPN itself after connection; together these caused false readiness and visible Wi-Fi/mobile/VPN flapping.
+
+Trade-off: Smart mode still performs short encrypted server checks before connection, but Android traffic remains on the ordinary network until a candidate is verified and the single protected TUN is established. Manual mode is deterministic and deliberately has no cross-node failover.
+
+Local verification: exact canonical visual assets, generated theme and nine-locale resource completeness pass; pure policies cover legacy mode normalization and physical-network selection. This environment does not provide Gradle, Rust or Android SDK executors, so current-head JVM/NDK/APK verification remains mandatory in CI before merge or artifact handoff.
+
 ## CURRENT STATE
 
 - Canonical `main` перед текущим визуальным этапом: `af26cc9579733a4a4fdc8c9ae46141c0d5fd3488`.

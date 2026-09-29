@@ -8,7 +8,7 @@ internal enum class NetworkRecoveryAction {
 
 /**
  * Tracks only the opaque Android Network handle. No SSID, carrier, address or other personal
- * network metadata is stored. A changed default network invalidates the current protected
+ * network metadata is stored. A changed physical upstream invalidates the current protected
  * generation so transport and public TUN ownership can be re-established on the new path.
  */
 internal class AndroidNetworkRecoveryGate {

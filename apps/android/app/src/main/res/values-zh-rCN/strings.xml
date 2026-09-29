@@ -3,6 +3,8 @@
     <string name="app_name">AMRI VPN</string>
     <string name="notification_channel">AMRI VPN</string>
     <string name="notification_ready">VPN 服务已就绪</string>
+    <string name="notification_connecting">正在安全连接…</string>
+    <string name="notification_protected">保护已开启</string>
     <string name="product_subtitle">自适应多路由 VPN</string>
     <string name="mode">模式</string>
     <string name="smart_routing">智能路由</string>
@@ -19,27 +21,30 @@
     <string name="automatic_route">AMRI 自动选择</string>
     <string name="no_imported_servers">尚未导入服务器；统一池可用后 AMRI 将自动使用</string>
     <string name="choose_server">选择服务器</string>
-    <string name="status_service_ready">VPN 服务已就绪</string>
-    <string name="detail_service_ready">连接安全传输前不会接管公共流量</string>
+    <string name="status_service_ready">正在安全连接…</string>
+    <string name="detail_service_ready">正在验证服务器，验证前不会将流量导入隧道</string>
     <string name="status_protected">保护已开启</string>
     <string name="detail_protected">公网流量正通过已验证的 AMRI 隧道</string>
     <string name="stop">停止</string>
-    <string name="status_preparing">正在准备…</string>
-    <string name="detail_preparing">Android 正在创建安全系统接口</string>
+    <string name="cancel">取消</string>
+    <string name="status_preparing">正在启动…</string>
+    <string name="detail_preparing">正在检查 Android 权限和物理网络</string>
     <string name="wait">请稍候</string>
-    <string name="status_failed">VPN 准备失败</string>
-    <string name="detail_failed">未创建系统接口；普通网络未受影响</string>
+    <string name="status_failed">无法连接</string>
+    <string name="detail_failed">服务器或安全隧道不可用。流量仍在 AMRI 之外。</string>
     <string name="retry">重试</string>
     <string name="status_off">保护已关闭</string>
     <string name="detail_off">为 AMRI 传输准备 VpnService</string>
     <string name="prepare_vpn">准备 VPN</string>
+    <string name="choose_mode">选择模式</string>
+    <string name="mode_smart_summary">自动选择可用服务器并在失败时切换</string>
+    <string name="mode_manual_summary">仅连接所选服务器</string>
+    <string name="mode_smart_description">AMRI 检查已导入的服务器，选择响应正常的服务器，并在失败时尝试下一个。</string>
+    <string name="mode_manual_description">AMRI 仅使用“路由选择”中选定的服务器。</string>
+    <string name="mode_smart_tradeoff">优点：自动恢复。限制：连接时会进行短暂的服务器检查。</string>
+    <string name="mode_manual_tradeoff">优点：服务器固定。限制：不会自动切换。</string>
     <string-array name="vpn_modes">
         <item>智能</item>
-        <item>速度</item>
-        <item>延迟</item>
-        <item>隐私</item>
-        <item>流媒体</item>
-        <item>游戏</item>
         <item>手动</item>
     </string-array>
 </resources>

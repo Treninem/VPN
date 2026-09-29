@@ -28,6 +28,7 @@ class MainScreenPresentationTest {
     fun control_only_service_can_stop_but_never_looks_protected() {
         val ready = presentControllerState(VpnControllerState.SERVICE_READY)
         assertEquals(MainScreenAction.STOP, ready.action)
+        assertEquals(R.string.cancel, ready.actionLabelRes)
         assertFalse(ready.powerOn)
     }
 }

@@ -185,9 +185,7 @@ def main() -> None:
         "R.raw.amri_background_mobile",
         "R.raw.amri_vpn_power_on",
         "R.raw.amri_vpn_power_off",
-        "R.raw.amri_settings_button",
         "R.raw.amri_language_button",
-        "R.raw.amri_more_button",
     }
     for reference in sorted(android_runtime_refs):
         if reference not in activity:

@@ -1,6 +1,7 @@
 package ru.amri.vpn
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,6 +25,13 @@ class AndroidRoutingModePolicyTest {
     fun legacyNonZeroModesFailClosedToManualBehavior() {
         for (legacyMode in 2..6) {
             assertFalse(AndroidRoutingModePolicy.smartRoutingEnabled(legacyMode, true))
+            assertEquals(AndroidRoutingModePolicy.MANUAL, AndroidRoutingModePolicy.normalize(legacyMode))
         }
+    }
+
+    @Test
+    fun unexpectedStoredModesNormalizeToManual() {
+        assertEquals(AndroidRoutingModePolicy.MANUAL, AndroidRoutingModePolicy.normalize(-1))
+        assertEquals(AndroidRoutingModePolicy.MANUAL, AndroidRoutingModePolicy.normalize(Int.MAX_VALUE))
     }
 }

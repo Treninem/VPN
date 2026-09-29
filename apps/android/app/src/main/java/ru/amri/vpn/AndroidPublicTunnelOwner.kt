@@ -51,6 +51,11 @@ internal class AndroidPublicTunnelOwner(
         stopLocked()
 
         if (!loopbackSocksReady(config.localSocksPort)) return null
+        // Prove encrypted public egress before installing Android's default-route VPN. A bad
+        // candidate must not make the VPN indicator and Wi-Fi/cellular selection flap while
+        // Smart mode tries the next candidate.
+        val egressVerified = egressVerifier.verify(config.localSocksPort)
+        if (!egressVerified) return null
         val mtu = try {
             nativeBridge.resetAdaptiveMtu(config.safeInitialMtu)
         } catch (_: Exception) {
@@ -84,7 +89,6 @@ internal class AndroidPublicTunnelOwner(
         // can reach the real VPN server without recursively entering the TUN. Because a raw socket
         // opened by this process would also bypass the TUN, egress must be proven THROUGH the
         // confirmed local SOCKS transport instead of by a direct app-originated TCP probe.
-        val egressVerified = egressVerifier.verify(config.localSocksPort)
         val protectionState = try {
             nativeBridge.evaluateProtection(
                 requested = true,

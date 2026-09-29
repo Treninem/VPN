@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.ParcelFileDescriptor
 import ru.amri.vpn.nativebridge.AmriNativeBridge
 import ru.amri.vpn.nativebridge.ExternalTransportState
 import java.io.File
@@ -22,7 +21,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 class AmriVpnService : VpnService() {
-    private var controlInterface: ParcelFileDescriptor? = null
     private var networkObserver: AndroidNetworkObserver? = null
     private val networkLease = AndroidNetworkLease()
     private val networkRecoveryGate = AndroidNetworkRecoveryGate()
@@ -85,7 +83,6 @@ class AmriVpnService : VpnService() {
         restartWhenNetworkReady = false
         stopProtectionWatchdog()
         stopPublicForwarding()
-        closeInterface()
         stopNetworkObservation()
         runCatching { AmriNativeBridge.stopExternalTransport() }
         transportExecutor.shutdownNow()
@@ -97,7 +94,7 @@ class AmriVpnService : VpnService() {
         if (!STATE.startPreparing()) return
         val generation = lifecycleGeneration.incrementAndGet()
         createNotificationChannel()
-        val notification = buildNotification()
+        val notification = buildNotification(R.string.notification_connecting)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIFICATION_ID,
@@ -111,10 +108,6 @@ class AmriVpnService : VpnService() {
         try {
             check(runtimeOwner.initialize()) { "AMRI native runtime initialization failed" }
             startNetworkObservation()
-            if (controlInterface == null) {
-                controlInterface = establishControlInterface()
-                    ?: error("Android refused to establish the VPN interface")
-            }
             STATE.serviceReady()
             transportExecutor.execute { startProtectedGeneration(generation) }
         } catch (_: Exception) {
@@ -146,17 +139,17 @@ class AmriVpnService : VpnService() {
                     }
                     check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
                     rememberSelectedNode(index)
+                    updateNotification(R.string.notification_protected)
                     return
                 } catch (error: Exception) {
                     lastFailure = error
                     stopProtectionWatchdog()
                     if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
                     stopPublicForwarding()
-                    val controlReady = restoreControlInterfaceOrFail()
                     if (transportStarted) runCatching { AmriNativeBridge.stopExternalTransport() }
                     if (generation != lifecycleGeneration.get()) throw error
-                    if (!controlReady || STATE.state != VpnControllerState.SERVICE_READY) {
-                        throw error("Android protected path could not be restored for failover")
+                    check(STATE.state == VpnControllerState.SERVICE_READY) {
+                        "Android protected path is not ready for failover"
                     }
                 }
             }
@@ -166,7 +159,6 @@ class AmriVpnService : VpnService() {
                 stopProtectionWatchdog()
                 if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
                 stopPublicForwarding()
-                restoreControlInterfaceOrFail()
                 STATE.fail()
                 stopForeground(STOP_FOREGROUND_REMOVE)
             }
@@ -179,7 +171,6 @@ class AmriVpnService : VpnService() {
         restartWhenNetworkReady = false
         stopProtectionWatchdog()
         stopPublicForwarding()
-        closeInterface()
         stopNetworkObservation()
         transportExecutor.execute {
             runCatching { AmriNativeBridge.stopExternalTransport() }
@@ -198,14 +189,13 @@ class AmriVpnService : VpnService() {
         restartWhenNetworkReady = false
         stopProtectionWatchdog()
         stopPublicForwarding()
-        closeInterface()
         stopNetworkObservation()
         STATE.fail()
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     /**
-     * Promotes the control-only service to a verified public packet-forwarding generation.
+     * Creates the public packet-forwarding generation only after encrypted egress is reachable.
      *
      * The current external transport runs as an AMRI subprocess. The public TUN excludes AMRI's
      * own package, so that subprocess cannot route back into the TUN it feeds. Future in-process
@@ -214,7 +204,6 @@ class AmriVpnService : VpnService() {
     internal fun activatePublicForwarding(localSocksPort: Int, safeInitialMtu: Int): Boolean {
         if (STATE.state != VpnControllerState.SERVICE_READY) return false
 
-        closeInterface()
         val readiness = try {
             publicTunnelOwner.start(AndroidPublicTunnelConfig(localSocksPort, safeInitialMtu))
         } catch (_: Exception) {
@@ -226,7 +215,6 @@ class AmriVpnService : VpnService() {
             return true
         }
 
-        restoreControlInterfaceOrFail()
         return false
     }
 
@@ -235,7 +223,7 @@ class AmriVpnService : VpnService() {
         if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
         stopPublicForwarding()
         if (STATE.state != VpnControllerState.SERVICE_READY) return false
-        return restoreControlInterfaceOrFail()
+        return true
     }
 
     internal fun isPublicForwardingActive(): Boolean =
@@ -263,7 +251,6 @@ class AmriVpnService : VpnService() {
         stopProtectionWatchdog()
         if (STATE.state == VpnControllerState.PROTECTED) STATE.protectionLost()
         stopPublicForwarding()
-        restoreControlInterfaceOrFail()
         transportExecutor.execute {
             runCatching { AmriNativeBridge.stopExternalTransport() }
             if (generation == lifecycleGeneration.get()) {
@@ -305,28 +292,6 @@ class AmriVpnService : VpnService() {
         }
     }
 
-    private fun restoreControlInterfaceOrFail(): Boolean {
-        if (controlInterface != null) return true
-        controlInterface = establishControlInterface()
-        if (controlInterface == null) {
-            STATE.fail()
-            return false
-        }
-        return true
-    }
-
-    private fun establishControlInterface(): ParcelFileDescriptor? = try {
-        Builder()
-            .setSession(getString(R.string.app_name))
-            .setMtu(1500)
-            .addAddress(CONTROL_ADDRESS, 32)
-            .addRoute(CONTROL_ADDRESS, 32)
-            .setBlocking(false)
-            .establish()
-    } catch (_: Exception) {
-        null
-    }
-
     private fun selectedNodeCandidates(): List<Pair<Int, String>> {
         val nodes = AndroidNodeStore(this).load()
         if (nodes.isEmpty()) return emptyList()
@@ -355,11 +320,6 @@ class AmriVpnService : VpnService() {
 
     private fun stopPublicForwarding() {
         publicTunnelOwner.stop()
-    }
-
-    private fun closeInterface() {
-        controlInterface?.close()
-        controlInterface = null
     }
 
     private fun startNetworkObservation() {
@@ -408,7 +368,7 @@ class AmriVpnService : VpnService() {
         )
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(textRes: Int): Notification {
         val openApp = PendingIntent.getActivity(
             this,
             0,
@@ -418,10 +378,15 @@ class AmriVpnService : VpnService() {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.amri_app_icon)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.notification_ready))
+            .setContentText(getString(textRes))
             .setContentIntent(openApp)
             .setOngoing(true)
             .build()
+    }
+
+    private fun updateNotification(textRes: Int) {
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, buildNotification(textRes))
     }
 
     companion object {
@@ -431,7 +396,6 @@ class AmriVpnService : VpnService() {
 
         private const val CHANNEL_ID = "amri_vpn_connection"
         private const val NOTIFICATION_ID = 1001
-        private const val CONTROL_ADDRESS = "10.253.0.1"
         private const val PROTECTION_WATCHDOG_MS = 1000L
         private const val SAFE_INITIAL_MTU = 1420
         private const val TRANSPORT_LIBRARY_NAME = "libsing_box.so"

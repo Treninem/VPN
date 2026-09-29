@@ -3,6 +3,8 @@
     <string name="app_name">AMRI VPN</string>
     <string name="notification_channel">AMRI VPN</string>
     <string name="notification_ready">VPN सेवा तैयार है</string>
+    <string name="notification_connecting">सुरक्षित कनेक्शन…</string>
+    <string name="notification_protected">सुरक्षा चालू है</string>
     <string name="product_subtitle">अनुकूली मल्टी-रूट VPN</string>
     <string name="mode">मोड</string>
     <string name="smart_routing">स्मार्ट रूटिंग</string>
@@ -19,27 +21,30 @@
     <string name="automatic_route">AMRI स्वचालित</string>
     <string name="no_imported_servers">अभी कोई सर्वर आयातित नहीं है; उपलब्ध होने पर AMRI एकीकृत पूल का उपयोग करेगा</string>
     <string name="choose_server">सर्वर चुनें</string>
-    <string name="status_service_ready">VPN सेवा तैयार है</string>
-    <string name="detail_service_ready">सुरक्षित ट्रांसपोर्ट जुड़ने तक सार्वजनिक ट्रैफ़िक कैप्चर नहीं होगा</string>
+    <string name="status_service_ready">सुरक्षित कनेक्शन…</string>
+    <string name="detail_service_ready">ट्रैफ़िक को टनल में भेजने से पहले सर्वर की जाँच हो रही है</string>
     <string name="status_protected">सुरक्षा चालू है</string>
     <string name="detail_protected">सार्वजनिक ट्रैफ़िक सत्यापित AMRI टनल से होकर गुजरता है</string>
     <string name="stop">रोकें</string>
-    <string name="status_preparing">तैयारी…</string>
-    <string name="detail_preparing">Android सुरक्षित सिस्टम इंटरफ़ेस बना रहा है</string>
+    <string name="cancel">रद्द करें</string>
+    <string name="status_preparing">शुरू हो रहा है…</string>
+    <string name="detail_preparing">Android अनुमति और भौतिक नेटवर्क की जाँच हो रही है</string>
     <string name="wait">कृपया प्रतीक्षा करें</string>
-    <string name="status_failed">VPN तैयारी विफल</string>
-    <string name="detail_failed">सिस्टम इंटरफ़ेस नहीं बना; सामान्य नेटवर्क अपरिवर्तित है</string>
+    <string name="status_failed">कनेक्ट नहीं हो सका</string>
+    <string name="detail_failed">सर्वर या सुरक्षित टनल उपलब्ध नहीं था। ट्रैफ़िक AMRI से बाहर रहता है।</string>
     <string name="retry">फिर प्रयास करें</string>
     <string name="status_off">सुरक्षा बंद है</string>
     <string name="detail_off">AMRI ट्रांसपोर्ट के लिए VpnService तैयार करें</string>
     <string name="prepare_vpn">VPN तैयार करें</string>
+    <string name="choose_mode">मोड चुनें</string>
+    <string name="mode_smart_summary">उपलब्ध सर्वर स्वतः चुनें और विफलता पर बदलें</string>
+    <string name="mode_manual_summary">केवल चुने गए सर्वर से कनेक्ट करें</string>
+    <string name="mode_smart_description">AMRI आयातित सर्वरों की जाँच करता है, जवाब देने वाला सर्वर चुनता है और विफलता पर अगला आज़माता है।</string>
+    <string name="mode_manual_description">AMRI केवल रूट चयन में चुने गए सर्वर का उपयोग करता है।</string>
+    <string name="mode_smart_tradeoff">लाभ: स्वचालित रिकवरी। सीमा: कनेक्ट करते समय छोटी सर्वर जाँचें।</string>
+    <string name="mode_manual_tradeoff">लाभ: निश्चित सर्वर। सीमा: स्वचालित बदलाव नहीं।</string>
     <string-array name="vpn_modes">
         <item>स्मार्ट</item>
-        <item>गति</item>
-        <item>पिंग</item>
-        <item>गोपनीयता</item>
-        <item>स्ट्रीमिंग</item>
-        <item>गेमिंग</item>
         <item>मैनुअल</item>
     </string-array>
 </resources>
