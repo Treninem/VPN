@@ -12,7 +12,7 @@
 - Multi-secret credentials имеют typed shape. Make-before-break обязателен; аварийный failover не должен блокироваться hysteresis.
 - Android current `Network` остаётся ephemeral и не логируется/не сохраняется.
 - Adaptive MTU реагирует только на классифицированный PMTU/fragmentation evidence, не на generic packet loss.
-- Android active TUN routing не равен Android OS lockdown. Windows live Wintun route не равен crash-persistent WFP kill switch.
+- Android active TUN routing не равен Android OS lockdown. Windows protected lifecycle дополнительно удерживает fail-closed WFP-фильтры на время активной generation; это не постоянная системная политика вне жизненного цикла AMRI.
 - Canonical artwork — `assets/brand`, byte integrity — `asset-blobs.lock`. Core-ветки не заменяют утверждённые изображения.
 - Developer visual tools не включаются в Windows Setup/Android APK.
 
@@ -61,7 +61,7 @@ Final PR CI #222: Windows fmt/theme/test/check + Android JVM/NDK/APK ABI/assets 
 - normal teardown: system forwarding/routes/DNS first, encrypted transport second;
 - Windows ON artwork только после полного readiness gate.
 
-Важно: это active-generation leak/default-route capture, не crash-persistent WFP lockdown. Отдельный WFP kill switch остаётся будущим hardening этапом.
+После этого в `main` слит dynamic-session WFP Kill Switch (`3f1b8d3`). Он fail-closed блокирует обход активного защищённого маршрута, но намеренно снимается при корректном завершении AMRI и не выдаётся за Android OS lockdown или постоянную корпоративную политику Windows.
 
 ### Android forwarding/readiness — merged #24/#25
 
@@ -204,26 +204,55 @@ Post-merge verification:
 
 The exact-power PNG import workflow from parallel work did not install replacement artwork: uploaded base64 parts do not contain the start of an XZ stream, so padding cannot repair them. Existing approved SVG buttons remain active and byte-locked. Exact replacement PNGs must be re-uploaded from their original files; do not synthesize or silently substitute them.
 
+## Responsive release UI stage
+
+What changed:
+
+- Windows layout now switches from the full sidebar to a compact header/navigation below 920 logical pixels and allows a 560×520 minimum window instead of forcing 980×680.
+- Windows cards stack status/actions when the content column is narrow, while ultra-wide screens cap the readable content column at 1120 logical pixels.
+- Android derives spacing and control sizes from screen width, height and font scale; optional header artwork/subtitle disappear before essential actions can clip.
+- Android enforces at least 48 dp icon touch targets, uses a smaller hero in short landscape, equal-width mode controls and a centered 720 dp maximum column on tablets.
+- Pure layout policies cover minimum/split-screen Windows, 320 dp phones, large text, short landscape and large tablets.
+
+Why: the previous fixed 600 px Windows content floor plus permanent 236 px sidebar overflowed narrow windows; the Android header always reserved 56 dp artwork and two fixed controls, which could collide on narrow screens or with accessibility font scaling.
+
+Trade-off: compact layouts intentionally hide only the decorative Android subtitle/logo and move Windows navigation into a wrapped top row. All connection, routing, language and settings actions remain reachable.
+
+Verification at the local stage: canonical visual bytes/theme generation pass; standalone Windows responsive-policy tests pass 4/4. Full Windows target and Android Gradle verification remains mandatory in CI because the local Linux environment is not the release platform.
+
+PR #59 (`work/final-responsive-release`, code head `35f3243092c05534f5e99898b179d069af070d02`) completed the required remote verification on 2026-09-29:
+
+- CI run `36536872942`: Windows fmt/theme/tests/check/release build/diagnostic/smoke and Android JVM/NDK/APK — success;
+- installer run `36536872869`: Windows portable/NSIS install-launch-autostart-uninstall verification, Android APK and developer visual source — success;
+- tray run `36536872911`: resident tray lifecycle and single-instance handoff — success;
+- Android signing run `36536872891`: release APK build and signature verification — success;
+- release-candidate run `36536872914`: Windows and Android packages plus visual source — success; publish job was intentionally skipped for the pull-request event.
+
+Remote compare confirmed one commit ahead of `main`, zero commits behind, with exactly the eight reviewed responsive-stage files. PR #59 was reported mergeable and clean after all 11 check-runs completed (10 success, one expected publish skip).
+
 ## CURRENT STATE
 
-- Windows end-to-end active-generation VPN path implemented and merged.
-- Android production transport + encrypted pool + real selection + public forwarding path merged.
-- Post-merge Windows and Android CI is green; both installable artifacts were built and downloaded.
+- Canonical `main` перед текущим визуальным этапом: `af26cc9579733a4a4fdc8c9ae46141c0d5fd3488`.
+- Его проверки полностью зелёные: Windows tests/build/smoke, Android JVM/NDK/APK, Windows installer/portable, Android APK, developer visual source и tray lifecycle.
+- Windows end-to-end VPN path, Wintun forwarding, DNS/default-route capture, supervised recovery и active-generation WFP Kill Switch реализованы и слиты.
+- Android production transport, encrypted node pool, Smart/Manual selection, VpnService/TUN forwarding and recovery реализованы и слиты.
+- VMess/VLESS/Trojan transport rendering поддерживает TCP, WebSocket, gRPC, HTTP и HTTPUpgrade; Reality/TLS options materialize typed и fail-closed.
+- Windows tray companion, optional autostart, installer/portable packaging и Android installable APK собираются CI.
 - Approved artwork remains unchanged and byte-locked.
 - Developer-only visual editing source exists and is not shipped in apps.
-- A separate visual-source bundle can be produced from the repository and remains outside both apps.
+- Responsive release stage adds a compact Windows shell at widths below 920 px, readable content cap for high-resolution screens, stacked narrow cards, and an Android policy for 320 dp phones, large text, landscape and tablets. PR #59 remote Windows/Android/package/signing/tray verification is green; a fresh check of the final journal-only head remains required before merge.
 
 ## Remaining release/hardening work
 
-1. Real-device E2E on Windows and Android with owner-provided test nodes and physical hardware.
-2. Re-upload original exact-power PNG files; current split transfer is corrupt and intentionally unused.
-3. Production signing:
+1. Real-device E2E on Windows and Android with owner-provided test nodes and physical hardware. This cannot be truthfully replaced by CI simulation.
+2. Production signing:
    - Android needs owner-controlled release keystore secret outside git;
    - Windows public-trust signing needs owner-controlled code-signing certificate.
    Without these secrets, builds can be installable/testable but should not be described as production-signed.
-4. Windows WFP crash-persistent kill switch is still not implemented; current active-generation protection must not be called WFP lockdown.
-5. WireGuard and VMess WS/gRPC remain unsupported/fail-closed until complete typed descriptors/renderers exist.
-6. PMTU telemetry should eventually feed classified evidence from actual forwarding/transport path; generic loss remains forbidden.
+3. WireGuard remains unsupported/fail-closed until an agreed import shape, typed multi-key secret boundary and renderer are complete. VMess/VLESS WS/gRPC are already supported.
+4. Complete transitive binary-license inventory before public commercial distribution; pinned direct notices are present but do not replace the audit.
+5. PMTU telemetry should eventually feed classified evidence from actual forwarding/transport path; generic loss remains forbidden.
+6. Exact replacement power PNGs are optional owner artwork work, not a runtime/release blocker; approved byte-locked SVG controls remain canonical.
 
 ## Постоянный протокол разработки
 

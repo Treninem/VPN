@@ -226,6 +226,7 @@ fn parse_node_lines(subscription_id: &str, text: &str) -> Vec<ImportedNode> {
 /// Parses direct node links. On Windows, a single HTTPS provider subscription URL is fetched with
 /// strict bounds and then decoded. The credential-bearing URL is never included in returned errors.
 pub fn parse_subscription_text(subscription_id: &str, text: &str) -> Vec<ImportedNode> {
+    #[cfg(target_os = "windows")]
     let trimmed = text.trim();
 
     #[cfg(target_os = "windows")]
