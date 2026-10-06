@@ -78,6 +78,20 @@ class AndroidNetworkRecoveryGateTest {
     }
 
     @Test
+    fun networkReturnDuringPreparingArmsDeferredRestart() {
+        val gate = AndroidNetworkRecoveryGate()
+
+        assertEquals(
+            NetworkRecoveryAction.NONE,
+            gate.observe(null, VpnControllerState.PREPARING),
+        )
+        assertEquals(
+            NetworkRecoveryAction.RESTART_PROTECTED_PATH,
+            gate.observe(20L, VpnControllerState.PREPARING),
+        )
+    }
+
+    @Test
     fun networkLossBeforeProtectionStillArmsRecovery() {
         val gate = AndroidNetworkRecoveryGate()
         gate.observe(10L, VpnControllerState.PREPARING)
