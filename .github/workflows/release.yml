@@ -30,6 +30,64 @@ jobs:
       - run: python scripts/verify_visual_assets.py
       - run: cargo test --workspace
       - run: cargo build --release -p amri-windows
+      - name: Create ephemeral PR Windows signing certificate
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $passwordText = "amri-pr-signing-password"
+          $pfx = Join-Path $env:RUNNER_TEMP "amri-pr-codesign.pfx"
+          $cer = Join-Path $env:RUNNER_TEMP "amri-pr-codesign.cer"
+
+          $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+          try {
+            $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+              "CN=AMRI PR Code Signing",
+              $rsa,
+              [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+              [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+            )
+            $ekuOids = [System.Security.Cryptography.OidCollection]::new()
+            [void]$ekuOids.Add([System.Security.Cryptography.Oid]::new("1.3.6.1.5.5.7.3.3"))
+            $request.CertificateExtensions.Add(
+              [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($ekuOids, $true)
+            )
+            $cert = $request.CreateSelfSigned((Get-Date).AddMinutes(-5), (Get-Date).AddDays(2))
+            [IO.File]::WriteAllBytes(
+              $pfx,
+              $cert.Export(
+                [System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
+                $passwordText
+              )
+            )
+            $thumbprint = $cert.Thumbprint
+          }
+          finally {
+            if ($cert) { $cert.Dispose() }
+            $rsa.Dispose()
+          }
+
+          "AMRI_WINDOWS_PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_PFX_PASSWORD=$passwordText" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_CERT_THUMBPRINT=$thumbprint" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_TIMESTAMP_URL=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append\n          "AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Materialize owner Windows signing certificate
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.AMRI_WINDOWS_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.AMRI_WINDOWS_PFX_PASSWORD }}
+          CERT_THUMBPRINT: ${{ secrets.AMRI_WINDOWS_CERT_THUMBPRINT }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PFX_BASE64)) { throw "AMRI_WINDOWS_PFX_BASE64 is required" }
+          if ([string]::IsNullOrWhiteSpace($env:PFX_PASSWORD)) { throw "AMRI_WINDOWS_PFX_PASSWORD is required" }
+          if ([string]::IsNullOrWhiteSpace($env:CERT_THUMBPRINT)) { throw "AMRI_WINDOWS_CERT_THUMBPRINT is required" }
+          $pfx = Join-Path $env:RUNNER_TEMP "amri-production-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+          if (-not (Test-Path $pfx) -or (Get-Item $pfx).Length -eq 0) { throw "Windows production PFX is empty" }
+          "AMRI_WINDOWS_PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_PFX_PASSWORD=$env:PFX_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_CERT_THUMBPRINT=$env:CERT_THUMBPRINT" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_TIMESTAMP_URL=http://timestamp.digicert.com" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append\n          "AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Stage verified Windows runtime
         shell: pwsh
         run: |
@@ -60,6 +118,17 @@ jobs:
           Copy-Item $dll.FullName dist/windows/wintun.dll
           $wintunLicense = Get-ChildItem $wintunExpanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($wintunLicense) { Copy-Item $wintunLicense.FullName dist/windows/wintun-LICENSE.txt }
+      - name: Authenticode-sign AMRI Windows binaries
+        shell: pwsh
+        run: |
+          $allowUntrusted = $env:AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN -eq "true"
+          & ./scripts/sign_windows_artifacts.ps1 `
+            -PfxPath $env:AMRI_WINDOWS_PFX_PATH `
+            -PfxPassword $env:AMRI_WINDOWS_PFX_PASSWORD `
+            -ExpectedThumbprint $env:AMRI_WINDOWS_CERT_THUMBPRINT `
+            -Files "dist/windows/AMRI-VPN.exe","dist/windows/AMRI-VPN-Launcher.exe" `
+            -TimestampUrl $env:AMRI_WINDOWS_TIMESTAMP_URL `
+            -AllowUntrustedChain $allowUntrusted
       - name: Build and verify portable archive
         shell: pwsh
         run: |
@@ -82,6 +151,17 @@ jobs:
           choco install nsis --yes --no-progress
           & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" packaging/windows/AMRI-VPN.nsi
           if (-not (Test-Path dist/AMRI-VPN-Windows-Setup.exe)) { throw "installer was not created" }
+      - name: Authenticode-sign Windows installer
+        shell: pwsh
+        run: |
+          $allowUntrusted = $env:AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN -eq "true"
+          & ./scripts/sign_windows_artifacts.ps1 `
+            -PfxPath $env:AMRI_WINDOWS_PFX_PATH `
+            -PfxPassword $env:AMRI_WINDOWS_PFX_PASSWORD `
+            -ExpectedThumbprint $env:AMRI_WINDOWS_CERT_THUMBPRINT `
+            -Files "dist/AMRI-VPN-Windows-Setup.exe" `
+            -TimestampUrl $env:AMRI_WINDOWS_TIMESTAMP_URL `
+            -AllowUntrustedChain $allowUntrusted
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
@@ -314,4 +394,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "AMRI VPN $TAG" \
             --prerelease \
-            --notes "AMRI VPN release candidate. Windows installer and portable package plus an owner-signed Android release APK are built with pinned verified runtimes. The Android certificate fingerprint is verified against AMRI_ANDROID_CERT_SHA256 before publishing. Windows AMRI binaries are not Authenticode-signed unless an owner code-signing stage is added. The release also publishes the locked transitive Rust dependency inventory, the resolved Android release runtime dependency graph, and third-party notices for compliance review. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
+            --notes "AMRI VPN release candidate. Windows installer and portable package plus an owner-signed Android release APK are built with pinned verified runtimes. The Android certificate fingerprint is verified against AMRI_ANDROID_CERT_SHA256 before publishing. Windows AMRI binaries and installer are Authenticode-signed on production release branches with the owner-controlled certificate and RFC3161 timestamping; pull requests exercise the same path with an ephemeral CI certificate. The release also publishes the locked transitive Rust dependency inventory, the resolved Android release runtime dependency graph, and third-party notices for compliance review. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
