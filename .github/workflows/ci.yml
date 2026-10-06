@@ -40,6 +40,16 @@ jobs:
       - name: Check workspace
         run: cargo check --workspace
 
+      - name: Generate transitive Rust dependency inventory
+        run: python scripts/generate_dependency_inventory.py --output-dir dist/compliance
+
+      - name: Upload dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-rust-dependency-inventory
+          path: dist/compliance/*
+          if-no-files-found: error
+
       - name: Build Windows release executable
         run: cargo build --release -p amri-windows
 
@@ -104,6 +114,18 @@ jobs:
         with:
           gradle-version: "9.6.0"
 
+      - name: Generate Android runtime dependency inventory
+        run: |
+          mkdir -p ../../dist/compliance
+          gradle -q :app:dependencies --configuration releaseRuntimeClasspath > ../../dist/compliance/AMRI-VPN-Android-Runtime-Dependencies.txt
+
+      - name: Upload Android runtime dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-android-runtime-dependency-inventory
+          path: dist/compliance/AMRI-VPN-Android-Runtime-Dependencies.txt
+          if-no-files-found: error
+
       - name: Stage pinned official Android transport binaries
         shell: bash
         run: |
@@ -152,3 +174,4 @@ jobs:
           unzip -l "$APK" | grep -F "lib/x86_64/libamri_android_ffi.so"
           unzip -l "$APK" | grep -F "lib/arm64-v8a/libsing_box.so"
           unzip -l "$APK" | grep -F "lib/x86_64/libsing_box.so"
+          unzip -l "$APK" | grep -F "assets/THIRD_PARTY_NOTICES.md"

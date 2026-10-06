@@ -43,6 +43,7 @@ jobs:
           New-Item -ItemType Directory -Force dist/windows | Out-Null
           Copy-Item target/release/amri-windows.exe dist/windows/AMRI-VPN.exe
           Copy-Item target/release/amri-vpn-launcher.exe dist/windows/AMRI-VPN-Launcher.exe
+          Copy-Item THIRD_PARTY_NOTICES.md dist/windows/THIRD_PARTY_NOTICES.md
           Copy-Item (Get-ChildItem $singExpanded -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName dist/windows/sing-box.exe
           $singLicense = Get-ChildItem $singExpanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($singLicense) { Copy-Item $singLicense.FullName dist/windows/sing-box-LICENSE }
@@ -69,7 +70,7 @@ jobs:
           $verifyDir = Join-Path $env:RUNNER_TEMP "amri-portable-release-verify"
           if (Test-Path $verifyDir) { Remove-Item $verifyDir -Recurse -Force }
           Expand-Archive $portable -DestinationPath $verifyDir
-          foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll")) {
+          foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll", "THIRD_PARTY_NOTICES.md")) {
             if (-not (Test-Path (Join-Path $verifyDir $file))) { throw "portable archive is missing $file" }
           }
           $stagedHash = (Get-FileHash "dist/windows/AMRI-VPN.exe" -Algorithm SHA256).Hash
@@ -195,6 +196,7 @@ jobs:
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libamri_android_ffi.so"
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/arm64-v8a/libsing_box.so"
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libsing_box.so"
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "assets/THIRD_PARTY_NOTICES.md"
       - name: Verify APK signature and production certificate
         shell: bash
         run: |
@@ -215,6 +217,34 @@ jobs:
           path: AMRI-VPN-Android.apk
           if-no-files-found: error
 
+  compliance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Resolve release Rust dependency lockfile
+        run: cargo generate-lockfile
+      - name: Generate transitive Rust dependency inventory
+        run: |
+          python3 scripts/generate_dependency_inventory.py --output-dir dist/compliance
+          cp Cargo.lock dist/compliance/Cargo.lock
+      - name: Generate Android release runtime dependency inventory
+        run: gradle -p apps/android -q :app:dependencies --configuration releaseRuntimeClasspath > dist/compliance/AMRI-VPN-Android-Runtime-Dependencies.txt
+      - name: Stage third-party notices
+        run: cp THIRD_PARTY_NOTICES.md dist/compliance/THIRD_PARTY_NOTICES.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-compliance
+          path: dist/compliance/*
+          if-no-files-found: error
+
   visual-source:
     runs-on: ubuntu-latest
     steps:
@@ -231,7 +261,7 @@ jobs:
 
   publish:
     if: github.event_name != 'pull_request'
-    needs: [windows, android, visual-source]
+    needs: [windows, android, visual-source, compliance]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -246,6 +276,10 @@ jobs:
         with:
           name: release-visual-source
           path: release-dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-compliance
+          path: release-dist
       - name: Derive release tag
         shell: bash
         run: |
@@ -259,7 +293,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd release-dist
-          sha256sum AMRI-VPN-Windows-Setup.exe AMRI-VPN-Windows-Portable.zip AMRI-VPN-Android.apk AMRI-VPN-Visual-Source.zip > SHA256SUMS.txt
+          sha256sum AMRI-VPN-Windows-Setup.exe AMRI-VPN-Windows-Portable.zip AMRI-VPN-Android.apk AMRI-VPN-Visual-Source.zip AMRI-VPN-Rust-Dependency-Inventory.json AMRI-VPN-Rust-Dependency-Inventory.md AMRI-VPN-Android-Runtime-Dependencies.txt THIRD_PARTY_NOTICES.md > SHA256SUMS.txt
       - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -271,9 +305,13 @@ jobs:
             release-dist/AMRI-VPN-Windows-Portable.zip \
             release-dist/AMRI-VPN-Android.apk \
             release-dist/AMRI-VPN-Visual-Source.zip \
+            release-dist/AMRI-VPN-Rust-Dependency-Inventory.json \
+            release-dist/AMRI-VPN-Rust-Dependency-Inventory.md \
+            release-dist/AMRI-VPN-Android-Runtime-Dependencies.txt \
+            release-dist/THIRD_PARTY_NOTICES.md \
             release-dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "AMRI VPN $TAG" \
             --prerelease \
-            --notes "AMRI VPN release candidate. Windows installer and portable package plus an owner-signed Android release APK are built with pinned verified runtimes. The Android certificate fingerprint is verified against AMRI_ANDROID_CERT_SHA256 before publishing. Windows AMRI binaries are not Authenticode-signed unless an owner code-signing stage is added. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
+            --notes "AMRI VPN release candidate. Windows installer and portable package plus an owner-signed Android release APK are built with pinned verified runtimes. The Android certificate fingerprint is verified against AMRI_ANDROID_CERT_SHA256 before publishing. Windows AMRI binaries are not Authenticode-signed unless an owner code-signing stage is added. The release also publishes the locked transitive Rust dependency inventory, the resolved Android release runtime dependency graph, and third-party notices for compliance review. The Visual-Source ZIP is developer-only source material and is not embedded in either application."
