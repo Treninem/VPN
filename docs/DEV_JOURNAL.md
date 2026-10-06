@@ -232,27 +232,48 @@ Remote compare confirmed one commit ahead of `main`, zero commits behind, with e
 
 ## CURRENT STATE
 
-- Canonical `main` перед текущим визуальным этапом: `af26cc9579733a4a4fdc8c9ae46141c0d5fd3488`.
-- Его проверки полностью зелёные: Windows tests/build/smoke, Android JVM/NDK/APK, Windows installer/portable, Android APK, developer visual source и tray lifecycle.
-- Windows end-to-end VPN path, Wintun forwarding, DNS/default-route capture, supervised recovery и active-generation WFP Kill Switch реализованы и слиты.
-- Android production transport, encrypted node pool, Smart/Manual selection, VpnService/TUN forwarding and recovery реализованы и слиты.
-- VMess/VLESS/Trojan transport rendering поддерживает TCP, WebSocket, gRPC, HTTP и HTTPUpgrade; Reality/TLS options materialize typed и fail-closed.
-- Windows tray companion, optional autostart, installer/portable packaging и Android installable APK собираются CI.
-- Approved artwork remains unchanged and byte-locked.
-- Developer-only visual editing source exists and is not shipped in apps.
-- Responsive release stage adds a compact Windows shell at widths below 920 px, readable content cap for high-resolution screens, stacked narrow cards, and an Android policy for 320 dp phones, large text, landscape and tablets. PR #59 remote Windows/Android/package/signing/tray verification is green; a fresh check of the final journal-only head remains required before merge.
+- Canonical `main`: `3f3b0ab0aa3aa7b3366515ef3c4aabda2675c775`.
+- Post-merge verification after Android network-recovery hardening (#60) and release-compliance hardening (#61) is fully green:
+  - CI `37420324341`;
+  - installable packages `37420324348`;
+  - Windows tray gate `37420324384`.
+- Android stale default-network callbacks are rejected; offline start, network return during PREPARING/FAILED and Wi-Fi/mobile handoff recovery are covered by deterministic tests.
+- Windows and Android dependency compliance is automated: locked Rust inventory, Android release runtime dependency graph, third-party notices inside Windows portable + Android APK, release artifacts and checksums.
+- Windows end-to-end VPN path, Wintun forwarding, DNS/default-route capture, supervised recovery and active-generation WFP Kill Switch are implemented.
+- Android production transport, encrypted node pool, Smart/Manual selection, VpnService/TUN forwarding and recovery are implemented.
+- VMess/VLESS/Trojan/Shadowsocks/Hysteria2/TUIC rendering is production materialized; V2Ray TCP/WebSocket/gRPC/HTTP/HTTPUpgrade and typed TLS/Reality are supported fail-closed.
+- Windows tray companion, optional autostart, NSIS/portable packaging and Android installable APK are built and smoke-tested by CI.
+- Approved artwork remains unchanged and byte-locked; developer visual source is not shipped in user applications.
+
+### Active stage: Windows production signing
+
+Branch: `work/windows-production-signing`.
+
+What changed:
+
+- added `scripts/sign_windows_artifacts.ps1` with fail-closed thumbprint verification, SHA-256 Authenticode signing and post-sign verification;
+- PFX password is consumed through secure certificate import and is not passed to `signtool` process arguments;
+- PR release-candidate jobs create a short-lived self-signed code-signing certificate and exercise the complete Windows signing path without owner secrets;
+- non-PR release runs require `AMRI_WINDOWS_PFX_BASE64`, `AMRI_WINDOWS_PFX_PASSWORD` and `AMRI_WINDOWS_CERT_THUMBPRINT`;
+- production Windows app + launcher are signed before portable ZIP creation; NSIS setup is signed after build; production releases use RFC3161 timestamping;
+- `docs/RELEASE_SIGNING.md` records owner secret names, boundaries and release rules.
+
+Why: Windows public distribution must not depend on an unsigned installer/binary path, and the release gate must fail closed if owner signing material is missing or does not match the configured certificate identity.
+
+Trade-off: baseline signing uses a provider-neutral owner PFX in GitHub Secrets instead of coupling AMRI to Azure Key Vault/HSM. A hardware/cloud signing backend can later replace certificate materialization without changing application code or release artifact boundaries.
+
+Verification: PR exact-head Windows signing path and full release CI are required before merge. Owner/public-trust signing itself cannot be truthfully proven until the owner supplies the real certificate secrets; PR CI uses an intentionally ephemeral trusted test certificate only to validate the machinery.
 
 ## Remaining release/hardening work
 
-1. Real-device E2E on Windows and Android with owner-provided test nodes and physical hardware. This cannot be truthfully replaced by CI simulation.
-2. Production signing:
-   - Android needs owner-controlled release keystore secret outside git;
-   - Windows public-trust signing needs owner-controlled code-signing certificate.
-   Without these secrets, builds can be installable/testable but should not be described as production-signed.
-3. WireGuard remains unsupported/fail-closed until an agreed import shape, typed multi-key secret boundary and renderer are complete. VMess/VLESS WS/gRPC are already supported.
-4. Complete transitive binary-license inventory before public commercial distribution; pinned direct notices are present but do not replace the audit.
-5. PMTU telemetry should eventually feed classified evidence from actual forwarding/transport path; generic loss remains forbidden.
-6. Exact replacement power PNGs are optional owner artwork work, not a runtime/release blocker; approved byte-locked SVG controls remain canonical.
+1. Real-device E2E on Windows and Android with owner-provided test nodes and physical hardware: real public egress, DNS/IP leak, Wi-Fi/mobile handoff and sleep/resume.
+2. Owner production signing material:
+   - Android owner release keystore + expected SHA-256 certificate fingerprint;
+   - Windows public-trust code-signing PFX + expected certificate thumbprint.
+   The release workflows fail closed without these secrets.
+3. WireGuard remains unsupported/fail-closed until an agreed import shape, typed multi-key secret boundary and renderer are complete.
+4. PMTU telemetry should eventually feed classified evidence from the actual forwarding/transport path; generic packet loss remains forbidden.
+5. Exact replacement power PNGs remain optional owner artwork work, not a runtime/release blocker; approved byte-locked SVG controls remain canonical.
 
 ## Постоянный протокол разработки
 
