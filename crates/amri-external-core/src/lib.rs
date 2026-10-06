@@ -160,6 +160,19 @@ impl Default for ReadinessPolicy {
     }
 }
 
+trait ReadinessProbe: Send + Sync {
+    fn is_ready(&self, address: SocketAddr, timeout: Duration) -> bool;
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct TcpReadinessProbe;
+
+impl ReadinessProbe for TcpReadinessProbe {
+    fn is_ready(&self, address: SocketAddr, timeout: Duration) -> bool {
+        TcpStream::connect_timeout(&address, timeout).is_ok()
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct LoopbackReadiness {
     address: SocketAddr,
@@ -188,11 +201,15 @@ impl LoopbackReadiness {
         })
     }
 
-    fn is_ready(&self) -> bool {
-        TcpStream::connect_timeout(&self.address, self.policy.connect_timeout).is_ok()
+    fn is_ready(&self, probe: &dyn ReadinessProbe) -> bool {
+        probe.is_ready(self.address, self.policy.connect_timeout)
     }
 
-    fn wait_until_ready(&self, process: &mut dyn ManagedProcess) -> Result<(), AdapterError> {
+    fn wait_until_ready(
+        &self,
+        process: &mut dyn ManagedProcess,
+        probe: &dyn ReadinessProbe,
+    ) -> Result<(), AdapterError> {
         let deadline = Instant::now() + self.policy.startup_timeout;
         loop {
             if !process.is_running()? {
@@ -200,7 +217,7 @@ impl LoopbackReadiness {
                     "external VPN core exited before its local endpoint became ready",
                 ));
             }
-            if self.is_ready() {
+            if self.is_ready(probe) {
                 return Ok(());
             }
 
@@ -230,6 +247,7 @@ pub struct SupervisedProcessAdapter {
     renderer: Box<dyn CoreConfigRenderer>,
     spawner: Box<dyn ProcessSpawner>,
     readiness_policy: ReadinessPolicy,
+    readiness_probe: Box<dyn ReadinessProbe>,
     processes: HashMap<String, ManagedRouteProcess>,
 }
 
@@ -252,11 +270,28 @@ impl SupervisedProcessAdapter {
         spawner: impl ProcessSpawner + 'static,
         readiness_policy: ReadinessPolicy,
     ) -> Self {
+        Self::with_spawner_policy_and_probe(
+            spec,
+            renderer,
+            spawner,
+            readiness_policy,
+            TcpReadinessProbe,
+        )
+    }
+
+    fn with_spawner_policy_and_probe(
+        spec: ExternalCoreSpec,
+        renderer: impl CoreConfigRenderer + 'static,
+        spawner: impl ProcessSpawner + 'static,
+        readiness_policy: ReadinessPolicy,
+        readiness_probe: impl ReadinessProbe + 'static,
+    ) -> Self {
         Self {
             spec,
             renderer: Box::new(renderer),
             spawner: Box::new(spawner),
             readiness_policy,
+            readiness_probe: Box::new(readiness_probe),
             processes: HashMap::new(),
         }
     }
@@ -284,7 +319,9 @@ impl TransportAdapter for SupervisedProcessAdapter {
         let readiness = LoopbackReadiness::from_request(request, self.readiness_policy)?;
         let config = self.renderer.render(request)?;
         let mut process = self.spawner.spawn(&self.spec, &config)?;
-        if let Err(error) = readiness.wait_until_ready(process.as_mut()) {
+        if let Err(error) =
+            readiness.wait_until_ready(process.as_mut(), self.readiness_probe.as_ref())
+        {
             let _ = process.stop();
             return Err(error);
         }
@@ -320,7 +357,7 @@ impl TransportAdapter for SupervisedProcessAdapter {
             .get_mut(&session.adapter_session_id)
             .ok_or_else(|| AdapterError::new("external VPN core session is not tracked"))?;
         let running = managed.process.is_running()?;
-        let ready = running && managed.readiness.is_ready();
+        let ready = running && managed.readiness.is_ready(self.readiness_probe.as_ref());
 
         Ok(TransportHealth {
             state: if ready {
@@ -764,14 +801,19 @@ mod tests {
         );
     }
 
+    #[derive(Debug, Default, Clone, Copy)]
+    struct NeverReadyProbe;
+
+    impl ReadinessProbe for NeverReadyProbe {
+        fn is_ready(&self, _address: SocketAddr, _timeout: Duration) -> bool {
+            false
+        }
+    }
+
     #[test]
     fn readiness_timeout_stops_unusable_process() {
-        let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = reserved.local_addr().unwrap().port();
-        drop(reserved);
-
         let stopped = Arc::new(AtomicBool::new(false));
-        let mut adapter = SupervisedProcessAdapter::with_spawner_and_policy(
+        let mut adapter = SupervisedProcessAdapter::with_spawner_policy_and_probe(
             sing_box_process_spec("sing-box"),
             SingBoxRenderer,
             FakeSpawner {
@@ -783,11 +825,10 @@ mod tests {
                 poll_interval: Duration::from_millis(1),
                 connect_timeout: Duration::from_millis(1),
             },
+            NeverReadyProbe,
         );
         let mut request = request(NodeProtocol::Vless);
-        request
-            .options
-            .insert("local_port".into(), port.to_string());
+        request.options.insert("local_port".into(), "20800".into());
 
         let error = adapter.connect(&request).unwrap_err();
 
