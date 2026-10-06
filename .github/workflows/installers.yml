@@ -46,6 +46,7 @@ jobs:
           New-Item -ItemType Directory -Force dist/windows | Out-Null
           Copy-Item target/release/amri-windows.exe dist/windows/AMRI-VPN.exe
           Copy-Item target/release/amri-vpn-launcher.exe dist/windows/AMRI-VPN-Launcher.exe
+          Copy-Item THIRD_PARTY_NOTICES.md dist/windows/THIRD_PARTY_NOTICES.md
           Copy-Item (Get-ChildItem $expanded -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName dist/windows/sing-box.exe
           $license = Get-ChildItem $expanded -Recurse -File | Where-Object { $_.Name -match '^LICENSE' } | Select-Object -First 1
           if ($license) { Copy-Item $license.FullName dist/windows/sing-box-LICENSE }
@@ -91,7 +92,7 @@ jobs:
           $verifyDir = Join-Path $env:RUNNER_TEMP "amri-portable-verify"
           if (Test-Path $verifyDir) { Remove-Item $verifyDir -Recurse -Force }
           Expand-Archive $portable -DestinationPath $verifyDir
-          foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll")) {
+          foreach ($file in @("AMRI-VPN.exe", "AMRI-VPN-Launcher.exe", "sing-box.exe", "wintun.dll", "THIRD_PARTY_NOTICES.md")) {
             if (-not (Test-Path (Join-Path $verifyDir $file))) { throw "portable archive is missing $file" }
           }
           $stagedHash = (Get-FileHash "dist/windows/AMRI-VPN.exe" -Algorithm SHA256).Hash
