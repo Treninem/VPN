@@ -174,3 +174,4 @@ jobs:
           unzip -l "$APK" | grep -F "lib/x86_64/libamri_android_ffi.so"
           unzip -l "$APK" | grep -F "lib/arm64-v8a/libsing_box.so"
           unzip -l "$APK" | grep -F "lib/x86_64/libsing_box.so"
+          unzip -l "$APK" | grep -F "assets/THIRD_PARTY_NOTICES.md"
