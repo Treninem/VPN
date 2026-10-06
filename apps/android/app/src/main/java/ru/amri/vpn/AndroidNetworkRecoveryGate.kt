@@ -21,24 +21,31 @@ internal class AndroidNetworkRecoveryGate {
         if (!initialized) {
             initialized = true
             lastNetworkHandle = networkHandle
+            waitingForNetwork = networkHandle == null
             return NetworkRecoveryAction.NONE
         }
         if (lastNetworkHandle == networkHandle) return NetworkRecoveryAction.NONE
 
         lastNetworkHandle = networkHandle
-        if (state == VpnControllerState.PROTECTED) {
-            return if (networkHandle == null) {
-                waitingForNetwork = true
+
+        if (networkHandle == null) {
+            // Remember loss even when the transport is still SERVICE_READY/PREPARING. Otherwise a
+            // start attempted while offline can fail and never restart when connectivity returns.
+            waitingForNetwork = true
+            return if (state == VpnControllerState.PROTECTED) {
                 NetworkRecoveryAction.CUT_PROTECTED_PATH
             } else {
-                waitingForNetwork = false
-                NetworkRecoveryAction.RESTART_PROTECTED_PATH
+                NetworkRecoveryAction.NONE
             }
+        }
+
+        if (state == VpnControllerState.PROTECTED) {
+            waitingForNetwork = false
+            return NetworkRecoveryAction.RESTART_PROTECTED_PATH
         }
 
         if (
             waitingForNetwork &&
-            networkHandle != null &&
             (state == VpnControllerState.SERVICE_READY || state == VpnControllerState.FAILED)
         ) {
             waitingForNetwork = false
