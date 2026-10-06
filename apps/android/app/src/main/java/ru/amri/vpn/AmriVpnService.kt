@@ -146,6 +146,7 @@ class AmriVpnService : VpnService() {
                     }
                     check(generation == lifecycleGeneration.get()) { "VPN start was cancelled" }
                     rememberSelectedNode(index)
+                    restartWhenNetworkReady = false
                     return
                 } catch (error: Exception) {
                     lastFailure = error
@@ -169,6 +170,7 @@ class AmriVpnService : VpnService() {
                 restoreControlInterfaceOrFail()
                 STATE.fail()
                 stopForeground(STOP_FOREGROUND_REMOVE)
+                maybeRestartAfterNetworkChange()
             }
             runCatching { AmriNativeBridge.stopExternalTransport() }
         }
