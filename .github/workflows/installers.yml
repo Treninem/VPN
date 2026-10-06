@@ -216,6 +216,7 @@ jobs:
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libamri_android_ffi.so"
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/arm64-v8a/libsing_box.so"
           unzip -l ../../AMRI-VPN-Android.apk | grep -F "lib/x86_64/libsing_box.so"
+          unzip -l ../../AMRI-VPN-Android.apk | grep -F "assets/THIRD_PARTY_NOTICES.md"
       - uses: actions/upload-artifact@v4
         with:
           name: AMRI-VPN-Android-Installer
