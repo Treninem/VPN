@@ -69,6 +69,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## AndroidSVG 1.4
+
+Project: `androidsvg-aar`
+
+Source: https://github.com/BigBadaboom/androidsvg
+
+Use in AMRI: Android UI SVG parsing/rendering for the canonical AMRI visual assets. It does not own VPN routing, transport, credential storage, recovery, or protection-state decisions.
+
+License: Apache License 2.0
+
+Copyright 2013 Paul LeBeau, Cave Rock Software Ltd.
+
+The release compliance workflow also captures the fully resolved Android `releaseRuntimeClasspath` so future transitive runtime dependencies cannot be omitted from the inventory merely because they were not declared directly.
+
 ## Wintun 0.14.1 runtime packaging
 
 Project: `Wintun`
