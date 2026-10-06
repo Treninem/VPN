@@ -44,10 +44,10 @@ internal class AndroidNetworkRecoveryGate {
             return NetworkRecoveryAction.RESTART_PROTECTED_PATH
         }
 
-        if (
-            waitingForNetwork &&
-            (state == VpnControllerState.SERVICE_READY || state == VpnControllerState.FAILED)
-        ) {
+        if (waitingForNetwork) {
+            // Arm recovery even if connectivity returns while the controller is still PREPARING.
+            // The service will defer the restart flag: a successful current generation clears it,
+            // while a subsequent FAILED transition consumes it immediately.
             waitingForNetwork = false
             return NetworkRecoveryAction.RESTART_PROTECTED_PATH
         }
