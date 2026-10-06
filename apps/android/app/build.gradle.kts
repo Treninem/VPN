@@ -34,6 +34,12 @@ val generateAmriUiResources by tasks.registering(org.gradle.api.tasks.Copy::clas
     }
 }
 
+val generatedComplianceAssets = layout.buildDirectory.dir("generated/amri-compliance-assets")
+val stageThirdPartyNotices by tasks.registering(org.gradle.api.tasks.Copy::class) {
+    from(rootProject.layout.projectDirectory.file("../../THIRD_PARTY_NOTICES.md"))
+    into(generatedComplianceAssets)
+}
+
 val amriRustWorkspace = rootProject.layout.projectDirectory.dir("../..")
 val generatedAmriNativeLibs = layout.buildDirectory.dir("generated/amri-native-jni")
 val stagedAmriTransportLibs = rootProject.layout.projectDirectory.dir("../../dist/android-transport-jni")
@@ -131,10 +137,12 @@ android.sourceSets["main"].res.srcDir(generatedAmriIconRes.get().asFile)
 android.sourceSets["main"].res.srcDir(generatedAmriUiRes.get().asFile)
 android.sourceSets["main"].jniLibs.srcDir(generatedAmriNativeLibs.get().asFile)
 android.sourceSets["main"].jniLibs.srcDir(stagedAmriTransportLibs.asFile)
+android.sourceSets["main"].assets.srcDir(generatedComplianceAssets.get().asFile)
 
 tasks.named("preBuild").configure {
     dependsOn(generateAmriIconResource)
     dependsOn(generateAmriUiResources)
+    dependsOn(stageThirdPartyNotices)
     dependsOn(buildAmriRustNative)
 }
 
