@@ -11,7 +11,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$Files,
 
-    [string]$TimestampUrl = ""
+    [string]$TimestampUrl = "",
+
+    [bool]$AllowUntrustedChain = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,11 +90,6 @@ try {
             throw "signtool failed while signing $file"
         }
 
-        & $signtool verify /pa /v $file
-        if ($LASTEXITCODE -ne 0) {
-            throw "signtool verification failed for $file"
-        }
-
         $signature = Get-AuthenticodeSignature -LiteralPath $file
         if (-not $signature.SignerCertificate) {
             throw "No Authenticode signer certificate was found on $file"
@@ -101,8 +98,26 @@ try {
         if ($signedBy -ne $expected) {
             throw "Authenticode signer thumbprint mismatch for $file"
         }
-        if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-            throw "Authenticode signature is not valid for $file ($($signature.Status))"
+
+        if ($AllowUntrustedChain) {
+            $invalidStatuses = @(
+                [System.Management.Automation.SignatureStatus]::NotSigned,
+                [System.Management.Automation.SignatureStatus]::HashMismatch,
+                [System.Management.Automation.SignatureStatus]::NotSupportedFileFormat,
+                [System.Management.Automation.SignatureStatus]::Incompatible
+            )
+            if ($invalidStatuses -contains $signature.Status) {
+                throw "Authenticode signature is structurally invalid for $file ($($signature.Status))"
+            }
+        }
+        else {
+            & $signtool verify /pa /v $file
+            if ($LASTEXITCODE -ne 0) {
+                throw "signtool trust verification failed for $file"
+            }
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+                throw "Authenticode trust status is not valid for $file ($($signature.Status))"
+            }
         }
     }
 }
