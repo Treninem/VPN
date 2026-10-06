@@ -8,6 +8,18 @@ import android.os.PowerManager
 import ru.amri.vpn.nativebridge.AccessNetworkKind
 import ru.amri.vpn.nativebridge.MobileNetworkSnapshot
 
+/**
+ * Prevents delayed callbacks for a previous default network from being treated as a fresh handoff.
+ *
+ * Android may deliver capability callbacks for the old default network while a Wi-Fi/cellular
+ * transition is already in progress. Only capabilities belonging to the current default network
+ * may be published directly.
+ */
+internal object DefaultNetworkEventPolicy {
+    fun acceptsCapabilities(callbackHandle: Long, activeHandle: Long?): Boolean =
+        activeHandle != null && callbackHandle == activeHandle
+}
+
 /** Observes only privacy-safe properties of Android's current default network. */
 internal class AndroidNetworkObserver(
     context: Context,
@@ -21,7 +33,19 @@ internal class AndroidNetworkObserver(
         override fun onAvailable(network: Network) = publishCurrent()
 
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-            onSnapshot(network, snapshot(caps))
+            val active = connectivity.activeNetwork
+            if (
+                DefaultNetworkEventPolicy.acceptsCapabilities(
+                    network.networkHandle,
+                    active?.networkHandle,
+                )
+            ) {
+                onSnapshot(network, snapshot(caps))
+            } else {
+                // A delayed callback for the previous Wi-Fi/cellular default must not move the
+                // transport lease backwards. Re-read the actual current default instead.
+                publishCurrent(active)
+            }
         }
 
         override fun onLost(network: Network) = publishCurrent()
@@ -42,9 +66,11 @@ internal class AndroidNetworkObserver(
         registered = false
     }
 
-    private fun publishCurrent() {
-        val caps = connectivity.activeNetwork?.let(connectivity::getNetworkCapabilities)
-        onSnapshot(connectivity.activeNetwork, caps?.let(::snapshot) ?: unavailableSnapshot())
+    private fun publishCurrent(network: Network? = connectivity.activeNetwork) {
+        // Capture Network once. Reading activeNetwork twice can pair capabilities from one network
+        // with the handle of another during a fast Wi-Fi/cellular handoff.
+        val caps = network?.let(connectivity::getNetworkCapabilities)
+        onSnapshot(network, caps?.let(::snapshot) ?: unavailableSnapshot())
     }
 
     private fun snapshot(caps: NetworkCapabilities): MobileNetworkSnapshot {
