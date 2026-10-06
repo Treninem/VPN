@@ -229,8 +229,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
+      - name: Resolve release Rust dependency lockfile
+        run: cargo generate-lockfile
       - name: Generate transitive Rust dependency inventory
-        run: python3 scripts/generate_dependency_inventory.py --output-dir dist/compliance
+        run: |
+          python3 scripts/generate_dependency_inventory.py --output-dir dist/compliance
+          cp Cargo.lock dist/compliance/Cargo.lock
       - name: Generate Android release runtime dependency inventory
         run: gradle -p apps/android -q :app:dependencies --configuration releaseRuntimeClasspath > dist/compliance/AMRI-VPN-Android-Runtime-Dependencies.txt
       - name: Stage third-party notices
