@@ -264,6 +264,22 @@ Trade-off: baseline signing uses a provider-neutral owner PFX in GitHub Secrets 
 
 Verification: PR exact-head Windows signing path and full release CI are required before merge. Owner/public-trust signing itself cannot be truthfully proven until the owner supplies the real certificate secrets; PR CI uses an intentionally ephemeral trusted test certificate only to validate the machinery.
 
+### 2026-10-11: release gate recovery and verification limits
+
+What changed: fixed two literal `\\n` sequences in `.github/workflows/release.yml` that made PowerShell parse `-Append\\n` as a parameter in both PR and owner-certificate paths. Commit `55ee146911388bd79fa63df19f2ddbcfcb2bbaa8` is on the existing PR #62 branch.
+
+Why: release-candidate run `37432109196` passed Windows tests and release compilation but failed while creating the ephemeral PR signing certificate, before signature, portable, and installer checks. The log reports `A parameter cannot be found that matches parameter name 'Append\\n'`.
+
+Trade-off: changed only YAML script line separation; signing checks and fail-closed production secret requirements remain intact.
+
+Verification: new exact-head CI, packaging, tray, Android signing, and release-candidate runs started for `55ee146`; final outcomes must be recorded after completion. Previous ordinary CI, installable packages, tray, and Android signing at `4b8aec8` succeeded; the release-candidate Windows job failed as above. The available local Windows workspace has no Rust/Gradle/ADB installation or accessible network-adapter inspection, and no owner test node/device was provided. Physical public-egress, DNS leak, Wi-Fi/mobile handoff, and sleep/resume remain unverified.
+
+Current state: PR #62 remains open. No GitHub release exists. Windows/Android UI and forwarding/recovery behavior reported by prior CI are implementation claims, not physical VPN proof.
+
+Next priorities: (1) finish exact-head release-candidate signing/installer verification and fix any new failure; (2) review/merge PR #62 only after green gates; (3) run owner-node physical Windows/Android VPN tests; (4) provide owner signing material and publish a release candidate after those checks.
+
+Known risk: an OS VPN indicator alone does not prove packet forwarding or public egress. Keep PROTECTED gated on the full readiness chain.
+
 ## Remaining release/hardening work
 
 1. Real-device E2E on Windows and Android with owner-provided test nodes and physical hardware: real public egress, DNS/IP leak, Wi-Fi/mobile handoff and sleep/resume.
