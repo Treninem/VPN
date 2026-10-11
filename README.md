@@ -14,6 +14,7 @@ AMRI VPN — локальный VPN-клиент для Windows и Android с н
 - active-generation WFP Kill Switch с fail-closed teardown;
 - resident tray companion, single-instance handoff, optional autostart и уведомление Windows;
 - NSIS installer и portable ZIP;
+- production Authenticode signing gate: owner PFX для release branch, ephemeral certificate для PR-проверки пути подписи;
 - адаптивный интерфейс: полный sidebar на широком окне, компактная навигация на узком, 560×520 minimum и readable-width cap на больших дисплеях.
 
 ### Android
@@ -36,9 +37,8 @@ WireGuard и Shadowsocks plugin links пока отклоняются fail-close
 - Реальный Windows/Android E2E с тестовыми VPN-узлами: Wi‑Fi/mobile handoff, sleep/resume, DNS/IP leak и фактический public egress.
 - Постоянный Android release keystore через GitHub Secrets.
 - Windows Authenticode certificate для публично доверенной подписи.
-- Полный transitive license inventory перед публичной коммерческой поставкой.
 
-Без этих внешних условий CI builds являются устанавливаемыми и тестируемыми, но не должны называться физически проверенным и production-signed релизом.
+Без этих внешних условий CI builds являются устанавливаемыми и тестируемыми, но не должны называться физически проверенным и production-signed релизом. Полный Rust + Android runtime dependency inventory теперь генерируется автоматически и включается в release compliance artifacts.
 
 ## Сборки и проверки
 
@@ -56,6 +56,8 @@ cargo fmt --all -- --check
 cargo test --workspace
 cargo check --workspace
 ```
+
+Production signing/release secrets и fail-closed правила описаны в `docs/RELEASE_SIGNING.md`.
 
 Windows release binary собирается в Windows/MSVC окружении:
 
