@@ -90,9 +90,13 @@ try {
         }
 
         if ($AllowUntrustedChain) {
+            # PR certificates are self-signed. Windows may report UnknownError for their
+            # trust chain even when the embedded signer thumbprint matches. Production
+            # releases always use the strict signtool and Valid checks below.
             if ($signature.Status -notin @(
                 [System.Management.Automation.SignatureStatus]::Valid,
-                [System.Management.Automation.SignatureStatus]::NotTrusted
+                [System.Management.Automation.SignatureStatus]::NotTrusted,
+                [System.Management.Automation.SignatureStatus]::UnknownError
             )) {
                 throw "Authenticode signature is invalid for $file ($($signature.Status))"
             }
