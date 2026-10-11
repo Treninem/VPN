@@ -267,12 +267,12 @@ Verification: PR exact-head Windows signing path and full release CI are require
 ### 2026-10-11: release gate recovery and verification limits
 
 What changed: fixed two literal `\\n` sequences in `.github/workflows/release.yml` that made PowerShell parse `-Append\\n` as a parameter in both PR and owner-certificate paths. Commit `55ee146911388bd79fa63df19f2ddbcfcb2bbaa8` is on the existing PR #62 branch.
-
+ A follow-up static audit found `scripts/sign_windows_artifacts.ps1` had a truncated `Find-SignTool` expression and a duplicated implementation block. Commit `9660988cc918c38978d7cb16eeb4ec44dd232960` restores one complete signing path and removes only certificates newly imported by this run.
 Why: release-candidate run `37432109196` passed Windows tests and release compilation but failed while creating the ephemeral PR signing certificate, before signature, portable, and installer checks. The log reports `A parameter cannot be found that matches parameter name 'Append\\n'`.
 
 Trade-off: changed only YAML script line separation; signing checks and fail-closed production secret requirements remain intact.
 
-Verification: new exact-head CI, packaging, tray, Android signing, and release-candidate runs started for `55ee146`; final outcomes must be recorded after completion. Previous ordinary CI, installable packages, tray, and Android signing at `4b8aec8` succeeded; the release-candidate Windows job failed as above. The available local Windows workspace has no Rust/Gradle/ADB installation or accessible network-adapter inspection, and no owner test node/device was provided. Physical public-egress, DNS leak, Wi-Fi/mobile handoff, and sleep/resume remain unverified.
+Verification: the repaired PowerShell helper parses with zero errors in PowerShell 7. New exact-head CI, packaging, tray, Android signing, and release-candidate runs are required for the final branch head; final outcomes must be recorded after completion. Previous ordinary CI, installable packages, tray, and Android signing at `4b8aec8` succeeded; the release-candidate Windows job failed as above. The available local Windows workspace has no Rust/Gradle/ADB installation or accessible network-adapter inspection, and no owner test node/device was provided. Physical public-egress, DNS leak, Wi-Fi/mobile handoff, and sleep/resume remain unverified.
 
 Current state: PR #62 remains open. No GitHub release exists. Windows/Android UI and forwarding/recovery behavior reported by prior CI are implementation claims, not physical VPN proof.
 
