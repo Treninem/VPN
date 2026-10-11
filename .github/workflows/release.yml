@@ -69,7 +69,8 @@ jobs:
           "AMRI_WINDOWS_PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "AMRI_WINDOWS_PFX_PASSWORD=$passwordText" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "AMRI_WINDOWS_CERT_THUMBPRINT=$thumbprint" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "AMRI_WINDOWS_TIMESTAMP_URL=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append\n          "AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_TIMESTAMP_URL=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Materialize owner Windows signing certificate
         if: github.event_name != 'pull_request'
         shell: pwsh
@@ -87,7 +88,8 @@ jobs:
           "AMRI_WINDOWS_PFX_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "AMRI_WINDOWS_PFX_PASSWORD=$env:PFX_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "AMRI_WINDOWS_CERT_THUMBPRINT=$env:CERT_THUMBPRINT" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "AMRI_WINDOWS_TIMESTAMP_URL=http://timestamp.digicert.com" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append\n          "AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_TIMESTAMP_URL=http://timestamp.digicert.com" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AMRI_WINDOWS_ALLOW_UNTRUSTED_CHAIN=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Stage verified Windows runtime
         shell: pwsh
         run: |
