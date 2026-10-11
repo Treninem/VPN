@@ -282,6 +282,21 @@ Next priorities: (1) finish exact-head release-candidate signing/installer verif
 
 Known risk: an OS VPN indicator alone does not prove packet forwarding or public egress. Keep PROTECTED gated on the full readiness chain.
 
+### 2026-10-11: verified release-candidate code head
+
+Code head `a88694e42c53217bfd56932ddbe8dda5c2cdc743` completed the Windows release-candidate job after the scoped self-signed certificate fix. Final journal head `30f97cceb29cd95821d902383c295c67c6de516a` completed:
+
+- CI `38161752371` — success (Windows and Android);
+- installable packages `38161752392` — success (Windows installer/portable, Android APK, visual source);
+- Windows tray `38161752356` — success;
+- Android signing `38161752369` — success with PR certificate;
+- release-candidate `38161752372` — success: Windows signed binaries, portable ZIP and NSIS installer; Android APK, compliance inventory and visual source. Publish job skipped as expected for a PR.
+
+Why/verification boundary: CI proves build, tests, artifact composition and temporary-certificate signing machinery. It does not prove a physical VPN tunnel, Wi-Fi/mobile handoff, public-trust Windows signature or owner-signed Android APK. The available Windows installation predates this branch; no connected Android device is available. The owner supplied a test subscription in chat; its URL and credentials must not be copied into this journal, CI or logs. Local system network-adapter inspection was denied, and no current-head application has been run here with Administrator permissions.
+
+Current state: PR #62 is open and mergeable, no GitHub release has been published. Next: owner-device Windows/Android egress, DNS/IP leak, handoff and sleep/resume checks; configure production signing secrets; then merge and publish a verified prerelease.
+
+
 ## Remaining release/hardening work
 
 1. Real-device E2E on Windows and Android with owner-provided test nodes and physical hardware: real public egress, DNS/IP leak, Wi-Fi/mobile handoff and sleep/resume.
