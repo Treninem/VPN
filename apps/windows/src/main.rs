@@ -606,14 +606,6 @@ impl AmriApp {
             });
     }
 
-    fn sync_smart_mode(&mut self) {
-        self.routing_mode = if self.smart_routing {
-            RoutingMode::Smart
-        } else {
-            RoutingMode::Manual
-        };
-    }
-
     fn metric_card(ui: &mut egui::Ui, title: &str, value: &str, subtitle: &str) {
         egui::Frame::new()
             .fill(theme::SURFACE)
@@ -739,14 +731,20 @@ impl AmriApp {
         );
         ui.add_space(8.0);
         let previous_mode = self.routing_mode;
-        ui.horizontal_wrapped(|ui| {
-            for mode in [RoutingMode::Smart, RoutingMode::Manual] {
-                ui.selectable_value(
-                    &mut self.routing_mode,
-                    mode,
-                    routing_mode_text(self.language, mode),
-                );
-            }
+        let can_change_mode = !matches!(
+            &self.transport_state,
+            TransportUiState::Connecting | TransportUiState::Ready { .. }
+        );
+        ui.add_enabled_ui(can_change_mode, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for mode in [RoutingMode::Smart, RoutingMode::Manual] {
+                    ui.selectable_value(
+                        &mut self.routing_mode,
+                        mode,
+                        routing_mode_text(self.language, mode),
+                    );
+                }
+            });
         });
         if self.routing_mode != previous_mode {
             self.smart_routing = self.routing_mode == RoutingMode::Smart;
@@ -833,23 +831,6 @@ impl AmriApp {
         });
 
         ui.add_space(22.0);
-        ui.label(
-            RichText::new(ui_text(self.language, UiMessage::SmartRouting))
-                .size(20.0)
-                .strong(),
-        );
-        ui.add_space(8.0);
-
-        let previous_smart = self.smart_routing;
-        Self::toggle_row(
-            ui,
-            ui_text(self.language, UiMessage::SmartRouting),
-            ui_text(self.language, UiMessage::SmartRoutingDescription),
-            &mut self.smart_routing,
-        );
-        if self.smart_routing != previous_smart {
-            self.sync_smart_mode();
-        }
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::LocalLearning),
@@ -1184,16 +1165,6 @@ impl AmriApp {
     fn settings(&mut self, ui: &mut egui::Ui) {
         ui.heading(RichText::new(ui_text(self.language, UiMessage::Settings)).size(30.0));
         ui.add_space(12.0);
-        let previous_smart = self.smart_routing;
-        Self::toggle_row(
-            ui,
-            ui_text(self.language, UiMessage::SmartRouting),
-            ui_text(self.language, UiMessage::SmartRoutingDescription),
-            &mut self.smart_routing,
-        );
-        if self.smart_routing != previous_smart {
-            self.sync_smart_mode();
-        }
         Self::capability_row(
             ui,
             ui_text(self.language, UiMessage::KillSwitch),
