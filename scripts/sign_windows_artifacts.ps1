@@ -26,107 +26,12 @@ function Find-SignTool {
     $roots = @(
         "${env:ProgramFiles(x86)}\Windows Kits\10\bin",
         "${env:ProgramFiles}\Windows Kits\10\bin"
-    ) | Where-Object { Test-Path $_ }
+    ) | Where-Object { Test-Path -LiteralPath $_ }
 
     $candidate = @(
         foreach ($root in $roots) {
-            Get-ChildItem -Path $root -Recurse -Filter signtool.exe -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe
-
-    if (-not $candidate) {
-        throw "signtool.exe was not found in the installed Windows SDK"
-    }
-    return $candidate.FullName
-}
-
-if (-not (Test-Path -LiteralPath $PfxPath)) {
-    throw "Windows signing PFX was not found"
-}
-
-$expected = Normalize-Thumbprint $ExpectedThumbprint
-if ([string]::IsNullOrWhiteSpace($expected)) {
-    throw "Expected Windows certificate thumbprint is empty"
-}
-
-foreach ($file in $Files) {
-    if (-not (Test-Path -LiteralPath $file)) {
-        throw "Signing target was not found: $file"
-    }
-}
-
-$securePassword = ConvertTo-SecureString $PfxPassword -AsPlainText -Force
-$certificate = $null
-$certPath = $null
-
-try {
-    $imported = @(Import-PfxCertificate -FilePath $PfxPath -CertStoreLocation "Cert:\CurrentUser\My" -Password $securePassword -Exportable:$false)
-    $certificate = $imported | Where-Object { $_.HasPrivateKey } | Select-Object -First 1
-
-    if (-not $certificate) {
-        throw "Windows signing certificate with a private key was not imported"
-    }
-
-    $actual = Normalize-Thumbprint $certificate.Thumbprint
-    if ($actual -ne $expected) {
-        throw "Windows signing certificate thumbprint mismatch"
-    }
-
-    if (-not $certificate.HasPrivateKey) {
-        throw "Windows signing certificate does not contain a private key"
-    }
-
-    $certPath = "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
-    $signtool = Find-SignTool
-
-    foreach ($file in $Files) {
-        $signArgs = @("sign", "/sha1", $certificate.Thumbprint, "/fd", "SHA256")
-        if (-not [string]::IsNullOrWhiteSpace($TimestampUrl)) {
-            $signArgs += @("/tr", $TimestampUrl, "/td", "SHA256")
-        }
-        $signArgs += $file
-
-        & $signtool @signArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw "signtool failed while signing $file"
-        }
-
-        $signature = Get-AuthenticodeSignature -LiteralPath $file
-        if (-not $signature.SignerCertificate) {
-            throw "No Authenticode signer certificate was found on $file"
-        }
-        $signedBy = Normalize-Thumbprint $signature.SignerCertificate.Thumbprint
-        if ($signedBy -ne $expected) {
-            throw "Authenticode signer thumbprint mismatch for $file"
-        }
-
-        if ($AllowUntrustedChain) {
-            $invalidStatuses = @(
-                [System.Management.Automation.SignatureStatus]::NotSigned,
-                [System.Management.Automation.SignatureStatus]::HashMismatch,
-                [System.Management.Automation.SignatureStatus]::NotSupportedFileFormat,
-                [System.Management.Automation.SignatureStatus]::Incompatible
-            )
-            if ($invalidStatuses -contains $signature.Status) {
-                throw "Authenticode signature is structurally invalid for $file ($($signature.Status))"
-            }
-        }
-        else {
-            & $signtool verify /pa /v $file
-            if ($LASTEXITCODE -ne 0) {
-                throw "signtool trust verification failed for $file"
-            }
-            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-                throw "Authenticode trust status is not valid for $file ($($signature.Status))"
-            }
-        }
-    }
-}
-finally {
-    if ($certPath -and (Test-Path $certPath)) {
-        Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
-    }
-}
- }
+            Get-ChildItem -LiteralPath $root -Recurse -Filter signtool.exe -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '[\\/]x64[\\/]signtool\.exe$' }
         }
     ) | Sort-Object FullName -Descending | Select-Object -First 1
 
@@ -139,12 +44,10 @@ finally {
 if (-not (Test-Path -LiteralPath $PfxPath)) {
     throw "Windows signing PFX was not found"
 }
-
 $expected = Normalize-Thumbprint $ExpectedThumbprint
 if ([string]::IsNullOrWhiteSpace($expected)) {
     throw "Expected Windows certificate thumbprint is empty"
 }
-
 foreach ($file in $Files) {
     if (-not (Test-Path -LiteralPath $file)) {
         throw "Signing target was not found: $file"
@@ -152,26 +55,19 @@ foreach ($file in $Files) {
 }
 
 $securePassword = ConvertTo-SecureString $PfxPassword -AsPlainText -Force
-$certificate = $null
-$certPath = $null
+$existingThumbprints = @(Get-ChildItem "Cert:\CurrentUser\My" | ForEach-Object Thumbprint)
+$importedThumbprints = @()
 
 try {
-    $certificate = Import-PfxCertificate -FilePath $PfxPath -CertStoreLocation "Cert:\CurrentUser\My" -Password $securePassword -Exportable:$false
-
+    $imported = @(Import-PfxCertificate -FilePath $PfxPath -CertStoreLocation "Cert:\CurrentUser\My" -Password $securePassword -Exportable:$false)
+    $importedThumbprints = @($imported | ForEach-Object Thumbprint)
+    $certificate = $imported | Where-Object { $_.HasPrivateKey } | Select-Object -First 1
     if (-not $certificate) {
-        throw "Windows signing certificate import failed"
+        throw "Windows signing certificate with a private key was not imported"
     }
-
-    $actual = Normalize-Thumbprint $certificate.Thumbprint
-    if ($actual -ne $expected) {
+    if ((Normalize-Thumbprint $certificate.Thumbprint) -ne $expected) {
         throw "Windows signing certificate thumbprint mismatch"
     }
-
-    if (-not $certificate.HasPrivateKey) {
-        throw "Windows signing certificate does not contain a private key"
-    }
-
-    $certPath = "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
     $signtool = Find-SignTool
 
     foreach ($file in $Files) {
@@ -180,32 +76,42 @@ try {
             $signArgs += @("/tr", $TimestampUrl, "/td", "SHA256")
         }
         $signArgs += $file
-
         & $signtool @signArgs
         if ($LASTEXITCODE -ne 0) {
             throw "signtool failed while signing $file"
-        }
-
-        & $signtool verify /pa /v $file
-        if ($LASTEXITCODE -ne 0) {
-            throw "signtool verification failed for $file"
         }
 
         $signature = Get-AuthenticodeSignature -LiteralPath $file
         if (-not $signature.SignerCertificate) {
             throw "No Authenticode signer certificate was found on $file"
         }
-        $signedBy = Normalize-Thumbprint $signature.SignerCertificate.Thumbprint
-        if ($signedBy -ne $expected) {
+        if ((Normalize-Thumbprint $signature.SignerCertificate.Thumbprint) -ne $expected) {
             throw "Authenticode signer thumbprint mismatch for $file"
         }
-        if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-            throw "Authenticode signature is not valid for $file ($($signature.Status))"
+
+        if ($AllowUntrustedChain) {
+            if ($signature.Status -notin @(
+                [System.Management.Automation.SignatureStatus]::Valid,
+                [System.Management.Automation.SignatureStatus]::NotTrusted
+            )) {
+                throw "Authenticode signature is invalid for $file ($($signature.Status))"
+            }
+        }
+        else {
+            & $signtool verify /pa /v $file
+            if ($LASTEXITCODE -ne 0 -or $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+                throw "Authenticode trust verification failed for $file ($($signature.Status))"
+            }
         }
     }
 }
 finally {
-    if ($certPath -and (Test-Path $certPath)) {
-        Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
+    foreach ($thumbprint in $importedThumbprints) {
+        if ($thumbprint -and $thumbprint -notin $existingThumbprints) {
+            $certPath = "Cert:\CurrentUser\My\$thumbprint"
+            if (Test-Path -LiteralPath $certPath) {
+                Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 }
